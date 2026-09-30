@@ -1,0 +1,8 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: ram_fixture()
+---
+{
+  "total_bytes": 34359738368,
+  "used_bytes": 12884901888
+}

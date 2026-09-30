@@ -1,21 +1,31 @@
-//! `archel sys cpu|ram|disk` renderers: French tables (default) or one
-//! JSON object per tick (`--json`), with `--watch` re-render.
+//! `archel sys cpu|ram|disk|gpu|temp|power|all` renderers: French
+//! tables (default) or one JSON object per tick (`--json`), with
+//! `--watch` re-render.
 //!
 //! Bin-calls-core shape: every number and every French string comes from
-//! `archel-core::system` (snapshots, conversions, catalog labels); this
-//! module only lays out columns (`std::fmt` widths, no table crate),
-//! frames NDJSON ticks, and owns the 500 ms watch loop. One [`Monitor`]
-//! is created outside the loop and reused across ticks so ticks 2+ always
-//! carry valid diff-based CPU numbers (Pitfall 1).
+//! `archel-core::system` (snapshots, conversions, catalog labels) or
+//! `archel-core::sensors` (GPU, hottest temps, power); this module only
+//! lays out columns (`std::fmt` widths, no table crate), frames NDJSON
+//! ticks, and owns the 500 ms watch loop. One [`Monitor`] plus one
+//! [`Sensors`] handle are created outside the loop and reused across
+//! ticks: ticks 2+ always carry valid diff-based CPU numbers
+//! (Pitfall 1), and the NVML library stays open with no subprocess per
+//! tick (Pitfall 8).
 //!
 //! Watch exits on Ctrl+C with default SIGINT semantics (exit 130 like
 //! standard tools); no cleanup is needed — the loop holds no raw mode or
 //! alternate screen. `--json` ticks print exactly one complete object
 //! with no clearing and no stray lines, so the stream stays parseable
 //! (diagnostics travel via `tracing` on stderr only, never here).
+//!
+//! Missing sensors render the honest French N/A catalog cell (D-10):
+//! a `None` reading is never shown as zero.
 
 use std::time::Duration;
 
+use archel_core::sensors::{
+    AllSnapshot, GpuSnapshot, PowerSnapshot, TempSnapshot,
+};
 use archel_core::system::{
     CpuSnapshot, DiskSnapshot, RamSnapshot, bytes_to_gib, unit_labels,
 };
@@ -65,6 +75,73 @@ pub fn run_disk(watch: bool, json: bool) -> Result<(), ArchelError> {
             ArchelError::Internal(format!("cannot encode sys disk JSON: {err}"))
         })?;
         emit_tick(json, watch, &payload, &render_disk_table(&snap));
+        if !watch {
+            return Ok(());
+        }
+        std::thread::sleep(WATCH_INTERVAL);
+    }
+}
+
+/// Runs `archel sys gpu`: model plus VRAM used/total (SYS-05). The
+/// NVML handle opens once outside the loop and is reused across ticks.
+pub fn run_gpu(watch: bool, json: bool) -> Result<(), ArchelError> {
+    let sensors = archel_core::sensors::Sensors::new();
+    loop {
+        let snap = sensors.gpu();
+        let payload = serde_json::to_string(&snap).map_err(|err| {
+            ArchelError::Internal(format!("cannot encode sys gpu JSON: {err}"))
+        })?;
+        emit_tick(json, watch, &payload, &render_gpu_table(&snap));
+        if !watch {
+            return Ok(());
+        }
+        std::thread::sleep(WATCH_INTERVAL);
+    }
+}
+
+/// Runs `archel sys temp`: hottest temperature per category (SYS-06).
+pub fn run_temp(watch: bool, json: bool) -> Result<(), ArchelError> {
+    let sensors = archel_core::sensors::Sensors::new();
+    loop {
+        let snap = sensors.temps();
+        let payload = serde_json::to_string(&snap).map_err(|err| {
+            ArchelError::Internal(format!("cannot encode sys temp JSON: {err}"))
+        })?;
+        emit_tick(json, watch, &payload, &render_temp_table(&snap));
+        if !watch {
+            return Ok(());
+        }
+        std::thread::sleep(WATCH_INTERVAL);
+    }
+}
+
+/// Runs `archel sys power`: real-time CPU and GPU watts (SYS-07/08).
+pub fn run_power(watch: bool, json: bool) -> Result<(), ArchelError> {
+    let sensors = archel_core::sensors::Sensors::new();
+    loop {
+        let snap = sensors.power();
+        let payload = serde_json::to_string(&snap).map_err(|err| {
+            ArchelError::Internal(format!("cannot encode sys power JSON: {err}"))
+        })?;
+        emit_tick(json, watch, &payload, &render_power_table(&snap));
+        if !watch {
+            return Ok(());
+        }
+        std::thread::sleep(WATCH_INTERVAL);
+    }
+}
+
+/// Runs `archel sys all`: every metric in one table and one `--json`
+/// object, composed through the two reusable handles.
+pub fn run_all(watch: bool, json: bool) -> Result<(), ArchelError> {
+    let mut monitor = archel_core::system::Monitor::new();
+    let sensors = archel_core::sensors::Sensors::new();
+    loop {
+        let snap = archel_core::sensors::collect_all(&mut monitor, &sensors);
+        let payload = serde_json::to_string(&snap).map_err(|err| {
+            ArchelError::Internal(format!("cannot encode sys all JSON: {err}"))
+        })?;
+        emit_tick(json, watch, &payload, &render_all_table(&snap));
         if !watch {
             return Ok(());
         }
@@ -147,7 +224,63 @@ pub fn render_disk_table(snap: &DiskSnapshot) -> String {
     render_label_table(&labels.title, &rows)
 }
 
-/// Landing-style label/value layout shared by the RAM and disk tables.
+/// Builds the GPU table: model plus VRAM used/total with used GB
+/// prominent (first numeric row). Missing hardware renders N/A rows.
+pub fn render_gpu_table(snap: &GpuSnapshot) -> String {
+    let labels = archel_core::sensors::gpu_table_labels();
+    let rows: [(String, String); 3] = [
+        (labels.name, format_opt_name(snap.name.as_deref())),
+        (labels.vram_used, format_opt_gib(snap.vram_used_bytes)),
+        (labels.vram_total, format_opt_gib(snap.vram_total_bytes)),
+    ];
+    render_label_table(&labels.title, &rows)
+}
+
+/// Builds the temperature table: one hottest value per category
+/// (D-09), never an average and never a full sensor dump.
+pub fn render_temp_table(snap: &TempSnapshot) -> String {
+    let labels = archel_core::sensors::temp_table_labels();
+    let rows: [(String, String); 2] = [
+        (labels.cpu, format_opt_celsius(snap.cpu_c)),
+        (labels.gpu, format_opt_celsius(snap.gpu_c)),
+    ];
+    render_label_table(&labels.title, &rows)
+}
+
+/// Builds the power table: real-time CPU and GPU watts.
+pub fn render_power_table(snap: &PowerSnapshot) -> String {
+    let labels = archel_core::sensors::power_table_labels();
+    let rows: [(String, String); 2] = [
+        (labels.cpu, format_opt_watts(snap.cpu_w)),
+        (labels.gpu, format_opt_watts(snap.gpu_w)),
+    ];
+    render_label_table(&labels.title, &rows)
+}
+
+/// Builds the `sys all` table: every section in one view, reusing the
+/// per-metric renderers so the composed output can never drift from
+/// the single-metric tables.
+pub fn render_all_table(snap: &AllSnapshot) -> String {
+    let mut out = format!("{}\n", archel_core::sensors::all_table_title());
+    out.push_str(&render_cpu_table(&snap.cpu));
+    out.push_str(&render_ram_table(&snap.ram));
+    match &snap.disk {
+        Some(disk) => out.push_str(&render_disk_table(disk)),
+        None => {
+            let labels = archel_core::system::disk_table_labels();
+            let rows: [(String, String); 1] =
+                [(labels.used, archel_core::sensors::unavailable_label())];
+            out.push_str(&render_label_table(&labels.title, &rows));
+        }
+    }
+    out.push_str(&render_gpu_table(&snap.gpu));
+    out.push_str(&render_temp_table(&snap.temps));
+    out.push_str(&render_power_table(&snap.power));
+    out
+}
+
+/// Landing-style label/value layout shared by the RAM, disk, GPU,
+/// temperature and power tables.
 fn render_label_table(title: &str, rows: &[(String, String)]) -> String {
     let width = rows
         .iter()
@@ -169,6 +302,36 @@ fn format_usage(pct: f32, percent_unit: &str) -> String {
 /// Formats raw bytes as gibibytes with the catalog unit.
 fn format_gib(bytes: u64) -> String {
     format!("{:.1} {}", bytes_to_gib(bytes), unit_labels().gib)
+}
+
+/// Formats an optional byte count: gibibytes or honest N/A (D-10).
+fn format_opt_gib(bytes: Option<u64>) -> String {
+    bytes.map_or_else(archel_core::sensors::unavailable_label, format_gib)
+}
+
+/// Formats an optional GPU model name or honest N/A (D-10).
+fn format_opt_name(name: Option<&str>) -> String {
+    name.map_or_else(archel_core::sensors::unavailable_label, str::to_string)
+}
+
+/// Formats an optional temperature in degrees or honest N/A (D-10).
+fn format_opt_celsius(celsius: Option<f32>) -> String {
+    celsius.map_or_else(archel_core::sensors::unavailable_label, |celsius| {
+        format!(
+            "{celsius:.1} {}",
+            archel_core::sensors::sensor_unit_labels().celsius
+        )
+    })
+}
+
+/// Formats an optional power draw in watts or honest N/A (D-10).
+fn format_opt_watts(watts: Option<f32>) -> String {
+    watts.map_or_else(archel_core::sensors::unavailable_label, |watts| {
+        format!(
+            "{watts:.1} {}",
+            archel_core::sensors::sensor_unit_labels().watt
+        )
+    })
 }
 
 /// Right-pads `s` with spaces to `width` characters.
@@ -217,6 +380,51 @@ mod tests {
         }
     }
 
+    fn gpu_fixture() -> GpuSnapshot {
+        GpuSnapshot {
+            name: Some("NVIDIA GeForce GTX 1070 Ti".to_string()),
+            vram_used_bytes: Some(1308 * 1024 * 1024),
+            vram_total_bytes: Some(8192 * 1024 * 1024),
+            temp_c: Some(54.0),
+            power_w: Some(34.3),
+        }
+    }
+
+    fn gpu_absent_fixture() -> GpuSnapshot {
+        GpuSnapshot {
+            name: None,
+            vram_used_bytes: None,
+            vram_total_bytes: None,
+            temp_c: None,
+            power_w: None,
+        }
+    }
+
+    fn temp_fixture() -> TempSnapshot {
+        TempSnapshot {
+            cpu_c: Some(47.8),
+            gpu_c: Some(54.0),
+        }
+    }
+
+    fn power_fixture() -> PowerSnapshot {
+        PowerSnapshot {
+            cpu_w: None,
+            gpu_w: Some(34.3),
+        }
+    }
+
+    fn all_fixture() -> AllSnapshot {
+        AllSnapshot {
+            cpu: cpu_fixture(),
+            ram: ram_fixture(),
+            disk: Some(disk_fixture()),
+            gpu: gpu_fixture(),
+            temps: temp_fixture(),
+            power: power_fixture(),
+        }
+    }
+
     #[test]
     fn cpu_table_shows_per_core_usage_and_clock() {
         archel_core::i18n::set_language("fr");
@@ -260,10 +468,100 @@ mod tests {
         let cpu = serde_json::to_string(&cpu_fixture()).expect("cpu encodes");
         let ram = serde_json::to_string(&ram_fixture()).expect("ram encodes");
         let disk = serde_json::to_string(&disk_fixture()).expect("disk encodes");
-        for payload in [cpu, ram, disk] {
+        let gpu = serde_json::to_string(&gpu_fixture()).expect("gpu encodes");
+        let temp = serde_json::to_string(&temp_fixture()).expect("temp encodes");
+        let power = serde_json::to_string(&power_fixture()).expect("power encodes");
+        let all = serde_json::to_string(&all_fixture()).expect("all encodes");
+        for payload in [cpu, ram, disk, gpu, temp, power, all] {
             serde_json::from_str::<serde_json::Value>(&payload)
                 .expect("tick payload must be one complete JSON object");
         }
+    }
+
+    #[test]
+    fn gpu_table_shows_model_and_vram() {
+        archel_core::i18n::set_language("fr");
+        let table = render_gpu_table(&gpu_fixture());
+        assert!(table.contains("1070 Ti"), "model: {table}");
+        assert!(table.contains("8192") || table.contains("8.0"), "total VRAM: {table}");
+    }
+
+    #[test]
+    fn temp_table_shows_one_value_per_category() {
+        archel_core::i18n::set_language("fr");
+        let table = render_temp_table(&temp_fixture());
+        assert!(table.contains("47.8"), "hottest CPU: {table}");
+        assert!(table.contains("54.0"), "GPU: {table}");
+    }
+
+    #[test]
+    fn power_table_shows_watts_with_honest_na() {
+        archel_core::i18n::set_language("fr");
+        let table = render_power_table(&power_fixture());
+        assert!(table.contains("34.3"), "GPU watts: {table}");
+        assert!(
+            table.contains(&archel_core::sensors::unavailable_label()),
+            "unreadable CPU sensor must render N/A, never 0.0: {table}"
+        );
+        assert!(!table.contains("0.0 W"), "missing sensor must never show zero: {table}");
+    }
+
+    #[test]
+    fn absent_gpu_renders_na_everywhere() {
+        archel_core::i18n::set_language("fr");
+        let table = render_gpu_table(&gpu_absent_fixture());
+        assert!(
+            table.matches(&archel_core::sensors::unavailable_label()).count() >= 3,
+            "every GPU row must be N/A: {table}"
+        );
+    }
+
+    #[test]
+    fn all_table_composes_every_section() {
+        archel_core::i18n::set_language("fr");
+        let table = render_all_table(&all_fixture());
+        for marker in ["12.5", "32.0", "800.0", "1070 Ti", "47.8", "34.3"] {
+            assert!(table.contains(marker), "all must include {marker}: {table}");
+        }
+    }
+
+    // insta pins: every --json schema in snake_case English keys
+    // mirroring the struct fields (planner's A5 choice, v1-unstable).
+    // A silent field reshape fails here before reaching scripts.
+
+    #[test]
+    fn schema_sys_cpu_is_pinned() {
+        insta::assert_json_snapshot!("sys_cpu", cpu_fixture());
+    }
+
+    #[test]
+    fn schema_sys_ram_is_pinned() {
+        insta::assert_json_snapshot!("sys_ram", ram_fixture());
+    }
+
+    #[test]
+    fn schema_sys_disk_is_pinned() {
+        insta::assert_json_snapshot!("sys_disk", disk_fixture());
+    }
+
+    #[test]
+    fn schema_sys_gpu_is_pinned() {
+        insta::assert_json_snapshot!("sys_gpu", gpu_fixture());
+    }
+
+    #[test]
+    fn schema_sys_temp_is_pinned() {
+        insta::assert_json_snapshot!("sys_temp", temp_fixture());
+    }
+
+    #[test]
+    fn schema_sys_power_is_pinned() {
+        insta::assert_json_snapshot!("sys_power", power_fixture());
+    }
+
+    #[test]
+    fn schema_sys_all_is_pinned() {
+        insta::assert_json_snapshot!("sys_all", all_fixture());
     }
 
     #[test]

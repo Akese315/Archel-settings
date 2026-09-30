@@ -120,4 +120,11 @@ mod tests {
         assert_eq!(pad_right("ab", 4), "ab  ");
         assert_eq!(pad_right("abcd", 2), "abcd");
     }
+
+    #[test]
+    fn schema_landing_is_pinned() {
+        // Same insta contract as the sys metrics: the landing --json
+        // schema is pinned so later phases cannot reshape it silently.
+        insta::assert_json_snapshot!("landing", fixture());
+    }
 }

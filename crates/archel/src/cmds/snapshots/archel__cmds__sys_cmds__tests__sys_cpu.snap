@@ -1,0 +1,20 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: cpu_fixture()
+---
+{
+  "cores": [
+    {
+      "id": 0,
+      "name": "cpu0",
+      "usage_pct": 12.5,
+      "freq_mhz": 4200
+    },
+    {
+      "id": 1,
+      "name": "cpu1",
+      "usage_pct": 3.0,
+      "freq_mhz": 3800
+    }
+  ]
+}

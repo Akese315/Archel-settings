@@ -1,0 +1,10 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: disk_fixture()
+---
+{
+  "mount_point": "/",
+  "total_bytes": 858993459200,
+  "used_bytes": 128849018880,
+  "free_bytes": 730144440320
+}

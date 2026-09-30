@@ -1,0 +1,8 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: temp_fixture()
+---
+{
+  "cpu_c": 47.8,
+  "gpu_c": 54.0
+}

@@ -1,0 +1,8 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: power_fixture()
+---
+{
+  "cpu_w": null,
+  "gpu_w": 34.3
+}

@@ -1,0 +1,47 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: all_fixture()
+---
+{
+  "cpu": {
+    "cores": [
+      {
+        "id": 0,
+        "name": "cpu0",
+        "usage_pct": 12.5,
+        "freq_mhz": 4200
+      },
+      {
+        "id": 1,
+        "name": "cpu1",
+        "usage_pct": 3.0,
+        "freq_mhz": 3800
+      }
+    ]
+  },
+  "ram": {
+    "total_bytes": 34359738368,
+    "used_bytes": 12884901888
+  },
+  "disk": {
+    "mount_point": "/",
+    "total_bytes": 858993459200,
+    "used_bytes": 128849018880,
+    "free_bytes": 730144440320
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce GTX 1070 Ti",
+    "vram_used_bytes": 1371537408,
+    "vram_total_bytes": 8589934592,
+    "temp_c": 54.0,
+    "power_w": 34.3
+  },
+  "temps": {
+    "cpu_c": 47.8,
+    "gpu_c": 54.0
+  },
+  "power": {
+    "cpu_w": null,
+    "gpu_w": 34.3
+  }
+}

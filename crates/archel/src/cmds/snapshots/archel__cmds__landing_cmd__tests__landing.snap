@@ -1,0 +1,14 @@
+---
+source: crates/archel/src/cmds/landing_cmd.rs
+expression: fixture()
+---
+{
+  "app_version": "0.1.0",
+  "kernel_version": "7.2.6-test",
+  "repo": {
+    "Fresh": 3
+  },
+  "aur": {
+    "Fresh": 2
+  }
+}

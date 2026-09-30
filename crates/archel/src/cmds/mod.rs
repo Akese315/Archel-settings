@@ -53,8 +53,8 @@ enum PrivilegedAction {
     DryRun,
 }
 
-/// One telemetry metric under `archel sys` (D-11). gpu/temp/power/all
-/// land in plan 03; this plan ships cpu/ram/disk.
+/// One telemetry metric under `archel sys` (D-11). cpu/ram/disk
+/// shipped in plan 02; gpu/temp/power/all land here (plan 03).
 #[derive(Debug, Subcommand)]
 enum SysMetric {
     /// Per-core usage plus current clock speed (SYS-03/04)
@@ -71,6 +71,30 @@ enum SysMetric {
     },
     /// System-partition used/total/free with used GB prominent (SYS-02)
     Disk {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// GPU model plus VRAM used/total (SYS-05)
+    Gpu {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Hottest temperature per category, never an average (SYS-06, D-09)
+    Temp {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Real-time CPU and GPU power draw (SYS-07/08)
+    Power {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Every metric in one table and one --json object
+    All {
         /// Keep the display open and re-render until Ctrl+C (D-01)
         #[arg(long)]
         watch: bool,
@@ -114,6 +138,10 @@ pub fn run() -> Result<(), ArchelError> {
             SysMetric::Cpu { watch } => sys_cmds::run_cpu(watch, cli.json),
             SysMetric::Ram { watch } => sys_cmds::run_ram(watch, cli.json),
             SysMetric::Disk { watch } => sys_cmds::run_disk(watch, cli.json),
+            SysMetric::Gpu { watch } => sys_cmds::run_gpu(watch, cli.json),
+            SysMetric::Temp { watch } => sys_cmds::run_temp(watch, cli.json),
+            SysMetric::Power { watch } => sys_cmds::run_power(watch, cli.json),
+            SysMetric::All { watch } => sys_cmds::run_all(watch, cli.json),
         },
     }
 }

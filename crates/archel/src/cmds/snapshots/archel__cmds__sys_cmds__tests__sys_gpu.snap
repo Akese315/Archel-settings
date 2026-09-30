@@ -1,0 +1,11 @@
+---
+source: crates/archel/src/cmds/sys_cmds.rs
+expression: gpu_fixture()
+---
+{
+  "name": "NVIDIA GeForce GTX 1070 Ti",
+  "vram_used_bytes": 1371537408,
+  "vram_total_bytes": 8589934592,
+  "temp_c": 54.0,
+  "power_w": 34.3
+}
