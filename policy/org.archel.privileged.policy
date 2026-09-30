@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+        "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  Archel privileged-helper policy draft (Phase 1, PLAT-04).
+
+  Least-privilege rules (T-1-04):
+  - one action per verb, minimal set (dry-run only in Phase 1);
+  - auth_admin_keep on every default (per D-10 standard persistence);
+  - NEVER `yes`: every privileged call authenticates as admin first.
+  Installs to /usr/share/polkit-1/actions/ with the distro package.
+-->
+
+<policyconfig>
+
+        <vendor>Archel</vendor>
+
+        <action id="org.archel.privileged.dry-run">
+                <description>Tester le module privilegie Archel</description>
+                <message>L'authentification est requise pour tester le module privilegie Archel.</message>
+                <defaults>
+                        <allow_any>auth_admin_keep</allow_any>
+                        <allow_inactive>auth_admin_keep</allow_inactive>
+                        <allow_active>auth_admin_keep</allow_active>
+                </defaults>
+        </action>
+
+</policyconfig>

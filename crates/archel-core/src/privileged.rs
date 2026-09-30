@@ -98,6 +98,55 @@ pub fn dry_run_direct() -> Result<String, ArchelError> {
     run_action_direct(DRY_RUN_ACTION)
 }
 
+/// Maps a pkexec exit code to the next step (per D-12, Pitfall 4).
+///
+/// Pure so the 0/126/127/other matrix is unit-tested with mocked codes:
+/// - `0` → `Ok(())`: caller proceeds to parse the helper v1 JSON.
+/// - `126` → dismissed dialog → friendly `AuthFailed{Cancelled}` naming
+///   the action (never raw polkit text).
+/// - `127` → refused authorization → friendly `AuthFailed{Denied}`.
+/// - anything else → `HelperProtocol` with the raw code for logs only.
+pub fn map_pkexec_exit(action: &str, code: Option<i32>) -> Result<(), ArchelError> {
+    match code {
+        Some(0) => Ok(()),
+        Some(126) => Err(ArchelError::privilege_cancelled(action)),
+        Some(127) => Err(ArchelError::privilege_denied(action)),
+        other => Err(ArchelError::HelperProtocol(format!(
+            "pkexec exited with code {other:?} for '{action}'"
+        ))),
+    }
+}
+
+/// Runs one allowlisted `action` through the real escalation path:
+/// `pkexec <absolute-helper-path> <action>` with the default polkit
+/// agent. Helper stderr is captured for logs only and never displayed
+/// (Pitfall 4: no `GDBus.Error...` text ever reaches the user).
+pub fn run_action_via_pkexec(action: &str) -> Result<String, ArchelError> {
+    let pkexec = which::which("pkexec").map_err(|err| {
+        ArchelError::HelperProtocol(format!("pkexec not available: {err}"))
+    })?;
+    let helper = locate_helper()?;
+    let output = duct::cmd(&pkexec, [&helper, &PathBuf::from(action)])
+        .stdout_capture()
+        .stderr_capture()
+        .run()
+        .map_err(|err| {
+            ArchelError::HelperProtocol(format!("cannot spawn pkexec for '{action}': {err}"))
+        })?;
+    // Log-only capture of helper stderr (kept for diagnostics; the
+    // user-facing error below never embeds it).
+    let _stderr_for_logs = String::from_utf8_lossy(&output.stderr);
+    map_pkexec_exit(action, output.status.code())?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_helper_stdout(action, &stdout)
+}
+
+/// Phase 1 probe through the real escalation path (prompts the desktop
+/// polkit agent; dismissing maps to the friendly cancelled error).
+pub fn dry_run_via_pkexec() -> Result<String, ArchelError> {
+    run_action_via_pkexec(DRY_RUN_ACTION)
+}
+
 /// French success line for a validated dry-run, rendered from the catalog
 /// (D-05/D-07). Lives here — not in the binary — so `t!` resolves against
 /// this crate's catalog backend, exactly like [`crate::version_line`].
@@ -153,5 +202,70 @@ mod tests {
         let err = parse_helper_stdout("dry-run", r#"{"v":1,"action":"dry-run"}"#)
             .expect_err("missing ok flag must be rejected");
         assert!(matches!(err, ArchelError::HelperProtocol(_)));
+    }
+
+    #[test]
+    fn pkexec_zero_means_parse_next() {
+        assert!(map_pkexec_exit("dry-run", Some(0)).is_ok());
+    }
+
+    #[test]
+    fn pkexec_126_maps_to_cancelled_naming_the_action() {
+        let err = map_pkexec_exit("package install", Some(126))
+            .expect_err("126 must be the dismissed-dialog path");
+        assert_eq!(
+            err,
+            ArchelError::privilege_cancelled("package install"),
+            "126 must map to AuthFailed/Cancelled"
+        );
+        let rendered = err.message();
+        assert!(
+            rendered.contains("package install"),
+            "cancelled message must name the action: {rendered}"
+        );
+    }
+
+    #[test]
+    fn pkexec_127_maps_to_denied_naming_the_action() {
+        let err = map_pkexec_exit("package install", Some(127))
+            .expect_err("127 must be the refused-auth path");
+        assert_eq!(
+            err,
+            ArchelError::privilege_denied("package install"),
+            "127 must map to AuthFailed/Denied"
+        );
+        let rendered = err.message();
+        assert!(
+            rendered.contains("package install"),
+            "denied message must name the action: {rendered}"
+        );
+    }
+
+    #[test]
+    fn cancelled_vs_denied_render_distinct_french() {
+        rust_i18n::set_locale("fr");
+        let cancelled = map_pkexec_exit("package install", Some(126))
+            .expect_err("126")
+            .message();
+        let denied = map_pkexec_exit("package install", Some(127))
+            .expect_err("127")
+            .message();
+        assert_ne!(cancelled, denied, "D-12 requires distinct wording");
+        assert!(
+            !cancelled.contains("GDBus") && !denied.contains("GDBus"),
+            "raw polkit text must never leak into catalog strings"
+        );
+    }
+
+    #[test]
+    fn pkexec_other_codes_map_to_helper_protocol() {
+        for code in [Some(1), Some(2), Some(127 + 1), None] {
+            let err = map_pkexec_exit("dry-run", code)
+                .expect_err("unexpected code must not pass");
+            assert!(
+                matches!(err, ArchelError::HelperProtocol(_)),
+                "wrong variant for code {code:?}"
+            );
+        }
     }
 }
