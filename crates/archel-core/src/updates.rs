@@ -238,53 +238,92 @@ pub fn checker_missing_hint(tool: &str) -> String {
     }
 }
 
-/// Full resolution against the cache at `path`. Tracer semantics: a
-/// fresh cache is served, anything else (missing, expired, corrupt,
-/// `--refresh`) triggers a recompute of both halves. Halves that fail
-/// degrade to `Unavailable`; the stale-with-age upgrade for expired
-/// caches lands in the cache-semantics task.
+/// Full resolution against the cache at `path` (D-05/D-06/D-07):
+/// a fresh cache is served; anything else (missing, expired, corrupt,
+/// `--refresh`) recomputes both halves live. Halves that fail fall back
+/// to the last cached value with its age (stale, never a bare number);
+/// halves with no cached value stay `Unavailable`. A partial refresh
+/// keeps the previous timestamp so stale numbers never look rejuvenated.
 pub fn pending_counts_at(path: &Path, force_refresh: bool) -> PendingCounts {
+    pending_counts_with(path, force_refresh, refresh_half)
+}
+
+/// Resolution with an injectable recompute step so fixture-clock tests
+/// cover expired-versus-fresh, stale fallback, refresh bypass, and
+/// corrupt-envelope recompute without spawning live checkers.
+fn pending_counts_with(
+    path: &Path,
+    force_refresh: bool,
+    refresh: impl Fn(&str, &[&str]) -> UpdateCount,
+) -> PendingCounts {
     let now = now_secs();
-    if !force_refresh {
-        if let Some(cache) = read_cache(path) {
-            if ttl_valid(cache.computed_at, now) {
-                return PendingCounts {
-                    repo: refresh_or_cached(cache.repo, CHECKUPDATES_TOOL, &[]),
-                    aur: refresh_or_cached(cache.aur, YAY_TOOL, &["-Qu", "--aur"]),
-                };
-            }
+    let cached = if force_refresh {
+        None
+    } else {
+        read_cache(path)
+    };
+    if let Some(cache) = cached.as_ref() {
+        if ttl_valid(cache.computed_at, now) {
+            return PendingCounts {
+                repo: refresh_or_cached(cache.repo, CHECKUPDATES_TOOL, &[], &refresh),
+                aur: refresh_or_cached(cache.aur, YAY_TOOL, &["-Qu", "--aur"], &refresh),
+            };
         }
     }
-    let recomputed = PendingCounts {
-        repo: refresh_half(CHECKUPDATES_TOOL, &[]),
-        aur: refresh_half(YAY_TOOL, &["-Qu", "--aur"]),
+    let fresh_repo = refresh(CHECKUPDATES_TOOL, &[]);
+    let fresh_aur = refresh(YAY_TOOL, &["-Qu", "--aur"]);
+    let prev_repo = cached.as_ref().and_then(|c| c.repo);
+    let prev_aur = cached.as_ref().and_then(|c| c.aur);
+    let prev_at = cached.as_ref().map(|c| c.computed_at).unwrap_or(now);
+    let age_secs = now.saturating_sub(prev_at);
+    let repo = with_stale_fallback(fresh_repo, prev_repo, age_secs);
+    let aur = with_stale_fallback(fresh_aur, prev_aur, age_secs);
+    let both_fresh = matches!(fresh_repo, UpdateCount::Fresh(_))
+        && matches!(fresh_aur, UpdateCount::Fresh(_));
+    let merged = UpdateCache {
+        v: CACHE_VERSION,
+        computed_at: if both_fresh { now } else { prev_at },
+        repo: repo.value(),
+        aur: aur.value(),
     };
-    persist_partial(path, now, recomputed);
-    recomputed
+    // Only persist when at least one half has a value: an all-empty
+    // record would freeze a transient failure (offline) into the cache
+    // instead of retrying on the next call.
+    if merged.repo.is_some() || merged.aur.is_some() {
+        write_cache(path, &merged);
+    }
+    PendingCounts { repo, aur }
+}
+
+/// D-06: a failed refresh serves the last cached value with its age;
+/// without any cached value the half stays `Unavailable`.
+fn with_stale_fallback(
+    fresh: UpdateCount,
+    cached: Option<u32>,
+    age_secs: u64,
+) -> UpdateCount {
+    match fresh {
+        UpdateCount::Fresh(_) => fresh,
+        UpdateCount::Unavailable(_) => match cached {
+            Some(count) => UpdateCount::Stale { count, age_secs },
+            None => fresh,
+        },
+        stale @ UpdateCount::Stale { .. } => stale,
+    }
 }
 
 /// Serves one cached half when the cache is fresh: a cached number is
 /// `Fresh`; a cached miss (`None`, e.g. checker absent at cache time) is
 /// retried live in case the machine changed since.
-fn refresh_or_cached(cached: Option<u32>, tool: &str, args: &[&str]) -> UpdateCount {
+fn refresh_or_cached(
+    cached: Option<u32>,
+    tool: &str,
+    args: &[&str],
+    refresh: &impl Fn(&str, &[&str]) -> UpdateCount,
+) -> UpdateCount {
     match cached {
         Some(n) => UpdateCount::Fresh(n),
-        None => refresh_half(tool, args),
-    }
-}
-
-/// Persists freshly recomputed halves. Only writes when at least one
-/// half succeeded: an all-`None` record would freeze a transient failure
-/// (offline) into the cache for 15 minutes instead of retrying.
-fn persist_partial(path: &Path, now: u64, counts: PendingCounts) {
-    let cache = UpdateCache {
-        v: CACHE_VERSION,
-        computed_at: now,
-        repo: counts.repo.value(),
-        aur: counts.aur.value(),
-    };
-    if cache.repo.is_some() || cache.aur.is_some() {
-        write_cache(path, &cache);
+        None => refresh(tool, args),
     }
 }
 
@@ -409,5 +448,137 @@ mod tests {
             checker_missing_hint("yay").contains("yay"),
             "generic hint must name the tool"
         );
+    }
+
+    // --- D-05/D-06/D-07 fixture-clock tests (no live checkers) ---
+
+    fn fixture_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("fixture dir must be creatable");
+        dir
+    }
+
+    fn write_envelope(path: &Path, computed_at: u64, repo: Option<u32>, aur: Option<u32>) {
+        let cache = UpdateCache {
+            v: CACHE_VERSION,
+            computed_at,
+            repo,
+            aur,
+        };
+        write_cache(path, &cache);
+    }
+
+    fn fail_refresh(_tool: &str, _args: &[&str]) -> UpdateCount {
+        UpdateCount::Unavailable(UnavailableReason::RefreshFailed)
+    }
+
+    #[test]
+    fn fresh_cache_is_served_without_recompute() {
+        let dir = fixture_dir("archel-updates-test-fresh");
+        let path = dir.join("updates.json");
+        let now = now_secs();
+        write_envelope(&path, now - 60, Some(7), Some(5));
+        let counts = pending_counts_with(&path, false, |_, _| {
+            panic!("fresh cache must not recompute")
+        });
+        assert_eq!(counts.repo, UpdateCount::Fresh(7));
+        assert_eq!(counts.aur, UpdateCount::Fresh(5));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn expired_cache_falls_back_to_stale_with_age() {
+        let dir = fixture_dir("archel-updates-test-stale");
+        let path = dir.join("updates.json");
+        let now = now_secs();
+        write_envelope(&path, now - 1800, Some(7), Some(5));
+        let counts = pending_counts_with(&path, false, fail_refresh);
+        match counts.repo {
+            UpdateCount::Stale { count, age_secs } => {
+                assert_eq!(count, 7);
+                assert!(
+                    (1790..=1810).contains(&age_secs),
+                    "age must track the expired timestamp: {age_secs}"
+                );
+            }
+            other => panic!("repo must go stale, got {other:?}"),
+        }
+        assert!(matches!(
+            counts.aur,
+            UpdateCount::Stale { count: 5, .. }
+        ));
+        // The failed refresh must not rejuvenate the timestamp (D-06).
+        let kept = read_cache(&path).expect("cache must survive");
+        assert_eq!(kept.computed_at, now - 1800);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn partial_success_mixes_fresh_and_stale() {
+        let dir = fixture_dir("archel-updates-test-partial");
+        let path = dir.join("updates.json");
+        let now = now_secs();
+        write_envelope(&path, now - 2000, Some(7), Some(5));
+        let counts = pending_counts_with(&path, false, |tool, _| {
+            if tool == CHECKUPDATES_TOOL {
+                UpdateCount::Fresh(9)
+            } else {
+                UpdateCount::Unavailable(UnavailableReason::RefreshFailed)
+            }
+        });
+        assert_eq!(counts.repo, UpdateCount::Fresh(9));
+        assert!(matches!(
+            counts.aur,
+            UpdateCount::Stale { count: 5, .. }
+        ));
+        let merged = read_cache(&path).expect("partial success must persist");
+        assert_eq!((merged.repo, merged.aur), (Some(9), Some(5)));
+        assert_eq!(merged.computed_at, now - 2000, "stale half keeps its age");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refresh_bypasses_a_fresh_cache() {
+        let dir = fixture_dir("archel-updates-test-bypass");
+        let path = dir.join("updates.json");
+        write_envelope(&path, now_secs() - 10, Some(1), Some(1));
+        let counts = pending_counts_with(&path, true, |_, _| UpdateCount::Fresh(42));
+        assert_eq!(counts.repo, UpdateCount::Fresh(42));
+        assert_eq!(counts.aur, UpdateCount::Fresh(42));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_cache_recomputes_without_crashing() {
+        let dir = fixture_dir("archel-updates-test-corrupt");
+        let path = dir.join("updates.json");
+        std::fs::write(&path, "{tampered,,,}").expect("fixture must be writable");
+        let counts = pending_counts_with(&path, false, fail_refresh);
+        assert_eq!(
+            counts.repo,
+            UpdateCount::Unavailable(UnavailableReason::RefreshFailed)
+        );
+        assert_eq!(
+            counts.aur,
+            UpdateCount::Unavailable(UnavailableReason::RefreshFailed)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn total_failure_writes_no_cache_and_stays_unavailable() {
+        let dir = fixture_dir("archel-updates-test-nocache");
+        let path = dir.join("updates.json");
+        let counts = pending_counts_with(&path, false, fail_refresh);
+        assert_eq!(
+            counts.repo,
+            UpdateCount::Unavailable(UnavailableReason::RefreshFailed)
+        );
+        assert!(
+            !path.exists(),
+            "an all-empty record must not freeze the failure"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
