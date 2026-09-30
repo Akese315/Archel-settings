@@ -5,8 +5,23 @@
   "privileged": {
     "dry_run_ok": "Module privilégié vérifié : réponse JSON v1 validée pour « %{action} »."
   },
-  "landing": {
-    "title": "Accueil Archel",
+  "sys": {
+    "cpu_title": "Processeur",
+    "cpu_core": "Cœur",
+    "cpu_usage": "Utilisation",
+    "cpu_frequency": "Fréquence",
+    "ram_title": "Mémoire vive",
+    "ram_used": "Utilisée",
+    "ram_total": "Totale",
+    "disk_title": "Disque système",
+    "disk_used": "Utilisé",
+    "disk_total": "Total",
+    "disk_free": "Libre",
+    "unit_gib": "Gio",
+    "unit_mhz": "MHz",
+    "unit_percent": "%"
+  },
+  "landing": {    "title": "Accueil Archel",
     "version": "Version",
     "kernel": "Noyau",
     "updates": "Mises à jour",
@@ -28,6 +43,7 @@
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
     "helper_protocol": "Le module privilégié a répondu de façon inattendue. Réessayez.",
+    "system_partition_not_found": "Partition système introuvable : aucun système de fichiers n'est monté sur « / ».",
     "gui_not_compiled": "Archel settings : interface graphique non disponible dans cette version.",
     "updates_checker_missing": "Compteur indisponible : « %{tool} » est introuvable. Installez le paquet correspondant pour l'activer.",
     "internal": "Une erreur interne est survenue. Réessayez."

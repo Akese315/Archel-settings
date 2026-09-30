@@ -31,6 +31,11 @@ pub enum ArchelError {
     /// The privileged helper answered outside the versioned JSON protocol.
     #[error("privileged helper protocol error: {0}")]
     HelperProtocol(String),
+    /// No mounted filesystem has `/` as its mount point, so the
+    /// system-partition disk (D-08) cannot be reported. Fails typed
+    /// instead of showing a non-root filesystem (Pitfall 4).
+    #[error("system partition '/' not found among mounted disks")]
+    SystemPartitionNotFound,
     /// An update checker binary (`checkupdates`, `yay`) is not installed.
     /// Carries the missing tool name for logs; the user only ever sees the
     /// catalog hint, and callers degrade (stale-with-age) instead of
@@ -78,6 +83,9 @@ impl ArchelError {
                 reason: AuthFailureReason::Denied,
             } => rust_i18n::t!("errors.auth_denied", action = action).to_string(),
             Self::HelperProtocol(_) => rust_i18n::t!("errors.helper_protocol").to_string(),
+            Self::SystemPartitionNotFound => {
+                rust_i18n::t!("errors.system_partition_not_found").to_string()
+            }
             Self::UpdatesCheckerMissing { tool } => {
                 rust_i18n::t!("errors.updates_checker_missing", tool = tool).to_string()
             }
@@ -96,6 +104,7 @@ mod tests {
             ArchelError::privilege_cancelled("package install"),
             ArchelError::privilege_denied("package install"),
             ArchelError::HelperProtocol("exit=3".to_string()),
+            ArchelError::SystemPartitionNotFound,
             ArchelError::UpdatesCheckerMissing {
                 tool: "checkupdates".to_string(),
             },

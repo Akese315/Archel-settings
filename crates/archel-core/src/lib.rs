@@ -12,6 +12,7 @@ pub mod error;
 pub mod i18n;
 pub mod landing;
 pub mod privileged;
+pub mod system;
 pub mod updates;
 
 pub use error::{ArchelError, AuthFailureReason};
