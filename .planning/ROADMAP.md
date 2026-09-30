@@ -31,7 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. User can run a spike GUI window with vertical tabs and a live-updating label (or sees an explicit Slint pivot decision)
   3. User can invoke the pkexec helper skeleton for an allowlisted dry-run action and gets structured JSON back
   4. User gets typed `ArchelError` diagnostics (not panics) from any core failure path
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Core + CLI + i18n + typed errors tracer-first (PLAT-01)
+- [ ] 01-02-PLAN.md — Privileged helper + policy + CXX-Qt spike (PLAT-04)
 
 ### Phase 2: System Insight
 **Goal**: Users can see at a glance what their machine is doing — landing facts plus live system telemetry
