@@ -2,6 +2,9 @@
   "app": {
     "version_line": "Archel version %{bin} — moteur archel-core %{core}"
   },
+  "privileged": {
+    "dry_run_ok": "Module privilégié vérifié : réponse JSON v1 validée pour « %{action} »."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",

@@ -20,6 +20,17 @@ enum Command {
     Version,
     /// Launch the graphical settings interface
     Settings,
+    /// Probe the privileged helper (pkexec boundary)
+    Privileged {
+        #[command(subcommand)]
+        action: PrivilegedAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PrivilegedAction {
+    /// Run the allowlisted dry-run against the helper and check the v1 JSON
+    DryRun,
 }
 
 /// Runs the parsed subcommand.
@@ -28,6 +39,9 @@ enum Command {
 /// a silent ok); `main` renders the French catalog message with a non-zero
 /// exit.
 pub fn run() -> Result<(), ArchelError> {
+    // The catalog backend defaults to the fallback locale; pin French so
+    // every rendering below is deterministic (D-05/D-07).
+    archel_core::i18n::set_language("fr");
     let cli = Cli::parse();
     match cli.command {
         Command::Version => {
@@ -37,5 +51,12 @@ pub fn run() -> Result<(), ArchelError> {
         // Plan 02 implements the CXX-Qt spike behind the `gui` feature; until
         // then `settings` reports the typed GuiNotCompiled catalog error.
         Command::Settings => Err(ArchelError::GuiNotCompiled),
+        Command::Privileged { action } => match action {
+            PrivilegedAction::DryRun => {
+                let echoed = archel_core::privileged::dry_run_direct()?;
+                println!("{}", archel_core::privileged::dry_run_success_line(&echoed));
+                Ok(())
+            }
+        },
     }
 }
