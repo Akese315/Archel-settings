@@ -36,6 +36,12 @@ pub enum ArchelError {
     /// instead of showing a non-root filesystem (Pitfall 4).
     #[error("system partition '/' not found among mounted disks")]
     SystemPartitionNotFound,
+    /// A hardware sensor (GPU, RAPL domain, hwmon node) could not be
+    /// read. Carries the sensor name for logs; the user only ever sees
+    /// the catalog N/A string, and callers degrade to `None` fields
+    /// instead of failing (D-10).
+    #[error("sensor unavailable: '{sensor}'")]
+    SensorUnavailable { sensor: String },
     /// An update checker binary (`checkupdates`, `yay`) is not installed.
     /// Carries the missing tool name for logs; the user only ever sees the
     /// catalog hint, and callers degrade (stale-with-age) instead of
@@ -86,6 +92,9 @@ impl ArchelError {
             Self::SystemPartitionNotFound => {
                 rust_i18n::t!("errors.system_partition_not_found").to_string()
             }
+            Self::SensorUnavailable { .. } => {
+                rust_i18n::t!("errors.sensor_unavailable").to_string()
+            }
             Self::UpdatesCheckerMissing { tool } => {
                 rust_i18n::t!("errors.updates_checker_missing", tool = tool).to_string()
             }
@@ -105,6 +114,9 @@ mod tests {
             ArchelError::privilege_denied("package install"),
             ArchelError::HelperProtocol("exit=3".to_string()),
             ArchelError::SystemPartitionNotFound,
+            ArchelError::SensorUnavailable {
+                sensor: "gpu".to_string(),
+            },
             ArchelError::UpdatesCheckerMissing {
                 tool: "checkupdates".to_string(),
             },
