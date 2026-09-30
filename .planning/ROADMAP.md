@@ -12,7 +12,7 @@ API first, GUI last: foundations and safety rails (workspace, error model, privi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundations & Safety Rails** - Workspace, error model, privilege helper skeleton, Qt spike gate
+- [x] **Phase 1: Foundations & Safety Rails** - Workspace, error model, privilege helper skeleton, Qt spike gate
 - [ ] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
 - [ ] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
 - [ ] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control
@@ -34,8 +34,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Core + CLI + i18n + typed errors tracer-first (PLAT-01)
-- [ ] 01-02-PLAN.md — Privileged helper + policy + CXX-Qt spike (PLAT-04)
+- [x] 01-01-PLAN.md — Core + CLI + i18n + typed errors tracer-first (PLAT-01)
+- [x] 01-02-PLAN.md — Privileged helper + policy + CXX-Qt spike (PLAT-04)
 
 ### Phase 2: System Insight
 **Goal**: Users can see at a glance what their machine is doing — landing facts plus live system telemetry
