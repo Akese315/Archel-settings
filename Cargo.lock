@@ -93,7 +93,9 @@ version = "0.1.0"
 dependencies = [
  "archel-core",
  "clap",
+ "cxx",
  "cxx-qt",
+ "cxx-qt-build",
  "cxx-qt-lib",
 ]
 

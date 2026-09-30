@@ -6,6 +6,8 @@
 //! `archel-core` catalog — never from literals beside the call site.
 
 mod cmds;
+#[cfg(feature = "gui")]
+mod gui;
 
 use std::process::ExitCode;
 

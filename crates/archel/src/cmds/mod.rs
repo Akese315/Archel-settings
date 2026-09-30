@@ -48,9 +48,14 @@ pub fn run() -> Result<(), ArchelError> {
             println!("{}", archel_core::version_line());
             Ok(())
         }
-        // Plan 02 implements the CXX-Qt spike behind the `gui` feature; until
-        // then `settings` reports the typed GuiNotCompiled catalog error.
-        Command::Settings => Err(ArchelError::GuiNotCompiled),
+        // The spike window lives behind the `gui` feature (Pitfall 2):
+        // headless builds report the typed GuiNotCompiled catalog error.
+        Command::Settings => {
+            #[cfg(feature = "gui")]
+            return crate::gui::run_settings();
+            #[cfg(not(feature = "gui"))]
+            return Err(ArchelError::GuiNotCompiled);
+        }
         Command::Privileged { action } => match action {
             PrivilegedAction::DryRun => {
                 let echoed = archel_core::privileged::dry_run_direct()?;
