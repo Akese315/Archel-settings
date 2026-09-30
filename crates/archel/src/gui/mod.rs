@@ -16,7 +16,7 @@ pub fn run_settings() -> Result<(), ArchelError> {
     let mut engine = QQmlApplicationEngine::new();
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from(
-            "qrc:/qt/qml/org/archel/spike/qml/Spike.qml",
+            "qrc:/qt/qml/org/archel/spike/src/gui/qml/Spike.qml",
         ));
     }
     if let Some(app) = app.as_mut() {
