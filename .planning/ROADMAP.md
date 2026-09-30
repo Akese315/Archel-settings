@@ -47,7 +47,12 @@ Plans:
   2. User can see RAM usage, disk usage per mount, and live per-core CPU graph with current clock speed
   3. User can see GPU VRAM used/total, CPU/GPU temperatures, and real-time CPU/GPU power draw — with honest N/A where hardware has no sensor
   4. User can fetch every value above headlessly via `archel-cli` (JSON output), proving the read API before any GUI exists
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Landing snapshot tracer + TTL update-count cache (LAND-01..03)
+- [ ] 02-02-PLAN.md — CPU/RAM/disk samplers + sys watch/NDJSON loop (SYS-01..04)
+- [ ] 02-03-PLAN.md — GPU/sensors/power + remaining sys renderers + JSON snapshots (SYS-05..08)
 
 ### Phase 3: Packages & CLI Harness
 **Goal**: Users can manage system and AUR packages end-to-end, and every proven API domain is drivable from the command line
