@@ -8,6 +8,7 @@ use archel_core::ArchelError;
 use clap::{Parser, Subcommand};
 
 mod landing_cmd;
+mod sys_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -39,12 +40,41 @@ enum Command {
         #[arg(long)]
         watch: bool,
     },
+    /// Live CPU, memory and system-partition disk insight (D-11)
+    Sys {
+        #[command(subcommand)]
+        metric: SysMetric,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum PrivilegedAction {
     /// Run the allowlisted dry-run against the helper and check the v1 JSON
     DryRun,
+}
+
+/// One telemetry metric under `archel sys` (D-11). gpu/temp/power/all
+/// land in plan 03; this plan ships cpu/ram/disk.
+#[derive(Debug, Subcommand)]
+enum SysMetric {
+    /// Per-core usage plus current clock speed (SYS-03/04)
+    Cpu {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Used/total memory (SYS-01)
+    Ram {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
+    /// System-partition used/total/free with used GB prominent (SYS-02)
+    Disk {
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
+    },
 }
 
 /// Runs the parsed subcommand.
@@ -80,5 +110,10 @@ pub fn run() -> Result<(), ArchelError> {
         Command::Landing { refresh, watch } => {
             landing_cmd::run_landing(refresh, watch, cli.json)
         }
+        Command::Sys { metric } => match metric {
+            SysMetric::Cpu { watch } => sys_cmds::run_cpu(watch, cli.json),
+            SysMetric::Ram { watch } => sys_cmds::run_ram(watch, cli.json),
+            SysMetric::Disk { watch } => sys_cmds::run_disk(watch, cli.json),
+        },
     }
 }
