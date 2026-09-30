@@ -140,12 +140,54 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| *(populated by roadmapper)* | | |
+| LAND-01 | Phase 2 | Pending |
+| LAND-02 | Phase 2 | Pending |
+| LAND-03 | Phase 2 | Pending |
+| NET-01 | Phase 4 | Pending |
+| NET-02 | Phase 4 | Pending |
+| NET-03 | Phase 4 | Pending |
+| NET-04 | Phase 4 | Pending |
+| NET-05 | Phase 4 | Pending |
+| NET-06 | Phase 4 | Pending |
+| PWR-01 | Phase 4 | Pending |
+| BT-01 | Phase 4 | Pending |
+| BT-02 | Phase 4 | Pending |
+| APP-01 | Phase 5 | Pending |
+| APP-02 | Phase 5 | Pending |
+| APP-03 | Phase 5 | Pending |
+| APP-04 | Phase 5 | Pending |
+| SND-01 | Phase 4 | Pending |
+| SND-02 | Phase 4 | Pending |
+| PKG-01 | Phase 3 | Pending |
+| PKG-02 | Phase 3 | Pending |
+| PKG-03 | Phase 3 | Pending |
+| PKG-04 | Phase 3 | Pending |
+| PKG-05 | Phase 3 | Pending |
+| DSP-01 | Phase 5 | Pending |
+| DSP-02 | Phase 5 | Pending |
+| DSP-03 | Phase 5 | Pending |
+| DSP-04 | Phase 5 | Pending |
+| INP-01 | Phase 5 | Pending |
+| INP-02 | Phase 5 | Pending |
+| INP-03 | Phase 5 | Pending |
+| INP-04 | Phase 5 | Pending |
+| SYS-01 | Phase 2 | Pending |
+| SYS-02 | Phase 2 | Pending |
+| SYS-03 | Phase 2 | Pending |
+| SYS-04 | Phase 2 | Pending |
+| SYS-05 | Phase 2 | Pending |
+| SYS-06 | Phase 2 | Pending |
+| SYS-07 | Phase 2 | Pending |
+| SYS-08 | Phase 2 | Pending |
+| PLAT-01 | Phase 1 | Pending |
+| PLAT-02 | Phase 3 | Pending |
+| PLAT-03 | Phase 6 | Pending |
+| PLAT-04 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 43 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 43
+- Mapped to phases: 43 (roadmap 2026-09-30)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-09-30*
