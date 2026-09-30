@@ -1,0 +1,12 @@
+{
+  "app": {
+    "version_line": "Archel version %{bin} — moteur archel-core %{core}"
+  },
+  "errors": {
+    "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
+    "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
+    "helper_protocol": "Le module privilégié a répondu de façon inattendue. Réessayez.",
+    "gui_not_compiled": "Archel settings : interface graphique non disponible dans cette version.",
+    "internal": "Une erreur interne est survenue. Réessayez."
+  }
+}
