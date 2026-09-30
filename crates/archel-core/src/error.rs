@@ -31,6 +31,12 @@ pub enum ArchelError {
     /// The privileged helper answered outside the versioned JSON protocol.
     #[error("privileged helper protocol error: {0}")]
     HelperProtocol(String),
+    /// An update checker binary (`checkupdates`, `yay`) is not installed.
+    /// Carries the missing tool name for logs; the user only ever sees the
+    /// catalog hint, and callers degrade (stale-with-age) instead of
+    /// failing (D-06).
+    #[error("update checker not available: '{tool}' is not installed")]
+    UpdatesCheckerMissing { tool: String },
     /// `archel settings` invoked on a build without the `gui` feature.
     #[error("graphical interface not compiled into this build")]
     GuiNotCompiled,
@@ -72,6 +78,9 @@ impl ArchelError {
                 reason: AuthFailureReason::Denied,
             } => rust_i18n::t!("errors.auth_denied", action = action).to_string(),
             Self::HelperProtocol(_) => rust_i18n::t!("errors.helper_protocol").to_string(),
+            Self::UpdatesCheckerMissing { tool } => {
+                rust_i18n::t!("errors.updates_checker_missing", tool = tool).to_string()
+            }
             Self::GuiNotCompiled => rust_i18n::t!("errors.gui_not_compiled").to_string(),
             Self::Internal(_) => rust_i18n::t!("errors.internal").to_string(),
         }
@@ -87,6 +96,9 @@ mod tests {
             ArchelError::privilege_cancelled("package install"),
             ArchelError::privilege_denied("package install"),
             ArchelError::HelperProtocol("exit=3".to_string()),
+            ArchelError::UpdatesCheckerMissing {
+                tool: "checkupdates".to_string(),
+            },
             ArchelError::GuiNotCompiled,
             ArchelError::Internal("boom".to_string()),
         ]

@@ -7,9 +7,14 @@
 use archel_core::ArchelError;
 use clap::{Parser, Subcommand};
 
+mod landing_cmd;
+
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
 struct Cli {
+    /// Machine-readable JSON output instead of French tables (D-12)
+    #[arg(long, global = true)]
+    json: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -24,6 +29,15 @@ enum Command {
     Privileged {
         #[command(subcommand)]
         action: PrivilegedAction,
+    },
+    /// Show version, kernel and pending updates in one glance (D-11)
+    Landing {
+        /// Force an immediate recomputation, bypassing the cache (D-07)
+        #[arg(long)]
+        refresh: bool,
+        /// Keep the display open and re-render until Ctrl+C (D-01)
+        #[arg(long)]
+        watch: bool,
     },
 }
 
@@ -63,5 +77,8 @@ pub fn run() -> Result<(), ArchelError> {
                 Ok(())
             }
         },
+        Command::Landing { refresh, watch } => {
+            landing_cmd::run_landing(refresh, watch, cli.json)
+        }
     }
 }

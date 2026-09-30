@@ -5,11 +5,31 @@
   "privileged": {
     "dry_run_ok": "Module privilégié vérifié : réponse JSON v1 validée pour « %{action} »."
   },
+  "landing": {
+    "title": "Accueil Archel",
+    "version": "Version",
+    "kernel": "Noyau",
+    "updates": "Mises à jour",
+    "updates_breakdown": "%{total} (%{repo} dépôts + %{aur} AUR)",
+    "updates_repo_only": "%{repo} (dépôts uniquement — AUR indisponible)",
+    "updates_aur_only": "%{aur} (AUR uniquement — dépôts indisponibles)",
+    "updates_unavailable": "indisponible",
+    "updates_stale": "%{counts} — en cache, %{age}"
+  },
+  "updates": {
+    "age_moments": "à l'instant",
+    "age_minutes": "il y a %{minutes} min",
+    "age_hours": "il y a %{hours} h",
+    "checker_missing_checkupdates": "« checkupdates » est introuvable : lancez « sudo pacman -S pacman-contrib » pour activer le compteur des dépôts.",
+    "checker_missing_generic": "« %{tool} » est introuvable : installez le paquet correspondant pour activer ce compteur.",
+    "refresh_failed": "Actualisation impossible (hors ligne ?) — affichage de la dernière valeur connue."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
     "helper_protocol": "Le module privilégié a répondu de façon inattendue. Réessayez.",
     "gui_not_compiled": "Archel settings : interface graphique non disponible dans cette version.",
+    "updates_checker_missing": "Compteur indisponible : « %{tool} » est introuvable. Installez le paquet correspondant pour l'activer.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }
