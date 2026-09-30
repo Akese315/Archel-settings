@@ -13,7 +13,7 @@ API first, GUI last: foundations and safety rails (workspace, error model, privi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundations & Safety Rails** - Workspace, error model, privilege helper skeleton, Qt spike gate
-- [ ] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
+- [x] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
 - [ ] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
 - [ ] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control
 - [ ] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes
@@ -50,9 +50,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Landing snapshot tracer + TTL update-count cache (LAND-01..03)
-- [ ] 02-02-PLAN.md — CPU/RAM/disk samplers + sys watch/NDJSON loop (SYS-01..04)
-- [ ] 02-03-PLAN.md — GPU/sensors/power + remaining sys renderers + JSON snapshots (SYS-05..08)
+- [x] 02-01-PLAN.md — Landing snapshot tracer + TTL update-count cache (LAND-01..03)
+- [x] 02-02-PLAN.md — CPU/RAM/disk samplers + sys watch/NDJSON loop (SYS-01..04)
+- [x] 02-03-PLAN.md — GPU/sensors/power + remaining sys renderers + JSON snapshots (SYS-05..08)
 
 ### Phase 3: Packages & CLI Harness
 **Goal**: Users can manage system and AUR packages end-to-end, and every proven API domain is drivable from the command line
