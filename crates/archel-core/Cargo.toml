@@ -1,0 +1,6 @@
+[package]
+name = "archel-core"
+version = "0.1.0"
+edition.workspace = true
+description = "Archel shared settings library — every system integration lives here"
+license = "MIT OR Apache-2.0"

@@ -1,0 +1,10 @@
+[package]
+name = "archel-privileged"
+version = "0.1.0"
+edition.workspace = true
+description = "Archel privileged helper — invoked via pkexec, argv-allowlisted (per D-03)"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "archel-privileged"
+path = "src/main.rs"

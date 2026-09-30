@@ -1,0 +1,6 @@
+[workspace]
+members = ["crates/archel", "crates/archel-core", "crates/archel-privileged"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
