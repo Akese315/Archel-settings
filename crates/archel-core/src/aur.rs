@@ -434,6 +434,18 @@ pub fn not_aur_hint(name: &str) -> String {
     rust_i18n::t!("aur.not_aur_hint", name = name).to_string()
 }
 
+/// Hint shown when `pkg install` targets an AUR-only package (directs
+/// to `pkg aur`, installs nothing, spawns no helper).
+pub fn is_aur_hint(name: &str) -> String {
+    rust_i18n::t!("aur.is_aur_hint", name = name).to_string()
+}
+
+/// Hint shown when `pkg install` mixes repo and AUR names (refuse-all:
+/// nothing installs, only the AUR names are listed).
+pub fn is_aur_hint_list(packages: &[String]) -> String {
+    rust_i18n::t!("aur.is_aur_hint_list", packages = packages.join(" ")).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -631,5 +643,7 @@ mod tests {
         assert!(confirm_aur_prompt("x").contains('x'));
         assert!(aur_ok_line("x").contains('x'));
         assert!(not_aur_hint("x").contains('x'));
+        assert!(is_aur_hint("x").contains('x'));
+        assert!(is_aur_hint_list(&["a".to_string(), "b".to_string()]).contains('a'));
     }
 }

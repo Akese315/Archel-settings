@@ -81,7 +81,9 @@
     "warnings_title": "Motifs suspects (heuristique, à vérifier)",
     "confirm_build": "Compiler et installer %{name} depuis AUR ? [o/N]",
     "build_ok": "« %{name} » installé depuis AUR.",
-    "not_aur_hint": "« %{name} » vient des dépôts — utilisez « archel pkg install %{name} »."
+    "not_aur_hint": "« %{name} » vient des dépôts — utilisez « archel pkg install %{name} ».",
+    "is_aur_hint": "« %{name} » vient de l'AUR — utilisez « archel pkg aur %{name} ».",
+    "is_aur_hint_list": "Paquets AUR détectés : %{packages} — utilisez « archel pkg aur <nom> » pour chacun ; rien n'a été installé."
   },
   "updates": {
     "age_moments": "à l'instant",
