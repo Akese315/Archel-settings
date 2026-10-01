@@ -873,4 +873,73 @@ mod tests {
             "the abort path spawns no build process"
         );
     }
+
+    fn card_fixture(name: &str, source: &str) -> PackageCard {
+        archel_core::packages::PackageCard {
+            name: name.to_string(),
+            candidate_version: "1-1".to_string(),
+            installed_version: None,
+            source: source.to_string(),
+            download_size: None,
+            installed_size: None,
+        }
+    }
+
+    #[test]
+    fn install_guard_redirects_all_aur_lists_with_every_name() {
+        // G-03-1 mirror of the aur->repo redirect: every card AUR means
+        // the installs path never runs, and the redirect names each one.
+        archel_core::i18n::set_language("fr");
+        let cards = vec![
+            card_fixture("hello", "AUR"),
+            card_fixture("yay-bin", "aur"),
+        ];
+        for card in &cards {
+            assert!(
+                archel_core::aur::is_aur_card(card),
+                "predicate agreement, not copy matching: {card:?}"
+            );
+        }
+        let names = aur_names_in_cards(&cards);
+        assert_eq!(names, vec!["hello".to_string(), "yay-bin".to_string()]);
+        assert!(archel_core::aur::is_aur_hint(&names[0]).contains("hello"));
+    }
+
+    #[test]
+    fn install_guard_refuses_mixed_lists_listing_only_aur_names() {
+        // Refuse-all: the repo card stays installable in principle, but
+        // the list as given installs nothing — only AUR names redirect.
+        archel_core::i18n::set_language("fr");
+        let cards = vec![
+            card_fixture("firefox", "extra"),
+            card_fixture("hello", "AUR"),
+        ];
+        assert!(!archel_core::aur::is_aur_card(&cards[0]));
+        assert!(archel_core::aur::is_aur_card(&cards[1]));
+        let names = aur_names_in_cards(&cards);
+        assert_eq!(names, vec!["hello".to_string()]);
+        let note = archel_core::aur::is_aur_hint_list(&names);
+        assert!(note.contains("hello"), "AUR names listed: {note}");
+        assert!(!note.contains("firefox"), "repo names never listed: {note}");
+    }
+
+    #[test]
+    fn install_guard_passes_repo_only_lists_through() {
+        // Empty redirect set: the installs path (card + confirm +
+        // stream) is unaffected for repo-only arguments.
+        let cards = vec![
+            card_fixture("firefox", "extra"),
+            card_fixture("vim", "core"),
+        ];
+        for card in &cards {
+            assert!(
+                !archel_core::aur::is_aur_card(card),
+                "repo cards never trigger the guard: {card:?}"
+            );
+        }
+        assert!(
+            aur_names_in_cards(&cards).is_empty(),
+            "repo-only lists reach the installs path"
+        );
+    }
 }
