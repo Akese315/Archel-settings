@@ -48,6 +48,15 @@ pub enum ArchelError {
     /// failing (D-06).
     #[error("update checker not available: '{tool}' is not installed")]
     UpdatesCheckerMissing { tool: String },
+    /// A named package has no repo or AUR record. Carries the name for
+    /// logs; the user sees the catalog French line (used by `pkg info`).
+    #[error("package not found: '{name}'")]
+    PackageNotFound { name: String },
+    /// The `yay` binary is not installed, so AUR search and review
+    /// cannot run. The user sees the catalog install hint, never a
+    /// crash (PKG-05 yay-missing path).
+    #[error("yay is not installed")]
+    YayMissing,
     /// `archel settings` invoked on a build without the `gui` feature.
     #[error("graphical interface not compiled into this build")]
     GuiNotCompiled,
@@ -98,6 +107,10 @@ impl ArchelError {
             Self::UpdatesCheckerMissing { tool } => {
                 rust_i18n::t!("errors.updates_checker_missing", tool = tool).to_string()
             }
+            Self::PackageNotFound { name } => {
+                rust_i18n::t!("errors.package_not_found", name = name).to_string()
+            }
+            Self::YayMissing => rust_i18n::t!("errors.yay_missing").to_string(),
             Self::GuiNotCompiled => rust_i18n::t!("errors.gui_not_compiled").to_string(),
             Self::Internal(_) => rust_i18n::t!("errors.internal").to_string(),
         }
@@ -120,6 +133,10 @@ mod tests {
             ArchelError::UpdatesCheckerMissing {
                 tool: "checkupdates".to_string(),
             },
+            ArchelError::PackageNotFound {
+                name: "firefox".to_string(),
+            },
+            ArchelError::YayMissing,
             ArchelError::GuiNotCompiled,
             ArchelError::Internal("boom".to_string()),
         ]

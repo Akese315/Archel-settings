@@ -107,12 +107,17 @@ enum SysMetric {
     },
 }
 
-/// One package query under `archel pkg` (PKG-01). Search and info land
-/// in later tasks of this plan; list proves the read path first.
+/// One package query under `archel pkg` (PKG-01). Info lands in the
+/// next task of this plan; list proved the read path first.
 #[derive(Debug, Subcommand)]
 enum PkgAction {
     /// Every installed package with its version (D-08)
     List,
+    /// Repo plus AUR results, newest versions first (D-07)
+    Search {
+        /// Substring matched against package names and descriptions
+        query: String,
+    },
 }
 
 /// Runs the parsed subcommand.
@@ -159,6 +164,7 @@ pub fn run() -> Result<(), ArchelError> {
         },
         Command::Pkg { action } => match action {
             PkgAction::List => pkg_cmds::run_list(cli.json),
+            PkgAction::Search { query } => pkg_cmds::run_search(&query, cli.json),
         },
     }
 }

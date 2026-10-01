@@ -48,7 +48,9 @@
   "pkg": {
     "list_title": "Paquets installés",
     "list_name": "Paquet",
-    "list_version": "Version"
+    "list_version": "Version",
+    "search_title": "Résultats pour « %{query} »",
+    "search_source": "Source"
   },
   "updates": {
     "age_moments": "à l'instant",
@@ -66,6 +68,8 @@
     "sensor_unavailable": "Capteur indisponible (N/A).",
     "gui_not_compiled": "Archel settings : interface graphique non disponible dans cette version.",
     "updates_checker_missing": "Compteur indisponible : « %{tool} » est introuvable. Installez le paquet correspondant pour l'activer.",
+    "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
+    "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }
