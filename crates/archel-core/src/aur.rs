@@ -327,6 +327,59 @@ pub fn review_package(name: &str) -> Result<AurReview, ArchelError> {
     })
 }
 
+/// Post-confirm build flags (A1/A2 resolution, probed 2026-10-01):
+/// `--noconfirm` answers yay's own menus (diff/edit/clean/proceed —
+/// every one of them superseded by Archel's D-05 review plus the
+/// Archel-side confirm), while sudo password prompting is untouched —
+/// it comes from sudo(8) itself, invoked natively by yay per D-06, and
+/// yay never pre-answers it. The finer `--answerdiff/--answeredit`
+/// combo is unnecessary: blanket post-review `--noconfirm` covers
+/// exactly the menus Archel replaces, nothing more. `--sudoloop` is
+/// deliberately absent (no backgrounded sudo). End-to-end sudo interplay
+/// on a real build stays a manual verify-work item.
+pub const YAY_BUILD_FLAGS: &[&str] = &["--noconfirm"];
+
+/// Streams `yay -S <name> --noconfirm` as the invoking user (D-06: never
+/// elevated by Archel, native sudo handling) with live line delivery
+/// (D-02: the caller prints live, tests collect silently). `reader()`,
+/// never `run()` with both captures (Pitfall 7). Returns the full
+/// transcript for `--json` framing. Reachable only post-review plus
+/// post-confirm (task 2 wires the gates); exit non-zero is an
+/// [`ArchelError::Internal`] log detail, never raw yay text.
+pub fn yay_build(name: &str, on_line: &mut dyn FnMut(&str)) -> Result<String, ArchelError> {
+    packages::validate_package_names(&[name.to_string()])?;
+    let yay = resolve_tool(YAY_TOOL)?;
+    let handle = duct::cmd(&yay, ["-S", name, YAY_BUILD_FLAGS[0]])
+        .unchecked()
+        .env("LC_ALL", "C")
+        .stderr_capture()
+        .reader()
+        .map_err(|err| ArchelError::Internal(format!("cannot run 'yay -S': {err}")))?;
+    // Tee: every line reaches the caller live AND accumulates into the
+    // transcript (same shape as `privileged.rs`, unprivileged side).
+    let mut transcript = String::new();
+    for line in std::io::BufRead::lines(std::io::BufReader::new(&handle))
+        .map_while(Result::ok)
+    {
+        on_line(&line);
+        transcript.push_str(&line);
+        transcript.push('\n');
+    }
+    let waited = handle.try_wait().map_err(|err| {
+        ArchelError::Internal(format!("cannot wait on 'yay -S': {err}"))
+    })?;
+    let _stderr_for_logs = waited.map(|output| {
+        String::from_utf8_lossy(&output.stderr).into_owned()
+    });
+    let code = waited.and_then(|output| output.status.code());
+    if code != Some(0) {
+        return Err(ArchelError::Internal(format!(
+            "'yay -S {name}' failed with exit code {code:?}"
+        )));
+    }
+    Ok(transcript)
+}
+
 /// Review title echoing the package name, from the catalog.
 pub fn review_title(name: &str) -> String {
     rust_i18n::t!("aur.review_title", name = name).to_string()

@@ -221,6 +221,140 @@ fn stream_upgrade(silent: bool) -> Result<String, ArchelError> {
     }
 }
 
+/// Runs `archel pkg aur <name>`: AUR review-then-build (PKG-05).
+/// The D-04 card proves the name first: repo sources redirect to
+/// `pkg install` before any fetch. AUR sources get the full review
+/// (card plus trust signals plus dependency preview plus the ENTIRE
+/// PKGBUILD text), then the TTY-gated [o/N] confirm shared with plan 02,
+/// then `yay -S` as the user with native sudo handling (D-06 — Archel
+/// never orchestrates elevation). Abort at any gate builds nothing:
+/// `yay -S` is reachable only past the confirm.
+pub fn run_aur(name: &str, json: bool) -> Result<(), ArchelError> {
+    archel_core::packages::validate_package_names(&[name.to_string()])?;
+    let card = archel_core::packages::package_card(name)?;
+    if !archel_core::aur::is_aur_card(&card) {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "card": card,
+                    "note": archel_core::aur::not_aur_hint(name),
+                })
+            );
+        } else {
+            print!("{}", render_info_table(&card));
+            println!("{}", archel_core::aur::not_aur_hint(name));
+        }
+        return Ok(());
+    }
+    let review = archel_core::aur::review_package(name)?;
+    if json {
+        let payload = serde_json::to_string(&review).map_err(|err| {
+            ArchelError::Internal(format!("cannot encode aur review JSON: {err}"))
+        })?;
+        println!("{payload}");
+    } else {
+        print!("{}", render_aur_review(&review));
+    }
+    run_aur_confirmed(name, json, |on_line| {
+        archel_core::aur::yay_build(name, on_line)
+    })
+}
+
+/// Post-review half of `run_aur`: the TTY-gated [o/N] confirm, then the
+/// build closure. Abort (or a non-TTY stdin) builds nothing — the
+/// closure is reachable only past the gate. The closure is injectable so
+/// the abort path is unit-covered headless with a spawn probe (no
+/// network, no TTY): live `yay -S` stays a manual verify-work item.
+fn run_aur_confirmed(
+    name: &str,
+    json: bool,
+    build: impl FnOnce(&mut dyn FnMut(&str)) -> Result<String, ArchelError>,
+) -> Result<(), ArchelError> {
+    archel_core::packages::confirm_action(&archel_core::aur::confirm_aur_prompt(name))?;
+    run_aur_stream(name, json, build)
+}
+
+/// Streams the confirmed build: live lines in human mode, silent
+/// accumulation under `--json` with the transcript inside the report
+/// object (same framing as the plan-02 mutations).
+fn run_aur_stream(
+    name: &str,
+    json: bool,
+    build: impl FnOnce(&mut dyn FnMut(&str)) -> Result<String, ArchelError>,
+) -> Result<(), ArchelError> {
+    // `FnOnce` into `FnMut` call sites: exactly one branch runs.
+    let mut build = Some(build);
+    if json {
+        let mut sink = |_: &str| {};
+        let transcript = build.take().expect("build runs once")(&mut sink)?;
+        println!(
+            "{}",
+            mutation_report_value("aur", &[name.to_string()], transcript, None)
+        );
+    } else {
+        let mut live = |line: &str| println!("{line}");
+        let transcript = build.take().expect("build runs once")(&mut live)?;
+        let _ = transcript;
+        println!("{}", archel_core::aur::aur_ok_line(name));
+    }
+    Ok(())
+}
+
+/// Builds the full AUR review display: the D-04 card, trust signals
+/// (N/A where the record carries none), the dependency preview, any
+/// heuristic warnings, then the ENTIRE PKGBUILD text (D-05: no
+/// metadata-only shortcut — the user reads the code before validating).
+pub fn render_aur_review(review: &archel_core::aur::AurReview) -> String {
+    let mut out = String::new();
+    out.push_str(&render_info_table(&review.card));
+    let trust = archel_core::aur::trust_labels();
+    let na = archel_core::sensors::unavailable_label();
+    let rows: [(String, String); 4] = [
+        (
+            trust.maintainer,
+            review.trust.maintainer.clone().unwrap_or_else(|| na.clone()),
+        ),
+        (
+            trust.votes,
+            review.trust.votes.clone().unwrap_or_else(|| na.clone()),
+        ),
+        (
+            trust.popularity,
+            review.trust.popularity.clone().unwrap_or_else(|| na.clone()),
+        ),
+        (
+            trust.out_of_date,
+            review.trust.out_of_date.clone().unwrap_or_else(|| na.clone()),
+        ),
+    ];
+    out.push_str(&render_label_table(
+        &archel_core::aur::review_title(&review.card.name),
+        &rows,
+    ));
+    out.push_str(&archel_core::aur::aur_dependencies_label());
+    out.push('\n');
+    for dep in &review.dependencies {
+        out.push_str(dep);
+        out.push('\n');
+    }
+    if !review.warnings.is_empty() {
+        out.push_str(&archel_core::aur::warnings_title());
+        out.push('\n');
+        for warning in &review.warnings {
+            out.push_str(warning);
+            out.push('\n');
+        }
+    }
+    out.push_str(&archel_core::aur::pkgbuild_title());
+    out.push('\n');
+    out.push_str(&review.pkgbuild);
+    if !review.pkgbuild.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// Prints one preview section: the catalog label then one entry per
 /// line. An empty section prints the label alone (honest, never
 /// zero-filled).
@@ -559,6 +693,116 @@ mod tests {
         assert!(
             matches!(err, ArchelError::InvalidPackageName { .. }),
             "wrong variant: {err:?}"
+        );
+    }
+
+    fn aur_review_fixture() -> archel_core::aur::AurReview {
+        archel_core::aur::AurReview {
+            card: info_fixture(),
+            pkgbuild: "pkgname=firefox\npkgver=156.0.1\nbuild() {\n  echo building\n}\n"
+                .to_string(),
+            trust: archel_core::aur::TrustSignals {
+                maintainer: Some("mozilla".to_string()),
+                votes: Some("1200".to_string()),
+                popularity: Some("9.5".to_string()),
+                out_of_date: Some("No".to_string()),
+            },
+            dependencies: vec!["gtk3".to_string(), "nss".to_string()],
+            warnings: vec![],
+        }
+    }
+
+    #[test]
+    fn aur_action_validates_names_before_spawning() {
+        // Crafted names fail at the client gate: no card spawn, no
+        // fetch, no pkexec prompt, nothing executes.
+        let err = run_aur("-foo", false).expect_err("crafted name must fail fast");
+        assert!(
+            matches!(err, ArchelError::InvalidPackageName { .. }),
+            "wrong variant: {err:?}"
+        );
+    }
+
+    #[test]
+    fn aur_review_renders_card_trust_deps_and_full_pkgbuild() {
+        archel_core::i18n::set_language("fr");
+        let table = render_aur_review(&aur_review_fixture());
+        assert!(table.contains("firefox"), "card name: {table}");
+        assert!(table.contains("mozilla"), "maintainer: {table}");
+        assert!(table.contains("1200"), "votes: {table}");
+        assert!(table.contains("gtk3"), "dep preview: {table}");
+        assert!(
+            table.contains("pkgname=firefox"),
+            "full PKGBUILD text, never metadata-only: {table}"
+        );
+        assert!(
+            table.contains("echo building"),
+            "build body visible for review: {table}"
+        );
+    }
+
+    #[test]
+    fn aur_review_renders_na_for_absent_trust_signals() {
+        archel_core::i18n::set_language("fr");
+        let mut review = aur_review_fixture();
+        review.trust.maintainer = None;
+        review.trust.votes = None;
+        let table = render_aur_review(&review);
+        assert!(
+            table.contains(&archel_core::sensors::unavailable_label()),
+            "absent signals stay honest N/A: {table}"
+        );
+    }
+
+    #[test]
+    fn aur_review_payload_serializes_to_parseable_json() {
+        let payload =
+            serde_json::to_string(&aur_review_fixture()).expect("aur review encodes");
+        let value: serde_json::Value =
+            serde_json::from_str(&payload).expect("one complete JSON value");
+        assert_eq!(value["card"]["name"], "firefox");
+        assert_eq!(value["trust"]["maintainer"], "mozilla");
+        assert!(
+            value["pkgbuild"].as_str().is_some_and(|t| t.contains("pkgname=")),
+            "full PKGBUILD text travels in the JSON review"
+        );
+    }
+
+    #[test]
+    fn aur_repo_package_redirects_without_fetching_or_building() {
+        // `pacman` lives in the repos: the D-04 card proves it, the
+        // redirect fires before any `yay -G` fetch, and no TTY is needed
+        // because nothing interactive happens.
+        archel_core::i18n::set_language("fr");
+        run_aur("pacman", false).expect("repo redirect never fails the name");
+    }
+
+    #[test]
+    fn aur_confirm_abort_spawns_no_build() {
+        // The confirm gate with an injectable build probe: headless stdin
+        // is not a TTY, so the gate refuses before the closure — the
+        // abort path structurally spawns no `yay -S` (no network here).
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return;
+        }
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let builds = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::clone(&builds);
+        let err = run_aur_confirmed("yay-bin", false, move |_: &mut dyn FnMut(&str)| {
+            probe.fetch_add(1, Ordering::SeqCst);
+            Ok(String::new())
+        })
+        .expect_err("headless confirm must refuse");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "abort path needs the typed refusal, never a build: {err:?}"
+        );
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            0,
+            "the abort path spawns no build process"
         );
     }
 }

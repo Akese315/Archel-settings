@@ -142,6 +142,11 @@ enum PkgAction {
         /// Never set: any value is the refused partial-upgrade path
         package: Option<String>,
     },
+    /// AUR install with mandatory PKGBUILD review (PKG-05, D-05/D-06)
+    Aur {
+        /// Exact AUR package name to review, then build after confirm
+        name: String,
+    },
 }
 
 /// Runs the parsed subcommand.
@@ -193,6 +198,7 @@ pub fn run() -> Result<(), ArchelError> {
             PkgAction::Install { packages } => pkg_cmds::run_install(&packages, cli.json),
             PkgAction::Remove { packages } => pkg_cmds::run_remove(&packages, cli.json),
             PkgAction::Upgrade { package } => pkg_cmds::run_upgrade(package, cli.json),
+            PkgAction::Aur { name } => pkg_cmds::run_aur(&name, cli.json),
         },
     }
 }
