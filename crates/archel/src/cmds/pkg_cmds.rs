@@ -624,6 +624,24 @@ mod tests {
     }
 
     #[test]
+    fn schema_aur_review_is_pinned() {
+        insta::assert_json_snapshot!("aur_review", aur_review_fixture());
+    }
+
+    #[test]
+    fn schema_aur_result_is_pinned() {
+        insta::assert_json_snapshot!(
+            "aur_result",
+            mutation_report_value(
+                "aur",
+                &["yay-bin".to_string()],
+                "downloading\ninstalling\n".to_string(),
+                None,
+            )
+        );
+    }
+
+    #[test]
     fn padding_counts_characters_not_bytes() {
         assert_eq!(pad_right("ab", 4), "ab  ");
         assert_eq!(pad_right("abcd", 2), "abcd");

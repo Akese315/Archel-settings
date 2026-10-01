@@ -5,7 +5,8 @@
 //! catalog — the binary owns no user-facing copy (per D-07).
 
 use archel_core::ArchelError;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::aot::{generate, Shell};
 
 mod landing_cmd;
 mod pkg_cmds;
@@ -50,6 +51,13 @@ enum Command {
     Pkg {
         #[command(subcommand)]
         action: PkgAction,
+    },
+    /// Print shell completions for bash, zsh or fish (D-09, D-10: the
+    /// full tree including every pkg action, generated never hand-written)
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
@@ -200,5 +208,70 @@ pub fn run() -> Result<(), ArchelError> {
             PkgAction::Upgrade { package } => pkg_cmds::run_upgrade(package, cli.json),
             PkgAction::Aur { name } => pkg_cmds::run_aur(&name, cli.json),
         },
+        Command::Completions { shell } => {
+            // Generated from the single clap definition via the `aot`
+            // path (never the deprecated root re-exports): stdout only,
+            // install paths stay packaging-phase discretion.
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "archel", &mut std::io::stdout());
+            Ok(())
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn completions_for(shell: Shell) -> String {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        generate(shell, &mut cmd, "archel", &mut buf);
+        String::from_utf8(buf).expect("completions are UTF-8 text")
+    }
+
+    #[test]
+    fn completions_are_non_empty_and_name_archel_per_shell() {
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            let out = completions_for(shell);
+            assert!(
+                !out.trim().is_empty(),
+                "{shell:?} completions must not be empty"
+            );
+            assert!(
+                out.contains("archel"),
+                "{shell:?} completions must reference archel"
+            );
+        }
+    }
+
+    #[test]
+    fn completions_cover_the_full_command_tree() {
+        // D-10: every subcommand including every new pkg action — the
+        // generator walks the single clap definition, so drift fails here.
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            let out = completions_for(shell);
+            for word in [
+                "pkg",
+                "aur",
+                "completions",
+                "install",
+                "remove",
+                "upgrade",
+                "list",
+                "search",
+                "info",
+                "sys",
+                "landing",
+                "privileged",
+                "settings",
+                "version",
+            ] {
+                assert!(
+                    out.contains(word),
+                    "{shell:?} completions must cover `{word}`"
+                );
+            }
+        }
     }
 }

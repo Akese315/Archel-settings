@@ -1,0 +1,27 @@
+---
+source: crates/archel/src/cmds/pkg_cmds.rs
+assertion_line: 628
+expression: aur_review_fixture()
+---
+{
+  "card": {
+    "name": "firefox",
+    "candidate_version": "156.0.1-1",
+    "installed_version": "155.0-1",
+    "source": "extra",
+    "download_size": "84.84 MiB",
+    "installed_size": "297.19 MiB"
+  },
+  "pkgbuild": "pkgname=firefox\npkgver=156.0.1\nbuild() {\n  echo building\n}\n",
+  "trust": {
+    "maintainer": "mozilla",
+    "votes": "1200",
+    "popularity": "9.5",
+    "out_of_date": "No"
+  },
+  "dependencies": [
+    "gtk3",
+    "nss"
+  ],
+  "warnings": []
+}

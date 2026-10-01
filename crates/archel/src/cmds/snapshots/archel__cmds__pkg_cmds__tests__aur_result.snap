@@ -1,0 +1,17 @@
+---
+source: crates/archel/src/cmds/pkg_cmds.rs
+assertion_line: 633
+expression: "mutation_report_value(\"aur\", &[\"yay-bin\".to_string()],\n\"downloading\\ninstalling\\n\".to_string(), None,)"
+---
+{
+  "action": "aur",
+  "note": null,
+  "ok": true,
+  "packages": [
+    "yay-bin"
+  ],
+  "transcript": [
+    "downloading",
+    "installing"
+  ]
+}
