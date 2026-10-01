@@ -57,6 +57,17 @@ pub enum ArchelError {
     /// crash (PKG-05 yay-missing path).
     #[error("yay is not installed")]
     YayMissing,
+    /// The user declined the D-01 confirmation prompt (or answered
+    /// anything but yes): the mutation never ran, nothing changed.
+    /// The user sees the catalog abort line, never a stack trace.
+    #[error("mutation declined at the confirmation prompt")]
+    ConfirmationAborted,
+    /// A package mutation was requested without an interactive
+    /// terminal on stdin (piped input, script, `--json` batch): the
+    /// safety check refuses to mutate blindly. The user sees the
+    /// catalog refusal, nothing executes.
+    #[error("package mutation requires an interactive terminal")]
+    NeedsTty,
     /// `archel settings` invoked on a build without the `gui` feature.
     #[error("graphical interface not compiled into this build")]
     GuiNotCompiled,
@@ -111,6 +122,10 @@ impl ArchelError {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
             }
             Self::YayMissing => rust_i18n::t!("errors.yay_missing").to_string(),
+            Self::ConfirmationAborted => {
+                rust_i18n::t!("errors.confirmation_aborted").to_string()
+            }
+            Self::NeedsTty => rust_i18n::t!("errors.needs_tty").to_string(),
             Self::GuiNotCompiled => rust_i18n::t!("errors.gui_not_compiled").to_string(),
             Self::Internal(_) => rust_i18n::t!("errors.internal").to_string(),
         }
@@ -137,6 +152,8 @@ mod tests {
                 name: "firefox".to_string(),
             },
             ArchelError::YayMissing,
+            ArchelError::ConfirmationAborted,
+            ArchelError::NeedsTty,
             ArchelError::GuiNotCompiled,
             ArchelError::Internal("boom".to_string()),
         ]

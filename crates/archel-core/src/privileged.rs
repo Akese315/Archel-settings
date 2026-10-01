@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use crate::error::ArchelError;
-
 /// Protocol version the helper speaks on stdout. Any envelope with a
 /// different `v` is a [`ArchelError::HelperProtocol`] (never default-ok).
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -147,6 +146,144 @@ pub fn dry_run_via_pkexec() -> Result<String, ArchelError> {
     run_action_via_pkexec(DRY_RUN_ACTION)
 }
 
+/// Helper verbs for the package mutations (mirror the allowlist in
+/// `archel-privileged`; the client never invents flags here).
+pub const PKG_INSTALL_VERB: &str = "pkg-install";
+/// Helper verb removing packages through the allowlist.
+pub const PKG_REMOVE_VERB: &str = "pkg-remove";
+/// Helper verb running the full-system upgrade through the allowlist.
+pub const PKG_UPGRADE_VERB: &str = "pkg-upgrade";
+
+/// Builds the exact helper argv for a mutation verb: the verb first,
+/// then the package list verbatim. No flags are ever added client-side
+/// (T-3-04: every flag is hardcoded server-side in the helper).
+fn pkg_helper_argv(verb: &str, packages: &[String]) -> Vec<String> {
+    let mut argv = Vec::with_capacity(packages.len() + 1);
+    argv.push(verb.to_string());
+    argv.extend(packages.iter().cloned());
+    argv
+}
+
+/// French action label naming an install in the 126/127 dialogs, from
+/// the catalog so the binary owns no French copy.
+pub fn pkg_install_action_label() -> String {
+    rust_i18n::t!("pkg.action_install").to_string()
+}
+
+/// French action label naming a removal in the 126/127 dialogs.
+pub fn pkg_remove_action_label() -> String {
+    rust_i18n::t!("pkg.action_remove").to_string()
+}
+
+/// French action label naming the full upgrade in the 126/127 dialogs.
+pub fn pkg_upgrade_action_label() -> String {
+    rust_i18n::t!("pkg.action_upgrade").to_string()
+}
+
+/// Last-line envelope extraction: the helper prints the v1 envelope as
+/// the FINAL stdout line after the live pacman transcript, so the
+/// client parses only that line and `parse_helper_stdout` needs no
+/// format change. Pure, so the streaming contract is unit-tested
+/// without pkexec. `None` on an empty transcript (never default-ok).
+fn stream_envelope_line(transcript: &str) -> Option<&str> {
+    transcript.lines().last()
+}
+
+/// Drains a live stdout pipe line by line: every line reaches `on_line`
+/// the moment it arrives (the bin prints it for D-02) AND accumulates
+/// into the returned transcript for `--json`. Generic over the reader
+/// so tests feed a cursor instead of spawning pkexec.
+fn collect_streaming<R: std::io::BufRead>(
+    reader: R,
+    on_line: &mut dyn FnMut(&str),
+) -> String {
+    let mut transcript = String::new();
+    for line in reader.lines().map_while(Result::ok) {
+        on_line(&line);
+        transcript.push_str(&line);
+        transcript.push('\n');
+    }
+    transcript
+}
+
+/// Runs one mutation verb through pkexec with live streaming (D-02).
+/// Uses `reader()` (never `run()` with both captures on this path, per
+/// Pitfall 7: the pipe drains while pacman runs, so a long `-Syu`
+/// cannot deadlock on a full pipe buffer). Returns the full transcript
+/// for `--json` framing; stderr stays captured for logs only.
+pub fn run_privileged_streaming(
+    verb: &str,
+    packages: &[String],
+    action_label: &str,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<String, ArchelError> {
+    let pkexec = which::which("pkexec").map_err(|err| {
+        ArchelError::HelperProtocol(format!("pkexec not available: {err}"))
+    })?;
+    let helper = locate_helper()?;
+    let mut argv: Vec<PathBuf> = vec![helper];
+    argv.push(PathBuf::from(verb));
+    argv.extend(packages.iter().map(PathBuf::from));
+    // `.unchecked()` is load-bearing: without it duct turns the final
+    // read into an IO error on any non-zero exit, and the pkexec-code
+    // map below becomes unreachable (same shape as `packages.rs`).
+    let handle = duct::cmd(&pkexec, argv)
+        .unchecked()
+        .env("LC_ALL", "C")
+        .stderr_capture()
+        .reader()
+        .map_err(|err| {
+            ArchelError::HelperProtocol(format!("cannot spawn pkexec for '{verb}': {err}"))
+        })?;
+    let transcript = collect_streaming(std::io::BufReader::new(&handle), on_line);
+    // After EOF the child is reaped, so `try_wait` always yields the
+    // status here; `None` (or a missing code) is a protocol failure,
+    // never a silent ok.
+    let waited = handle.try_wait().map_err(|err| {
+        ArchelError::HelperProtocol(format!("cannot wait on pkexec for '{verb}': {err}"))
+    })?;
+    // Log-only capture of helper stderr (kept for diagnostics; the
+    // user-facing error below never embeds it).
+    let _stderr_for_logs = waited.map(|output| {
+        String::from_utf8_lossy(&output.stderr).into_owned()
+    });
+    let code = waited.and_then(|output| output.status.code());
+    map_pkexec_exit(action_label, code)?;
+    let envelope = stream_envelope_line(&transcript).ok_or_else(|| {
+        ArchelError::HelperProtocol(format!("helper produced no output for '{verb}'"))
+    })?;
+    parse_helper_stdout(verb, envelope)?;
+    Ok(transcript)
+}
+
+/// Installs packages through the helper with live output streaming.
+/// The helper re-validates every name; only the confirmed transaction
+/// reaches this path (D-01 gates in the bin).
+pub fn pkg_install(
+    packages: &[String],
+    on_line: &mut dyn FnMut(&str),
+) -> Result<String, ArchelError> {
+    let label = pkg_install_action_label();
+    run_privileged_streaming(PKG_INSTALL_VERB, packages, &label, on_line)
+}
+
+/// Removes packages through the helper with live output streaming.
+pub fn pkg_remove(
+    packages: &[String],
+    on_line: &mut dyn FnMut(&str),
+) -> Result<String, ArchelError> {
+    let label = pkg_remove_action_label();
+    run_privileged_streaming(PKG_REMOVE_VERB, packages, &label, on_line)
+}
+
+/// Runs the full-system upgrade through the helper with live output
+/// streaming. The ONLY refresh path (D-03): no partial-upgrade verb
+/// exists anywhere in the helper or this client.
+pub fn pkg_upgrade(on_line: &mut dyn FnMut(&str)) -> Result<String, ArchelError> {
+    let label = pkg_upgrade_action_label();
+    run_privileged_streaming(PKG_UPGRADE_VERB, &[], &label, on_line)
+}
+
 /// French success line for a validated dry-run, rendered from the catalog
 /// (D-05/D-07). Lives here — not in the binary — so `t!` resolves against
 /// this crate's catalog backend, exactly like [`crate::version_line`].
@@ -267,5 +404,127 @@ mod tests {
                 "wrong variant for code {code:?}"
             );
         }
+    }
+
+    #[test]
+    fn pkg_argv_is_verb_first_with_packages_verbatim() {
+        assert_eq!(
+            pkg_helper_argv(PKG_INSTALL_VERB, &["firefox".to_string()]),
+            vec!["pkg-install".to_string(), "firefox".to_string()]
+        );
+        assert_eq!(
+            pkg_helper_argv(PKG_REMOVE_VERB, &["a".to_string(), "b".to_string()]),
+            vec![
+                "pkg-remove".to_string(),
+                "a".to_string(),
+                "b".to_string()
+            ]
+        );
+        assert_eq!(
+            pkg_helper_argv(PKG_UPGRADE_VERB, &[]),
+            vec!["pkg-upgrade".to_string()],
+            "upgrade carries no package args (exact-match verb)"
+        );
+    }
+
+    #[test]
+    fn pkg_argv_never_carries_client_side_flags() {
+        for verb in [PKG_INSTALL_VERB, PKG_REMOVE_VERB, PKG_UPGRADE_VERB] {
+            let argv = pkg_helper_argv(verb, &["firefox".to_string()]);
+            assert!(
+                argv.iter().all(|a| !a.starts_with('-')),
+                "flags are server-side only, client sends verb plus names: {argv:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn envelope_is_the_last_transcript_line() {
+        let transcript = ":: downloading firefox-156.0.1\n:: installing\n{\"v\":1,\"action\":\"pkg-install\",\"ok\":true}\n";
+        assert_eq!(
+            stream_envelope_line(transcript),
+            Some("{\"v\":1,\"action\":\"pkg-install\",\"ok\":true}"),
+            "only the final line parses as the envelope"
+        );
+        assert_eq!(stream_envelope_line(""), None, "empty transcript never defaults to ok");
+    }
+
+    #[test]
+    fn pkg_envelope_parses_through_the_unchanged_parser() {
+        let action = parse_helper_stdout(
+            PKG_INSTALL_VERB,
+            r#"{"v":1,"action":"pkg-install","ok":true}"#,
+        )
+        .expect("pkg envelope keeps the v1 shape");
+        assert_eq!(action, "pkg-install");
+        let err = parse_helper_stdout(
+            PKG_REMOVE_VERB,
+            r#"{"v":1,"action":"pkg-remove","ok":false,"error":"pacman-exit-1"}"#,
+        )
+        .expect_err("failed transactions never parse as ok");
+        assert!(matches!(err, ArchelError::HelperProtocol(_)));
+    }
+
+    #[test]
+    fn collector_tees_live_lines_and_accumulates_the_transcript() {
+        use std::io::Cursor;
+        let fixture = "line one\nline two\n";
+        let mut seen = Vec::new();
+        let transcript =
+            collect_streaming(Cursor::new(fixture), &mut |line: &str| {
+                seen.push(line.to_string())
+            });
+        assert_eq!(seen, vec!["line one".to_string(), "line two".to_string()]);
+        assert_eq!(transcript, fixture, "transcript holds exactly the live lines");
+    }
+
+    #[test]
+    fn reader_pattern_drains_and_reports_the_exit_code() {
+        use std::io::BufReader;
+        // Proves the duct usage the privileged path relies on:
+        // unchecked reader drains live, try_wait reports the code after.
+        let handle = duct::cmd("echo", ["hello"])
+            .unchecked()
+            .reader()
+            .expect("echo must spawn on this machine");
+        let mut seen = Vec::new();
+        let transcript =
+            collect_streaming(BufReader::new(&handle), &mut |line: &str| {
+                seen.push(line.to_string())
+            });
+        let code = handle
+            .try_wait()
+            .expect("wait must succeed after EOF")
+            .and_then(|output| output.status.code());
+        assert_eq!(seen, vec!["hello".to_string()]);
+        assert!(transcript.contains("hello"));
+        assert_eq!(code, Some(0));
+    }
+
+    #[test]
+    fn pkg_cancel_and_deny_name_the_french_action() {
+        rust_i18n::set_locale("fr");
+        for (code, label_fn) in [
+            (Some(126), pkg_install_action_label as fn() -> String),
+            (Some(127), pkg_remove_action_label as fn() -> String),
+            (Some(126), pkg_upgrade_action_label as fn() -> String),
+        ] {
+            let label = label_fn();
+            let rendered = map_pkexec_exit(&label, code)
+                .expect_err("126/127 must fail")
+                .message();
+            assert!(
+                rendered.contains(&label),
+                "126/127 path must name the French action: {rendered}"
+            );
+        }
+        rust_i18n::set_locale("fr");
+        let cancelled = map_pkexec_exit(&pkg_install_action_label(), Some(126))
+            .expect_err("126")
+            .message();
+        let denied = map_pkexec_exit(&pkg_install_action_label(), Some(127))
+            .expect_err("127")
+            .message();
+        assert_ne!(cancelled, denied, "cancelled vs denied stay distinct per action");
     }
 }

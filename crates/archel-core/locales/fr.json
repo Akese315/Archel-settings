@@ -55,7 +55,20 @@
     "info_candidate": "Version candidate",
     "info_installed": "Version installée",
     "info_download_size": "Taille de téléchargement",
-    "info_installed_size": "Taille installée"
+    "info_installed_size": "Taille installée",
+    "confirm_install": "Installer %{packages} ? [o/N]",
+    "confirm_remove": "Supprimer %{packages} ? [o/N]",
+    "confirm_upgrade": "Mettre à jour tout le système ? [o/N]",
+    "preview_dependencies": "Dépendances entraînées",
+    "preview_removals": "Paquets qui seront supprimés",
+    "preview_pending": "Mises à jour en attente",
+    "up_to_date": "Système à jour — rien à mettre à jour.",
+    "install_ok": "« %{packages} » installé.",
+    "remove_ok": "« %{packages} » supprimé.",
+    "upgrade_ok": "Mise à jour du système terminée.",
+    "action_install": "l'installation des paquets",
+    "action_remove": "la suppression des paquets",
+    "action_upgrade": "la mise à jour du système"
   },
   "updates": {
     "age_moments": "à l'instant",
@@ -75,6 +88,9 @@
     "updates_checker_missing": "Compteur indisponible : « %{tool} » est introuvable. Installez le paquet correspondant pour l'activer.",
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
+    "confirmation_aborted": "Opération annulée — rien n'a été modifié.",
+    "needs_tty": "Opération interactive : aucun terminal détecté — annulée sans rien modifier.",
+    "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }

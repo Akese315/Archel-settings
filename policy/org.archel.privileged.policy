@@ -26,4 +26,34 @@
                 </defaults>
         </action>
 
+        <action id="org.archel.privileged.pkg-install">
+                <description>Installer des paquets via le module privilegie Archel</description>
+                <message>L'authentification est requise pour installer des paquets.</message>
+                <defaults>
+                        <allow_any>auth_admin_keep</allow_any>
+                        <allow_inactive>auth_admin_keep</allow_inactive>
+                        <allow_active>auth_admin_keep</allow_active>
+                </defaults>
+        </action>
+
+        <action id="org.archel.privileged.pkg-remove">
+                <description>Supprimer des paquets via le module privilegie Archel</description>
+                <message>L'authentification est requise pour supprimer des paquets.</message>
+                <defaults>
+                        <allow_any>auth_admin_keep</allow_any>
+                        <allow_inactive>auth_admin_keep</allow_inactive>
+                        <allow_active>auth_admin_keep</allow_active>
+                </defaults>
+        </action>
+
+        <action id="org.archel.privileged.pkg-upgrade">
+                <description>Mettre a jour le systeme via le module privilegie Archel</description>
+                <message>L'authentification est requise pour mettre a jour le systeme.</message>
+                <defaults>
+                        <allow_any>auth_admin_keep</allow_any>
+                        <allow_inactive>auth_admin_keep</allow_inactive>
+                        <allow_active>auth_admin_keep</allow_active>
+                </defaults>
+        </action>
+
 </policyconfig>
