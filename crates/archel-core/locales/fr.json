@@ -50,7 +50,12 @@
     "list_name": "Paquet",
     "list_version": "Version",
     "search_title": "Résultats pour « %{query} »",
-    "search_source": "Source"
+    "search_source": "Source",
+    "info_title": "Fiche paquet « %{name} »",
+    "info_candidate": "Version candidate",
+    "info_installed": "Version installée",
+    "info_download_size": "Taille de téléchargement",
+    "info_installed_size": "Taille installée"
   },
   "updates": {
     "age_moments": "à l'instant",

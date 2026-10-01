@@ -1,0 +1,16 @@
+---
+source: crates/archel/src/cmds/pkg_cmds.rs
+expression: search_fixture()
+---
+[
+  {
+    "name": "firefox",
+    "version": "156.0.1-1",
+    "source": "extra"
+  },
+  {
+    "name": "phantom-browser-bin",
+    "version": "155.6.3-1",
+    "source": "AUR"
+  }
+]

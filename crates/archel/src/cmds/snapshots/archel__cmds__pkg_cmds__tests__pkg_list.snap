@@ -1,0 +1,16 @@
+---
+source: crates/archel/src/cmds/pkg_cmds.rs
+expression: list_fixture()
+---
+[
+  {
+    "name": "firefox",
+    "version": "140.0-1",
+    "source": null
+  },
+  {
+    "name": "vim",
+    "version": "9.1-1",
+    "source": null
+  }
+]

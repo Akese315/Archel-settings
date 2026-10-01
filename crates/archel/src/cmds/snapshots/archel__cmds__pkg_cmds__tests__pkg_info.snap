@@ -1,0 +1,12 @@
+---
+source: crates/archel/src/cmds/pkg_cmds.rs
+expression: info_fixture()
+---
+{
+  "name": "firefox",
+  "candidate_version": "156.0.1-1",
+  "installed_version": "155.0-1",
+  "source": "extra",
+  "download_size": "84.84 MiB",
+  "installed_size": "297.19 MiB"
+}
