@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundations & Safety Rails** - Workspace, error model, privilege helper skeleton, Qt spike gate
 - [x] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
-- [ ] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
+- [x] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
 - [ ] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control
 - [ ] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes
 - [ ] **Phase 6: GUI Shell & Tabs** - archel-settings vertical-tab GUI over the proven API
@@ -67,9 +67,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Read-side foundation: alpm list, repo+AUR search, pre-install card (PKG-01, PLAT-02)
-- [ ] 03-02-PLAN.md — Privileged pacman mutations: helper verbs, streaming client, confirm-and-stream install/remove/upgrade (PKG-02, PKG-03, PKG-04)
-- [ ] 03-03-PLAN.md — AUR review-before-build plus completions harness close-out (PKG-05, PLAT-02)
+- [x] 03-01-PLAN.md — Read-side foundation: alpm list, repo+AUR search, pre-install card (PKG-01, PLAT-02)
+- [x] 03-02-PLAN.md — Privileged pacman mutations: helper verbs, streaming client, confirm-and-stream install/remove/upgrade (PKG-02, PKG-03, PKG-04)
+- [x] 03-03-PLAN.md — AUR review-before-build plus completions harness close-out (PKG-05, PLAT-02)
 
 ### Phase 4: Connectivity & Devices
 **Goal**: Users can inspect and control network, Bluetooth, audio, and power from one API surface
