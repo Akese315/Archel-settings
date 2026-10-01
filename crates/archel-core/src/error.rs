@@ -52,6 +52,11 @@ pub enum ArchelError {
     /// logs; the user sees the catalog French line (used by `pkg info`).
     #[error("package not found: '{name}'")]
     PackageNotFound { name: String },
+    /// A PKGBUILD failed the static `bash -n` gate. Carries the name for
+    /// the catalog line plus the log-only syntax detail (stderr text never
+    /// reaches the terminal, T-3-11): nothing was built, nothing changed.
+    #[error("PKGBUILD rejected for '{name}': {reason}")]
+    PkgbuildRejected { name: String, reason: String },
     /// The `yay` binary is not installed, so AUR search and review
     /// cannot run. The user sees the catalog install hint, never a
     /// crash (PKG-05 yay-missing path).
@@ -131,6 +136,9 @@ impl ArchelError {
             Self::PackageNotFound { name } => {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
             }
+            Self::PkgbuildRejected { name, .. } => {
+                rust_i18n::t!("errors.pkgbuild_rejected", name = name).to_string()
+            }
             Self::YayMissing => rust_i18n::t!("errors.yay_missing").to_string(),
             Self::ConfirmationAborted => {
                 rust_i18n::t!("errors.confirmation_aborted").to_string()
@@ -166,6 +174,10 @@ mod tests {
             },
             ArchelError::PackageNotFound {
                 name: "firefox".to_string(),
+            },
+            ArchelError::PkgbuildRejected {
+                name: "some-aur-pkg".to_string(),
+                reason: "syntax error near unexpected token".to_string(),
             },
             ArchelError::YayMissing,
             ArchelError::ConfirmationAborted,

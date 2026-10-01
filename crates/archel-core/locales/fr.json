@@ -70,6 +70,19 @@
     "action_remove": "la suppression des paquets",
     "action_upgrade": "la mise à jour du système"
   },
+  "aur": {
+    "review_title": "Revue AUR « %{name} »",
+    "trust_maintainer": "Mainteneur",
+    "trust_votes": "Votes",
+    "trust_popularity": "Popularité",
+    "trust_out_of_date": "Périmé",
+    "preview_dependencies": "Dépendances (exécution + construction)",
+    "pkgbuild_title": "PKGBUILD — à relire avant compilation",
+    "warnings_title": "Motifs suspects (heuristique, à vérifier)",
+    "confirm_build": "Compiler et installer %{name} depuis AUR ? [o/N]",
+    "build_ok": "« %{name} » installé depuis AUR.",
+    "not_aur_hint": "« %{name} » vient des dépôts — utilisez « archel pkg install %{name} »."
+  },
   "updates": {
     "age_moments": "à l'instant",
     "age_minutes": "il y a %{minutes} min",
@@ -92,7 +105,7 @@
     "needs_tty": "Opération interactive : aucun terminal détecté — annulée sans rien modifier.",
     "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
     "partial_upgrade_refused": "Mise à jour partielle refusée pour « %{name} » : utilisez « archel pkg upgrade » (mise à jour complète -Syu) — les mises à jour partielles cassent Arch.",
-    "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
+    "pkgbuild_rejected": "PKGBUILD rejeté pour « %{name} » — rien n'a été compilé.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }
