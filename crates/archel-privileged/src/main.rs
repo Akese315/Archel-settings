@@ -68,10 +68,69 @@ fn handle_args(args: &[String]) -> Decision {
     if args.len() == 1 && args[0] == "dry-run" {
         return Decision::Respond(0, dry_run_json());
     }
-    // Mutation verbs are validated here (RED stub: rejected until the
-    // GREEN step wires the pacman argv mapping).
-    let _ = is_valid_package_name;
+    // Full-system upgrade is the exact-match zero-arg verb: the ONLY
+    // refresh path (D-03). Any extra argv is a rejection, never a flag.
+    if args.len() == 1 && args[0] == "pkg-upgrade" {
+        return Decision::RunPacman {
+            action: "pkg-upgrade",
+            argv: vec!["-Syu".to_string(), "--noconfirm".to_string()],
+        };
+    }
+    // Install / remove take one or more strictly-validated package
+    // names. Flags stay hardcoded server-side below; the `--` separator
+    // sits between flags and packages so no name can parse as a flag.
+    if args.len() >= 2 && (args[0] == "pkg-install" || args[0] == "pkg-remove") {
+        let packages = &args[1..];
+        if packages.is_empty() || !packages.iter().all(|p| is_valid_package_name(p)) {
+            return Decision::Respond(2, rejection_json());
+        }
+        let mut argv = if args[0] == "pkg-install" {
+            vec!["-S".to_string(), "--noconfirm".to_string()]
+        } else {
+            // Plain `-R`: recursion stays opt-in (A8 resolution, see the
+            // plan summary). `-Rns` would also drop configs and orphans,
+            // a destructive default for a settings app.
+            vec!["-R".to_string(), "--noconfirm".to_string()]
+        };
+        argv.push("--".to_string());
+        argv.extend(packages.iter().cloned());
+        let action: &'static str = if args[0] == "pkg-install" {
+            "pkg-install"
+        } else {
+            "pkg-remove"
+        };
+        return Decision::RunPacman { action, argv };
+    }
     Decision::Respond(2, rejection_json())
+}
+
+/// Runs one validated pacman transaction with inherited stdio, so the
+/// caller (through pkexec) streams the output live (D-02). Prints the
+/// v1 envelope as the LAST stdout line on every path, so the core
+/// client parses only the final line and needs no format change.
+/// Returns the process exit code: 0 on success, the pacman code on
+/// transaction failure, 1 when pacman cannot even spawn.
+fn run_pacman(action: &str, argv: &[String]) -> i32 {
+    let status = std::process::Command::new(PACMAN_PATH).args(argv).status();
+    match status {
+        Ok(status) if status.code() == Some(0) => {
+            println!("{{\"v\":{PROTOCOL_VERSION},\"action\":\"{action}\",\"ok\":true}}");
+            0
+        }
+        Ok(status) => {
+            let code = status.code().unwrap_or(1);
+            println!(
+                "{{\"v\":{PROTOCOL_VERSION},\"action\":\"{action}\",\"ok\":false,\"error\":\"pacman-exit-{code}\"}}"
+            );
+            code
+        }
+        Err(_) => {
+            println!(
+                "{{\"v\":{PROTOCOL_VERSION},\"action\":\"{action}\",\"ok\":false,\"error\":\"pacman-spawn-failed\"}}"
+            );
+            1
+        }
+    }
 }
 
 fn main() {
@@ -81,10 +140,8 @@ fn main() {
             println!("{payload}");
             std::process::exit(code);
         }
-        Decision::RunPacman { action: _, argv: _ } => {
-            // GREEN step: spawn pacman with inherited stdio, print the
-            // v1 envelope last, exit with the transaction status.
-            std::process::exit(0);
+        Decision::RunPacman { action, argv } => {
+            std::process::exit(run_pacman(action, &argv));
         }
     }
 }
@@ -239,5 +296,73 @@ mod tests {
             let (code, _) = code_of(handle_args(&args(&probe)));
             assert_eq!(code, 2, "prefix variant must be rejected: {probe:?}");
         }
+    }
+
+    #[test]
+    fn install_argv_hardcodes_flags_with_separator_before_packages() {
+        let Decision::RunPacman { action, argv } =
+            handle_args(&args(&["pkg-install", "firefox", "vim"]))
+        else {
+            panic!("valid install must spawn pacman");
+        };
+        assert_eq!(action, "pkg-install");
+        assert_eq!(
+            argv,
+            vec!["-S", "--noconfirm", "--", "firefox", "vim"],
+            "flags hardcoded server-side, separator before packages: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn remove_argv_uses_plain_recursive_free_remove() {
+        let Decision::RunPacman { action, argv } =
+            handle_args(&args(&["pkg-remove", "firefox"]))
+        else {
+            panic!("valid remove must spawn pacman");
+        };
+        assert_eq!(action, "pkg-remove");
+        assert_eq!(
+            argv,
+            vec!["-R", "--noconfirm", "--", "firefox"],
+            "plain -R (recursion opt-in later): {argv:?}"
+        );
+    }
+
+    #[test]
+    fn upgrade_argv_is_the_full_sync_upgrade_only() {
+        let Decision::RunPacman { action, argv } = handle_args(&args(&["pkg-upgrade"]))
+        else {
+            panic!("exact-match upgrade must spawn pacman");
+        };
+        assert_eq!(action, "pkg-upgrade");
+        assert_eq!(argv, vec!["-Syu", "--noconfirm"], "only the full upgrade: {argv:?}");
+    }
+
+    #[test]
+    fn no_verb_builds_a_bare_sync_only_flag() {
+        // D-03: the sync-without-upgrade flag must not exist in any
+        // constructed argv (built dynamically so this very assertion
+        // cannot introduce the forbidden literal itself).
+        let bare_sync = format!("-S{}", "y");
+        for probe in [vec!["pkg-upgrade"], vec!["pkg-install", "firefox"], vec![
+            "pkg-remove",
+            "firefox",
+        ]] {
+            let owned: Vec<String> = probe.iter().map(|s| (*s).to_string()).collect();
+            if let Decision::RunPacman { argv, .. } = handle_args(&owned) {
+                assert!(
+                    !argv.iter().any(|a| a == &bare_sync),
+                    "bare sync flag in argv: {argv:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pacman_path_is_absolute() {
+        assert!(
+            PACMAN_PATH.starts_with('/'),
+            "helper must never resolve pacman through PATH: {PACMAN_PATH}"
+        );
     }
 }
