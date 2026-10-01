@@ -64,7 +64,12 @@ Plans:
   2. User can install, remove, and fully upgrade (`-Syu`) system packages through the pkexec helper without ever running the app as root
   3. User can manage AUR packages via yay running unprivileged, with a PKGBUILD review step before building
   4. User can drive every Phase 2–3 capability through `archel-cli` with `--json` output and shell completions
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Read-side foundation: alpm list, repo+AUR search, pre-install card (PKG-01, PLAT-02)
+- [ ] 03-02-PLAN.md — Privileged pacman mutations: helper verbs, streaming client, confirm-and-stream install/remove/upgrade (PKG-02, PKG-03, PKG-04)
+- [ ] 03-03-PLAN.md — AUR review-before-build plus completions harness close-out (PKG-05, PLAT-02)
 
 ### Phase 4: Connectivity & Devices
 **Goal**: Users can inspect and control network, Bluetooth, audio, and power from one API surface
