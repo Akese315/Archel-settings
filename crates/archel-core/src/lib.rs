@@ -8,6 +8,7 @@
 //! Phase 1 exposes only the foundation seams (version, error taxonomy, i18n);
 //! domain modules land with their owning phases.
 
+pub mod aur;
 pub mod error;
 pub mod i18n;
 pub mod landing;
