@@ -6,7 +6,7 @@
 //! (character-count padding, no table crate) and frames the single JSON
 //! object. Package output is single-shot: no `--watch` here.
 
-use archel_core::packages::PackageInfo;
+use archel_core::packages::{PackageCard, PackageInfo};
 use archel_core::ArchelError;
 
 /// Runs `archel pkg list`: every installed package with its version
@@ -97,8 +97,24 @@ pub fn run_info(name: &str, json: bool) -> Result<(), ArchelError> {
 /// [o/N] confirmation (D-01), then the confirmed transaction through
 /// pkexec with live streaming (D-02). `--json` emits one report object
 /// (transcript included) instead of printing live lines.
+///
+/// AUR guard (G-03-1, mirror of the `run_aur` repo redirect): when ANY
+/// preview card is AUR-sourced the whole list redirects to `pkg aur`
+/// and nothing installs — no card render, no confirm, no helper spawn.
+/// Mixed repo+AUR lists use refuse-all semantics on purpose: a partial
+/// transaction the user did not confirm as partial would surprise, so
+/// the redirect lists the AUR names and the repo names stay untouched.
+/// The guard is read-only over the preview cards: the original
+/// `packages` slice reaches the installs path unchanged (T-3-12), and
+/// the AUR check reuses the exact `is_aur_card` predicate the `run_aur`
+/// redirect trusts (T-3-13).
 pub fn run_install(packages: &[String], json: bool) -> Result<(), ArchelError> {
     let preview = archel_core::packages::install_preview(packages)?;
+    let aur_names = aur_names_in_cards(&preview.cards);
+    if !aur_names.is_empty() {
+        print_install_aur_redirect(&preview.cards, &aur_names, json);
+        return Ok(());
+    }
     if json {
         let transcript = stream_install(packages, true)?;
         print_mutation_report("install", packages, transcript, None);
@@ -118,6 +134,40 @@ pub fn run_install(packages: &[String], json: bool) -> Result<(), ArchelError> {
         println!("{}", archel_core::packages::install_ok_line(packages));
     }
     Ok(())
+}
+
+/// Names of the preview cards sourced from AUR. A non-empty result
+/// means the install list must redirect to `pkg aur` instead of ever
+/// reaching pacman. Pure over the cards: no spawn, no TTY, no network.
+fn aur_names_in_cards(cards: &[PackageCard]) -> Vec<String> {
+    cards
+        .iter()
+        .filter(|card| archel_core::aur::is_aur_card(card))
+        .map(|card| card.name.clone())
+        .collect()
+}
+
+/// Prints the install-to-AUR redirect (G-03-1): the human branch shows
+/// the card-free catalog hint line, the `--json` branch emits one
+/// parseable object with the preview cards plus the redirect note
+/// (same card-plus-note framing as the `run_aur` repo redirect).
+fn print_install_aur_redirect(cards: &[PackageCard], aur_names: &[String], json: bool) {
+    let note = if aur_names.len() == 1 {
+        archel_core::aur::is_aur_hint(&aur_names[0])
+    } else {
+        archel_core::aur::is_aur_hint_list(aur_names)
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "cards": cards,
+                "note": note,
+            })
+        );
+    } else {
+        println!("{note}");
+    }
 }
 
 /// Streams an install through the helper: live lines in human mode,
@@ -821,6 +871,75 @@ mod tests {
             builds.load(Ordering::SeqCst),
             0,
             "the abort path spawns no build process"
+        );
+    }
+
+    fn card_fixture(name: &str, source: &str) -> PackageCard {
+        archel_core::packages::PackageCard {
+            name: name.to_string(),
+            candidate_version: "1-1".to_string(),
+            installed_version: None,
+            source: source.to_string(),
+            download_size: None,
+            installed_size: None,
+        }
+    }
+
+    #[test]
+    fn install_guard_redirects_all_aur_lists_with_every_name() {
+        // G-03-1 mirror of the aur->repo redirect: every card AUR means
+        // the installs path never runs, and the redirect names each one.
+        archel_core::i18n::set_language("fr");
+        let cards = vec![
+            card_fixture("hello", "AUR"),
+            card_fixture("yay-bin", "aur"),
+        ];
+        for card in &cards {
+            assert!(
+                archel_core::aur::is_aur_card(card),
+                "predicate agreement, not copy matching: {card:?}"
+            );
+        }
+        let names = aur_names_in_cards(&cards);
+        assert_eq!(names, vec!["hello".to_string(), "yay-bin".to_string()]);
+        assert!(archel_core::aur::is_aur_hint(&names[0]).contains("hello"));
+    }
+
+    #[test]
+    fn install_guard_refuses_mixed_lists_listing_only_aur_names() {
+        // Refuse-all: the repo card stays installable in principle, but
+        // the list as given installs nothing — only AUR names redirect.
+        archel_core::i18n::set_language("fr");
+        let cards = vec![
+            card_fixture("firefox", "extra"),
+            card_fixture("hello", "AUR"),
+        ];
+        assert!(!archel_core::aur::is_aur_card(&cards[0]));
+        assert!(archel_core::aur::is_aur_card(&cards[1]));
+        let names = aur_names_in_cards(&cards);
+        assert_eq!(names, vec!["hello".to_string()]);
+        let note = archel_core::aur::is_aur_hint_list(&names);
+        assert!(note.contains("hello"), "AUR names listed: {note}");
+        assert!(!note.contains("firefox"), "repo names never listed: {note}");
+    }
+
+    #[test]
+    fn install_guard_passes_repo_only_lists_through() {
+        // Empty redirect set: the installs path (card + confirm +
+        // stream) is unaffected for repo-only arguments.
+        let cards = vec![
+            card_fixture("firefox", "extra"),
+            card_fixture("vim", "core"),
+        ];
+        for card in &cards {
+            assert!(
+                !archel_core::aur::is_aur_card(card),
+                "repo cards never trigger the guard: {card:?}"
+            );
+        }
+        assert!(
+            aur_names_in_cards(&cards).is_empty(),
+            "repo-only lists reach the installs path"
         );
     }
 }
