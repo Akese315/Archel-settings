@@ -45,6 +45,11 @@
     "updates_unavailable": "indisponible",
     "updates_stale": "%{counts} — en cache, %{age}"
   },
+  "pkg": {
+    "list_title": "Paquets installés",
+    "list_name": "Paquet",
+    "list_version": "Version"
+  },
   "updates": {
     "age_moments": "à l'instant",
     "age_minutes": "il y a %{minutes} min",

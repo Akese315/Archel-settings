@@ -8,6 +8,7 @@ use archel_core::ArchelError;
 use clap::{Parser, Subcommand};
 
 mod landing_cmd;
+mod pkg_cmds;
 mod sys_cmds;
 
 #[derive(Debug, Parser)]
@@ -44,6 +45,11 @@ enum Command {
     Sys {
         #[command(subcommand)]
         metric: SysMetric,
+    },
+    /// Installed packages plus repo/AUR search (PKG-01, D-07/D-08)
+    Pkg {
+        #[command(subcommand)]
+        action: PkgAction,
     },
 }
 
@@ -101,6 +107,14 @@ enum SysMetric {
     },
 }
 
+/// One package query under `archel pkg` (PKG-01). Search and info land
+/// in later tasks of this plan; list proves the read path first.
+#[derive(Debug, Subcommand)]
+enum PkgAction {
+    /// Every installed package with its version (D-08)
+    List,
+}
+
 /// Runs the parsed subcommand.
 ///
 /// Every failure path returns a typed [`ArchelError`] (never a panic, never
@@ -142,6 +156,9 @@ pub fn run() -> Result<(), ArchelError> {
             SysMetric::Temp { watch } => sys_cmds::run_temp(watch, cli.json),
             SysMetric::Power { watch } => sys_cmds::run_power(watch, cli.json),
             SysMetric::All { watch } => sys_cmds::run_all(watch, cli.json),
+        },
+        Command::Pkg { action } => match action {
+            PkgAction::List => pkg_cmds::run_list(cli.json),
         },
     }
 }

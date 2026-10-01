@@ -15,3 +15,6 @@ which = "8.0.6"
 directories = "6.0"
 sysinfo = "0.39"
 nvml-wrapper = "0.13"
+# Phase 3 (PKG-01): installed-DB reads plus epoch-aware version compare.
+# `checkver` fails the build loudly on a libalpm mismatch (STACK rule).
+alpm = { version = "5.0.2", features = ["checkver"] }
