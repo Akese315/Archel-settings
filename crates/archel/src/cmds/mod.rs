@@ -124,6 +124,24 @@ enum PkgAction {
         /// Exact package name to describe
         name: String,
     },
+    /// Install packages: preview, confirm, then stream (PKG-02, D-01/D-02)
+    Install {
+        /// One or more exact package names to install
+        #[arg(required = true, num_args(1..))]
+        packages: Vec<String>,
+    },
+    /// Remove packages: preview, confirm, then stream (PKG-03, D-01/D-02)
+    Remove {
+        /// One or more exact installed package names to remove
+        #[arg(required = true, num_args(1..))]
+        packages: Vec<String>,
+    },
+    /// Full-system upgrade via the helper (PKG-04, D-03: a package
+    /// argument is refused — only the full upgrade exists)
+    Upgrade {
+        /// Never set: any value is the refused partial-upgrade path
+        package: Option<String>,
+    },
 }
 
 /// Runs the parsed subcommand.
@@ -172,6 +190,9 @@ pub fn run() -> Result<(), ArchelError> {
             PkgAction::List => pkg_cmds::run_list(cli.json),
             PkgAction::Search { query } => pkg_cmds::run_search(&query, cli.json),
             PkgAction::Info { name } => pkg_cmds::run_info(&name, cli.json),
+            PkgAction::Install { packages } => pkg_cmds::run_install(&packages, cli.json),
+            PkgAction::Remove { packages } => pkg_cmds::run_remove(&packages, cli.json),
+            PkgAction::Upgrade { package } => pkg_cmds::run_upgrade(package, cli.json),
         },
     }
 }

@@ -222,8 +222,7 @@ pub fn run_privileged_streaming(
     })?;
     let helper = locate_helper()?;
     let mut argv: Vec<PathBuf> = vec![helper];
-    argv.push(PathBuf::from(verb));
-    argv.extend(packages.iter().map(PathBuf::from));
+    argv.extend(pkg_helper_argv(verb, packages).iter().map(PathBuf::from));
     // `.unchecked()` is load-bearing: without it duct turns the final
     // read into an IO error on any non-zero exit, and the pkexec-code
     // map below becomes unreachable (same shape as `packages.rs`).

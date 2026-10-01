@@ -68,6 +68,16 @@ pub enum ArchelError {
     /// catalog refusal, nothing executes.
     #[error("package mutation requires an interactive terminal")]
     NeedsTty,
+    /// A package name failed the client-side charset gate (leading
+    /// dash, shell metacharacter, empty): fast-fail before any pkexec
+    /// prompt. The helper re-validates every name server-side (T-3-04).
+    #[error("invalid package name: '{name}'")]
+    InvalidPackageName { name: String },
+    /// A single-package upgrade was requested: the partial-upgrade
+    /// equivalent is refused (D-03) — only the full `pkg upgrade`
+    /// exists. The user sees the catalog refusal, nothing executes.
+    #[error("partial upgrade refused for '{name}'")]
+    PartialUpgradeRefused { name: String },
     /// `archel settings` invoked on a build without the `gui` feature.
     #[error("graphical interface not compiled into this build")]
     GuiNotCompiled,
@@ -126,6 +136,12 @@ impl ArchelError {
                 rust_i18n::t!("errors.confirmation_aborted").to_string()
             }
             Self::NeedsTty => rust_i18n::t!("errors.needs_tty").to_string(),
+            Self::InvalidPackageName { name } => {
+                rust_i18n::t!("errors.invalid_package_name", name = name).to_string()
+            }
+            Self::PartialUpgradeRefused { name } => {
+                rust_i18n::t!("errors.partial_upgrade_refused", name = name).to_string()
+            }
             Self::GuiNotCompiled => rust_i18n::t!("errors.gui_not_compiled").to_string(),
             Self::Internal(_) => rust_i18n::t!("errors.internal").to_string(),
         }
@@ -154,6 +170,12 @@ mod tests {
             ArchelError::YayMissing,
             ArchelError::ConfirmationAborted,
             ArchelError::NeedsTty,
+            ArchelError::InvalidPackageName {
+                name: "-foo".to_string(),
+            },
+            ArchelError::PartialUpgradeRefused {
+                name: "firefox".to_string(),
+            },
             ArchelError::GuiNotCompiled,
             ArchelError::Internal("boom".to_string()),
         ]

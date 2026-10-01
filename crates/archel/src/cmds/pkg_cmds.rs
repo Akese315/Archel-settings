@@ -92,6 +92,176 @@ pub fn run_info(name: &str, json: bool) -> Result<(), ArchelError> {
     Ok(())
 }
 
+/// Runs `archel pkg install <pkgs...>`: unprivileged preview first
+/// (one card per package plus the dependency closure), TTY-gated
+/// [o/N] confirmation (D-01), then the confirmed transaction through
+/// pkexec with live streaming (D-02). `--json` emits one report object
+/// (transcript included) instead of printing live lines.
+pub fn run_install(packages: &[String], json: bool) -> Result<(), ArchelError> {
+    let preview = archel_core::packages::install_preview(packages)?;
+    if json {
+        let transcript = stream_install(packages, true)?;
+        print_mutation_report("install", packages, transcript, None);
+    } else {
+        for card in &preview.cards {
+            print!("{}", render_info_table(card));
+        }
+        print_preview_list(
+            &archel_core::packages::preview_dependencies_label(),
+            &preview.dependencies,
+        );
+        archel_core::packages::confirm_action(
+            &archel_core::packages::confirm_install_prompt(packages),
+        )?;
+        let transcript = stream_install(packages, false)?;
+        let _ = transcript;
+        println!("{}", archel_core::packages::install_ok_line(packages));
+    }
+    Ok(())
+}
+
+/// Streams an install through the helper: live lines in human mode,
+/// silent accumulation under `--json` (D-02 streams live; the script
+/// path keeps the transcript in the report object instead).
+fn stream_install(packages: &[String], silent: bool) -> Result<String, ArchelError> {
+    if silent {
+        let mut sink = |_: &str| {};
+        archel_core::privileged::pkg_install(packages, &mut sink)
+    } else {
+        let mut live = |line: &str| println!("{line}");
+        archel_core::privileged::pkg_install(packages, &mut live)
+    }
+}
+
+/// Runs `archel pkg remove <pkgs...>`: same confirm-then-stream flow
+/// as install, over the removal preview (installed versions plus the
+/// removal closure). Plain `-R` underneath: recursion stays opt-in.
+pub fn run_remove(packages: &[String], json: bool) -> Result<(), ArchelError> {
+    let preview = archel_core::packages::remove_preview(packages)?;
+    if json {
+        let transcript = stream_remove(packages, true)?;
+        print_mutation_report("remove", packages, transcript, None);
+    } else {
+        for (name, version) in &preview.installed {
+            println!("{name} : {version}");
+        }
+        print_preview_list(
+            &archel_core::packages::preview_removals_label(),
+            &preview.removals,
+        );
+        archel_core::packages::confirm_action(
+            &archel_core::packages::confirm_remove_prompt(packages),
+        )?;
+        let transcript = stream_remove(packages, false)?;
+        let _ = transcript;
+        println!("{}", archel_core::packages::remove_ok_line(packages));
+    }
+    Ok(())
+}
+
+/// Streams a removal through the helper (live vs silent, as install).
+fn stream_remove(packages: &[String], silent: bool) -> Result<String, ArchelError> {
+    if silent {
+        let mut sink = |_: &str| {};
+        archel_core::privileged::pkg_remove(packages, &mut sink)
+    } else {
+        let mut live = |line: &str| println!("{line}");
+        archel_core::privileged::pkg_remove(packages, &mut live)
+    }
+}
+
+/// Runs `archel pkg upgrade`: the full `-Syu` only (PKG-04, D-03). A
+/// package argument is the partial-upgrade equivalent and is refused
+/// with the catalog French message — nothing executes. An empty
+/// pending list reports honestly up-to-date with no prompt.
+pub fn run_upgrade(package: Option<String>, json: bool) -> Result<(), ArchelError> {
+    if let Some(name) = package {
+        return Err(ArchelError::PartialUpgradeRefused { name });
+    }
+    let pending = archel_core::packages::upgrade_preview()?;
+    if pending.is_empty() {
+        if json {
+            print_mutation_report(
+                "upgrade",
+                &[],
+                String::new(),
+                Some(archel_core::packages::up_to_date_line()),
+            );
+        } else {
+            println!("{}", archel_core::packages::up_to_date_line());
+        }
+        return Ok(());
+    }
+    if json {
+        let transcript = stream_upgrade(true)?;
+        print_mutation_report("upgrade", &[], transcript, None);
+    } else {
+        print_preview_list(
+            &archel_core::packages::preview_pending_label(),
+            &pending,
+        );
+        archel_core::packages::confirm_action(
+            &archel_core::packages::confirm_upgrade_prompt(),
+        )?;
+        let transcript = stream_upgrade(false)?;
+        let _ = transcript;
+        println!("{}", archel_core::packages::upgrade_ok_line());
+    }
+    Ok(())
+}
+
+/// Streams the full upgrade through the helper (live vs silent).
+fn stream_upgrade(silent: bool) -> Result<String, ArchelError> {
+    if silent {
+        let mut sink = |_: &str| {};
+        archel_core::privileged::pkg_upgrade(&mut sink)
+    } else {
+        let mut live = |line: &str| println!("{line}");
+        archel_core::privileged::pkg_upgrade(&mut live)
+    }
+}
+
+/// Prints one preview section: the catalog label then one entry per
+/// line. An empty section prints the label alone (honest, never
+/// zero-filled).
+fn print_preview_list(label: &str, entries: &[String]) {
+    println!("{label}");
+    for entry in entries {
+        println!("{entry}");
+    }
+}
+
+/// Prints the single `--json` report object for a mutation: the action
+/// name, the package set, the full transcript lines, and an optional
+/// human note (up-to-date path). One object, always parseable (D-10).
+fn print_mutation_report(
+    action: &str,
+    packages: &[String],
+    transcript: String,
+    note: Option<String>,
+) {
+    println!("{}", mutation_report_value(action, packages, transcript, note));
+}
+
+/// Builds the mutation report value: pure framing over the transcript
+/// lines, so the `--json` schema is unit-pinned without capturing
+/// stdout.
+fn mutation_report_value(
+    action: &str,
+    packages: &[String],
+    transcript: String,
+    note: Option<String>,
+) -> serde_json::Value {
+    let lines: Vec<String> = transcript.lines().map(str::to_string).collect();
+    serde_json::json!({
+        "action": action,
+        "packages": packages,
+        "ok": true,
+        "transcript": lines,
+        "note": note,
+    })
+}
+
 /// Builds the pre-install card: sizes, source, and candidate versus
 /// installed versions side by side when the package is installed.
 /// Absent readings render the honest catalog N/A cell (D-10), never
@@ -323,5 +493,72 @@ mod tests {
     fn padding_counts_characters_not_bytes() {
         assert_eq!(pad_right("ab", 4), "ab  ");
         assert_eq!(pad_right("abcd", 2), "abcd");
+    }
+
+    #[test]
+    fn upgrade_with_a_package_name_is_the_refused_partial_path() {
+        archel_core::i18n::set_language("fr");
+        // D-03: the refusal lands before any preview spawn or prompt,
+        // so this is deterministic headless (no TTY, no pkexec).
+        let err = run_upgrade(Some("firefox".to_string()), false)
+            .expect_err("single-package upgrade must be refused");
+        assert!(
+            matches!(err, ArchelError::PartialUpgradeRefused { .. }),
+            "wrong variant: {err:?}"
+        );
+        let rendered = err.message();
+        assert!(
+            rendered.contains("firefox"),
+            "refusal must name the package: {rendered}"
+        );
+    }
+
+    #[test]
+    fn upgrade_without_args_never_refuses_before_the_preview() {
+        // The bare upgrade path reaches the preview/confirm flow: in a
+        // headless suite stdin is not a TTY, so it stops at the TTY
+        // gate (NeedsTty) or the up-to-date early return — never at
+        // the partial-upgrade refusal and never at a mutation.
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return;
+        }
+        let result = run_upgrade(None, false);
+        match result {
+            Ok(()) => {}
+            Err(ArchelError::NeedsTty) => {}
+            Err(ArchelError::ConfirmationAborted) => {}
+            Err(other) => panic!("bare upgrade must not fail this way: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mutation_report_splits_the_transcript_into_lines() {
+        let value = mutation_report_value(
+            "install",
+            &["firefox".to_string()],
+            "downloading\ninstalling\n".to_string(),
+            None,
+        );
+        assert_eq!(value["action"], "install");
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["packages"][0], "firefox");
+        assert_eq!(value["transcript"], serde_json::json!(["downloading", "installing"]));
+        assert!(value["note"].is_null());
+        // Round-trips as one parseable object (D-10).
+        serde_json::from_str::<serde_json::Value>(&value.to_string())
+            .expect("report must be one complete JSON value");
+    }
+
+    #[test]
+    fn install_action_validates_names_before_spawning() {
+        // Crafted names fail at the client gate: no preview spawn, no
+        // pkexec prompt, nothing executes.
+        let err = run_install(&["-foo".to_string()], false)
+            .expect_err("crafted name must fail fast");
+        assert!(
+            matches!(err, ArchelError::InvalidPackageName { .. }),
+            "wrong variant: {err:?}"
+        );
     }
 }

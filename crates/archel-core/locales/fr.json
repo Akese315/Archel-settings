@@ -91,6 +91,8 @@
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",
     "needs_tty": "Opération interactive : aucun terminal détecté — annulée sans rien modifier.",
     "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
+    "partial_upgrade_refused": "Mise à jour partielle refusée pour « %{name} » : utilisez « archel pkg upgrade » (mise à jour complète -Syu) — les mises à jour partielles cassent Arch.",
+    "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }

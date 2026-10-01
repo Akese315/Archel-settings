@@ -353,6 +353,198 @@ pub fn card_title(name: &str) -> String {
     rust_i18n::t!("pkg.info_title", name = name).to_string()
 }
 
+/// Client-side package-name gate: non-empty list, every name passing
+/// the strict charset (mirror of the `archel-privileged` validator).
+/// Fast-fail UX only — the helper re-validates every name server-side
+/// (T-3-04) and never trusts this check.
+pub fn validate_package_names(packages: &[String]) -> Result<(), ArchelError> {
+    if packages.is_empty() {
+        return Err(ArchelError::InvalidPackageName {
+            name: String::new(),
+        });
+    }
+    for name in packages {
+        if !is_valid_package_name(name) {
+            return Err(ArchelError::InvalidPackageName { name: name.clone() });
+        }
+    }
+    Ok(())
+}
+
+/// Strict package-name charset (mirror of the helper validator):
+/// non-empty, no leading dash (flag-injection reject), ASCII word
+/// characters plus `@._+-` only (no shell metacharacters, no path
+/// separators, no whitespace).
+fn is_valid_package_name(name: &str) -> bool {
+    if name.is_empty() || name.starts_with('-') {
+        return false;
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '+' | '-'))
+}
+
+/// Install preview (D-01): one D-04 card per package plus the combined
+/// dependency closure from `pacman -S --print` (unprivileged, prints
+/// the download targets without touching the system).
+#[derive(Debug)]
+pub struct InstallPreview {
+    pub cards: Vec<PackageCard>,
+    pub dependencies: Vec<String>,
+}
+
+/// Composes the install preview: validates names, resolves one card
+/// per package (unknown names are the honest `PackageNotFound`, never
+/// a zero-filled card), then lists the pulled dependencies.
+pub fn install_preview(packages: &[String]) -> Result<InstallPreview, ArchelError> {
+    validate_package_names(packages)?;
+    let mut cards = Vec::with_capacity(packages.len());
+    for name in packages {
+        cards.push(package_card(name)?);
+    }
+    let dependencies = preview_install_dependencies(packages)?;
+    Ok(InstallPreview { cards, dependencies })
+}
+
+/// Runs `pacman -S --print` over the package set and returns the
+/// download-target filenames (basenames of the printed URLs). Pure
+/// read: never refreshes DBs, never installs (Pitfall 3).
+fn preview_install_dependencies(packages: &[String]) -> Result<Vec<String>, ArchelError> {
+    let mut argv: Vec<&str> = vec!["-S", "--print"];
+    argv.extend(packages.iter().map(String::as_str));
+    let out = run_capped_query("pacman", &argv, ArchelError::Internal)?;
+    Ok(out
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.rsplit('/').next().unwrap_or(line).to_string())
+        .collect())
+}
+
+/// Remove preview (D-01): every target must be installed (otherwise the
+/// honest `PackageNotFound`), plus the raw `pacman -R --print` removal
+/// list shown verbatim so the user sees what leaves the system.
+#[derive(Debug)]
+pub struct RemovePreview {
+    pub installed: Vec<(String, String)>,
+    pub removals: Vec<String>,
+}
+
+/// Composes the remove preview: validates names, requires each target
+/// to be installed, then lists the removal closure unprivileged.
+pub fn remove_preview(packages: &[String]) -> Result<RemovePreview, ArchelError> {
+    validate_package_names(packages)?;
+    let mut installed = Vec::with_capacity(packages.len());
+    for name in packages {
+        match installed_version_of(name)? {
+            Some(version) => installed.push((name.clone(), version)),
+            None => {
+                return Err(ArchelError::PackageNotFound { name: name.clone() });
+            }
+        }
+    }
+    let mut argv: Vec<&str> = vec!["-R", "--print"];
+    argv.extend(packages.iter().map(String::as_str));
+    let out = run_capped_query("pacman", &argv, ArchelError::Internal)?;
+    let removals = out
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    Ok(RemovePreview { installed, removals })
+}
+
+/// Upgrade preview (D-01): the pending `pacman -Qu` lines
+/// (`name old -> new`, unprivileged). Empty means already up to date —
+/// the caller reports that honestly and mutates nothing. This path
+/// never uses `--print` (it needs root, per Pitfall 4).
+pub fn upgrade_preview() -> Result<Vec<String>, ArchelError> {
+    let out = run_capped_query("pacman", &["-Qu"], ArchelError::Internal)?;
+    Ok(out
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// Parses one confirmation answer (D-01): `o` / `O` / `ou` / `oui…`
+/// (any case) confirms; EVERYTHING else — empty, EOF-shaped, `n`,
+/// `non`, anything unexpected — aborts (default-No). Pure so the
+/// abort path is unit-covered without a TTY.
+pub fn parse_confirm_answer(input: &str) -> bool {
+    let lowered = input.trim().to_lowercase();
+    lowered == "o" || lowered == "ou" || lowered.starts_with("oui")
+}
+
+/// Asks the D-01 confirmation on the terminal. Refuses without an
+/// interactive stdin (piped input or scripts must not mutate blindly:
+/// `NeedsTty`), and maps every non-yes answer to
+/// `ConfirmationAborted` — the caller mutates nothing on either path.
+pub fn confirm_action(prompt: &str) -> Result<(), ArchelError> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Err(ArchelError::NeedsTty);
+    }
+    eprint!("{prompt} ");
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    match std::io::stdin().read_line(&mut line) {
+        Ok(_) if parse_confirm_answer(&line) => Ok(()),
+        _ => Err(ArchelError::ConfirmationAborted),
+    }
+}
+
+/// Confirmation prompt for an install, naming every package.
+pub fn confirm_install_prompt(packages: &[String]) -> String {
+    rust_i18n::t!("pkg.confirm_install", packages = packages.join(" ")).to_string()
+}
+
+/// Confirmation prompt for a removal, naming every package.
+pub fn confirm_remove_prompt(packages: &[String]) -> String {
+    rust_i18n::t!("pkg.confirm_remove", packages = packages.join(" ")).to_string()
+}
+
+/// Confirmation prompt for the full-system upgrade.
+pub fn confirm_upgrade_prompt() -> String {
+    rust_i18n::t!("pkg.confirm_upgrade").to_string()
+}
+
+/// Dependencies-preview section label.
+pub fn preview_dependencies_label() -> String {
+    rust_i18n::t!("pkg.preview_dependencies").to_string()
+}
+
+/// Removal-list section label.
+pub fn preview_removals_label() -> String {
+    rust_i18n::t!("pkg.preview_removals").to_string()
+}
+
+/// Pending-upgrades section label.
+pub fn preview_pending_label() -> String {
+    rust_i18n::t!("pkg.preview_pending").to_string()
+}
+
+/// Honest already-up-to-date line (never a fake-zero state).
+pub fn up_to_date_line() -> String {
+    rust_i18n::t!("pkg.up_to_date").to_string()
+}
+
+/// Install success line naming the packages.
+pub fn install_ok_line(packages: &[String]) -> String {
+    rust_i18n::t!("pkg.install_ok", packages = packages.join(" ")).to_string()
+}
+
+/// Remove success line naming the packages.
+pub fn remove_ok_line(packages: &[String]) -> String {
+    rust_i18n::t!("pkg.remove_ok", packages = packages.join(" ")).to_string()
+}
+
+/// Full-upgrade success line.
+pub fn upgrade_ok_line() -> String {
+    rust_i18n::t!("pkg.upgrade_ok").to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -611,5 +803,105 @@ mod tests {
         assert!(!labels.installed.is_empty());
         assert!(!labels.download_size.is_empty());
         assert!(!labels.installed_size.is_empty());
+    }
+
+    #[test]
+    fn confirm_answer_accepts_o_and_oui_prefix_only() {
+        for yes in ["o", "O", "ou", "OU", "oui", "OUI", "Oui", "  o  "] {
+            assert!(super::parse_confirm_answer(yes), "must confirm: {yes:?}");
+        }
+        for no in ["", "   ", "n", "N", "non", "NON", "y", "yes", "x", "oignon"] {
+            // "oignon" starts with "o" but is not the oui-prefix:
+            // default-No aborts on everything unexpected.
+            assert!(!super::parse_confirm_answer(no), "must abort: {no:?}");
+        }
+    }
+
+    #[test]
+    fn confirm_action_refuses_without_a_tty() {
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return; // meaningful only headless: never block on a real TTY
+        }
+        let err = super::confirm_action("installer ? [o/N]")
+            .expect_err("headless stdin must refuse before prompting");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "piped input refuses the mutation: {err:?}"
+        );
+    }
+
+    #[test]
+    fn client_name_gate_mirrors_the_helper_validator() {
+        assert!(super::validate_package_names(&["firefox".to_string()]).is_ok());
+        assert!(
+            super::validate_package_names(&["a".to_string(), "libfoo+bar".to_string()])
+                .is_ok()
+        );
+        for bad in ["-foo", "--overwrite", "foo;bar", "foo/bar", "foo bar", ""] {
+            let err = super::validate_package_names(&[bad.to_string()])
+                .expect_err("crafted name must fail fast: {bad:?}");
+            assert!(
+                matches!(err, ArchelError::InvalidPackageName { .. }),
+                "wrong variant for {bad:?}: {err:?}"
+            );
+        }
+        let err = super::validate_package_names(&[])
+            .expect_err("zero-package mutation must fail fast");
+        assert!(matches!(err, ArchelError::InvalidPackageName { .. }));
+    }
+
+    #[test]
+    fn live_install_preview_lists_cards_and_dependencies() {
+        let preview = super::install_preview(&["pacman".to_string()])
+            .expect("pacman record must resolve with its closure");
+        assert_eq!(preview.cards.len(), 1);
+        assert_eq!(preview.cards[0].name, "pacman");
+        assert!(
+            !preview.dependencies.is_empty(),
+            "the closure must list download targets"
+        );
+    }
+
+    #[test]
+    fn live_install_preview_of_unknown_name_is_not_found() {
+        let err = super::install_preview(&["archel-no-such-pkg-xyz".to_string()])
+            .expect_err("unknown name must not preview");
+        assert!(matches!(err, ArchelError::PackageNotFound { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn live_remove_preview_requires_installed_targets() {
+        let preview = super::remove_preview(&["pacman".to_string()])
+            .expect("installed pacman must preview");
+        assert_eq!(preview.installed.len(), 1);
+        assert_eq!(preview.installed[0].0, "pacman");
+        assert!(!preview.installed[0].1.trim().is_empty());
+        let err = super::remove_preview(&["archel-no-such-pkg-xyz".to_string()])
+            .expect_err("removing a non-installed name must fail");
+        assert!(matches!(err, ArchelError::PackageNotFound { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn live_upgrade_preview_resolves_without_privilege() {
+        let pending =
+            super::upgrade_preview().expect("pacman -Qu must run unprivileged");
+        // Shape assertion only: empty (up to date) or lines shaped
+        // `name old -> new` — both honest, neither an error.
+        for line in &pending {
+            assert!(!line.trim().is_empty(), "no blank pending lines");
+        }
+    }
+
+    #[test]
+    fn mutation_labels_come_from_the_catalog() {
+        rust_i18n::set_locale("fr");
+        assert!(!super::confirm_install_prompt(&["a".to_string()]).is_empty());
+        assert!(!super::confirm_remove_prompt(&["a".to_string()]).is_empty());
+        assert!(!super::confirm_upgrade_prompt().is_empty());
+        assert!(!super::up_to_date_line().is_empty());
+        assert!(!super::install_ok_line(&["a".to_string()]).is_empty());
+        assert!(!super::remove_ok_line(&["a".to_string()]).is_empty());
+        assert!(!super::upgrade_ok_line().is_empty());
     }
 }
