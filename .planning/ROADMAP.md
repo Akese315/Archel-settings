@@ -82,7 +82,13 @@ Plans:
   3. User can scan, pair, connect, and disconnect Bluetooth devices including a working pairing flow
   4. User can select audio output and input devices and switch power profiles (performance/balanced/power-saver)
   5. User can perform every action above through `archel-cli`, proving each write path before GUI work starts
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Net tracer: live-bus spike, async foundation, status/DNS/triple-test (NET-01, NET-02, NET-03, NET-06)
+- [ ] 04-02-PLAN.md — Session proxy modes plus VPN list/up/down/import (NET-04, NET-05)
+- [ ] 04-03-PLAN.md — Bluetooth spike-first: scan plus PIN-confirm pair/connect/disconnect (BT-01, BT-02)
+- [ ] 04-04-PLAN.md — Audio sink/source by name plus power profiles with backend tag (SND-01, SND-02, PWR-01)
 
 ### Phase 5: Hyprland Desktop
 **Goal**: Users can personalize and configure their Hyprland desktop — look, monitors, and inputs — safely
