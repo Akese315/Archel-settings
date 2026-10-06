@@ -48,6 +48,11 @@ pub enum ArchelError {
     /// failing (D-06).
     #[error("update checker not available: '{tool}' is not installed")]
     UpdatesCheckerMissing { tool: String },
+    /// No usable network state: neither the NM D-Bus service nor the
+    /// `nmcli` fallback answered. Carries log-only detail; the user sees
+    /// the catalog hint (check NM is running), never this payload.
+    #[error("network unavailable: {detail}")]
+    NetworkUnavailable { detail: String },
     /// A named package has no repo or AUR record. Carries the name for
     /// logs; the user sees the catalog French line (used by `pkg info`).
     #[error("package not found: '{name}'")]
@@ -111,6 +116,14 @@ impl ArchelError {
         }
     }
 
+    /// Friendly constructor for an unreachable network stack, naming
+    /// the log-only detail (no bus, no `nmcli`, no active profile).
+    pub fn network_unavailable(detail: impl Into<String>) -> Self {
+        Self::NetworkUnavailable {
+            detail: detail.into(),
+        }
+    }
+
     /// French user-facing rendering from the catalog — the ONLY string that
     /// may reach the terminal for this error (D-05/D-07/D-12).
     pub fn message(&self) -> String {
@@ -132,6 +145,9 @@ impl ArchelError {
             }
             Self::UpdatesCheckerMissing { tool } => {
                 rust_i18n::t!("errors.updates_checker_missing", tool = tool).to_string()
+            }
+            Self::NetworkUnavailable { .. } => {
+                rust_i18n::t!("errors.network_unavailable").to_string()
             }
             Self::PackageNotFound { name } => {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
@@ -171,6 +187,9 @@ mod tests {
             },
             ArchelError::UpdatesCheckerMissing {
                 tool: "checkupdates".to_string(),
+            },
+            ArchelError::NetworkUnavailable {
+                detail: "no bus".to_string(),
             },
             ArchelError::PackageNotFound {
                 name: "firefox".to_string(),

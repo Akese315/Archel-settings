@@ -12,6 +12,7 @@ pub mod aur;
 pub mod error;
 pub mod i18n;
 pub mod landing;
+pub mod network;
 pub mod packages;
 pub mod privileged;
 pub mod sensors;

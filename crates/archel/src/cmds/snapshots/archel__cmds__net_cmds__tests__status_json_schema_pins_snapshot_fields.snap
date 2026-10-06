@@ -1,0 +1,20 @@
+---
+source: crates/archel/src/cmds/net_cmds.rs
+assertion_line: 109
+expression: value
+---
+{
+  "connected": true,
+  "connection_type": "802-11-wireless",
+  "dns": [
+    "10.192.61.1"
+  ],
+  "gateway": "10.192.61.1",
+  "interface": "wlan0",
+  "ipv4_address": "10.192.61.76/24",
+  "profile_name": "KLEY Rennes privée",
+  "profile_uuid": "cbb5b16c-02d9-4ac7-a99c-d02b909cfb69",
+  "source": "nmcli",
+  "ssid": "KLEY Rennes privée",
+  "state_detail": "connecté"
+}

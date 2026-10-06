@@ -18,3 +18,11 @@ nvml-wrapper = "0.13"
 # Phase 3 (PKG-01): installed-DB reads plus epoch-aware version compare.
 # `checkver` fails the build loudly on a libalpm mismatch (STACK rule).
 alpm = { version = "5.0.2", features = ["checkver"] }
+# Phase 4 (NET-01): first async in core — tokio runtime for zbus + bluer
+# (STACK rule: rt-multi-thread + time + macros, minimal surface).
+# Versions verified via `cargo search` at plan time (tokio 1.53.2,
+# zbus 5.19.0). rpassword 7.5.4 verified but NOT added (VPN/proxy-auth
+# prompt lands in a later plan); `networkmanager` 0.5.0 stays OUT —
+# SUS legitimacy verdict, human-gated spike only.
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "time", "macros"] }
+zbus = "5.19.0"

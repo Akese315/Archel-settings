@@ -93,6 +93,20 @@
     "checker_missing_generic": "« %{tool} » est introuvable : installez le paquet correspondant pour activer ce compteur.",
     "refresh_failed": "Actualisation impossible (hors ligne ?) — affichage de la dernière valeur connue."
   },
+  "net": {
+    "status_title": "Réseau — état de la connexion",
+    "label_state": "État",
+    "label_interface": "Interface",
+    "label_ssid": "SSID",
+    "label_ip": "Adresse IP",
+    "label_gateway": "Passerelle",
+    "label_dns": "DNS",
+    "label_profile": "Profil",
+    "state_connected": "connecté",
+    "state_connected_local": "connecté (local)",
+    "state_connected_site": "connecté (site)",
+    "state_disconnected": "déconnecté"
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
@@ -101,6 +115,7 @@
     "sensor_unavailable": "Capteur indisponible (N/A).",
     "gui_not_compiled": "Archel settings : interface graphique non disponible dans cette version.",
     "updates_checker_missing": "Compteur indisponible : « %{tool} » est introuvable. Installez le paquet correspondant pour l'activer.",
+    "network_unavailable": "Réseau indisponible : ni NetworkManager ni « nmcli » n'ont répondu. Vérifiez que NetworkManager est démarré.",
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",

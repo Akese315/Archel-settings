@@ -9,6 +9,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::aot::{generate, Shell};
 
 mod landing_cmd;
+mod net_cmds;
 mod pkg_cmds;
 mod sys_cmds;
 
@@ -51,6 +52,11 @@ enum Command {
     Pkg {
         #[command(subcommand)]
         action: PkgAction,
+    },
+    /// Connection state plus addressing of the primary link (NET-01/02)
+    Net {
+        #[command(subcommand)]
+        action: NetAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -157,12 +163,24 @@ enum PkgAction {
     },
 }
 
+/// One network query under `archel net` (NET-01/02). Status ships in
+/// plan 01; dns/vpn/test land in later plans of this phase.
+#[derive(Debug, Subcommand)]
+enum NetAction {
+    /// Primary-connection state, interface, SSID, IP, gateway and DNS
+    Status,
+}
+
 /// Runs the parsed subcommand.
 ///
 /// Every failure path returns a typed [`ArchelError`] (never a panic, never
 /// a silent ok); `main` renders the French catalog message with a non-zero
 /// exit.
-pub fn run() -> Result<(), ArchelError> {
+///
+/// Async (single `#[tokio::main]` at the binary): core exposes `async fn`s
+/// for the D-Bus paths while subprocess helpers stay sync and run off the
+/// executor via `spawn_blocking` — never `block_on` inside core.
+pub async fn run() -> Result<(), ArchelError> {
     // The catalog backend defaults to the fallback locale; pin French so
     // every rendering below is deterministic (D-05/D-07).
     archel_core::i18n::set_language("fr");
@@ -207,6 +225,9 @@ pub fn run() -> Result<(), ArchelError> {
             PkgAction::Remove { packages } => pkg_cmds::run_remove(&packages, cli.json),
             PkgAction::Upgrade { package } => pkg_cmds::run_upgrade(package, cli.json),
             PkgAction::Aur { name } => pkg_cmds::run_aur(&name, cli.json),
+        },
+        Command::Net { action } => match action {
+            NetAction::Status => net_cmds::run_status(cli.json).await,
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -262,6 +283,8 @@ mod tests {
                 "search",
                 "info",
                 "sys",
+                "net",
+                "status",
                 "landing",
                 "privileged",
                 "settings",
