@@ -23,7 +23,8 @@ covered_files:
   - crates/archel/src/cmds/mod.rs
   - crates/archel/src/cmds/pkg_cmds.rs
   - policy/org.archel.privileged.policy
-covered_digest: "v2:sha256:41fc26e0ec4e89aa8ee4433d6269bd34f47dd8837ad96abe7e2299900b41fccc"
+
+covered_digest: "v2:sha256:f2a5d96d130af7628991019bec3871af1f024429576aaa3cc8306f6f12c2f8cf"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
