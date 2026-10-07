@@ -270,9 +270,153 @@ pub fn audio_list() -> Result<AudioSnapshot, ArchelError> {
     Ok(AudioSnapshot { sinks, sources })
 }
 
+/// Resolves a stable sink `node.name` to its current session ID.
+/// Exact match only: unknown names, stale numeric IDs and ambiguous
+/// duplicates all fail as [`ArchelError::AudioDeviceNotFound`] — the
+/// switch never guesses (T-4-07).
+pub fn resolve_sink_id(snapshot: &AudioSnapshot, name: &str) -> Result<u32, ArchelError> {
+    resolve_in(&snapshot.sinks, name)
+}
+
+/// Resolves a stable source `node.name` to its current session ID.
+/// Same honest-failure contract as [`resolve_sink_id`].
+pub fn resolve_source_id(snapshot: &AudioSnapshot, name: &str) -> Result<u32, ArchelError> {
+    resolve_in(&snapshot.sources, name)
+}
+
+/// Name-to-current-ID resolution over one direction. Pure over the
+/// snapshot so renumbering fixtures cover it without PipeWire.
+fn resolve_in(devices: &[AudioDevice], name: &str) -> Result<u32, ArchelError> {
+    let hits: Vec<&AudioDevice> = devices.iter().filter(|device| device.name == name).collect();
+    match hits.as_slice() {
+        [only] => Ok(only.id),
+        [] => Err(ArchelError::audio_device_not_found(name)),
+        _ => {
+            let candidates = hits
+                .iter()
+                .map(|device| device.description.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(ArchelError::audio_device_not_found(format!(
+                "{name} (candidats : {candidates})"
+            )))
+        }
+    }
+}
+
+/// Runs `wpctl set-default` for one session ID as the user (no
+/// privilege path: the session daemon owns the graph). Failures map
+/// to the typed unavailable hint with log detail.
+pub fn set_default(id: u32) -> Result<(), ArchelError> {
+    run_wpctl(&["set-default", &id.to_string()])?;
+    Ok(())
+}
+
+/// Confirm-then-switch gate for `set-output`: resolves the name
+/// against the just-read snapshot, confirms intent, then runs `set`.
+/// The injectable `confirm`/`set` keep the abort path unit-coverable
+/// headless: refusal happens before `set`, so `set` structurally
+/// never runs on abort (mirrors the VPN confirm gate).
+pub fn set_output_picked_with(
+    snapshot: &AudioSnapshot,
+    name: &str,
+    confirm: impl FnOnce(&str) -> Result<(), ArchelError>,
+    set: impl FnOnce(u32) -> Result<(), ArchelError>,
+) -> Result<AudioDevice, ArchelError> {
+    let id = resolve_sink_id(snapshot, name)?;
+    let device = snapshot
+        .sinks
+        .iter()
+        .find(|sink| sink.id == id)
+        .expect("resolved ID comes from this snapshot");
+    confirm(&confirm_output_prompt(device))?;
+    set(id)?;
+    Ok(device.clone())
+}
+
+/// Confirm-then-switch gate for `set-input`: same shape as
+/// [`set_output_picked_with`] over the sources.
+pub fn set_input_picked_with(
+    snapshot: &AudioSnapshot,
+    name: &str,
+    confirm: impl FnOnce(&str) -> Result<(), ArchelError>,
+    set: impl FnOnce(u32) -> Result<(), ArchelError>,
+) -> Result<AudioDevice, ArchelError> {
+    let id = resolve_source_id(snapshot, name)?;
+    let device = snapshot
+        .sources
+        .iter()
+        .find(|source| source.id == id)
+        .expect("resolved ID comes from this snapshot");
+    confirm(&confirm_input_prompt(device))?;
+    set(id)?;
+    Ok(device.clone())
+}
+
+/// Live `set-output`: list, resolve-by-name, confirm, switch, then
+/// read back the graph and prove the named device is now default.
+/// A read-back miss is an [`ArchelError::Internal`] (the switch did
+/// not stick), never a silent ok.
+pub fn set_output_by_name(name: &str) -> Result<AudioDevice, ArchelError> {
+    let snapshot = audio_list()?;
+    let device = set_output_picked_with(
+        &snapshot,
+        name,
+        crate::packages::confirm_action,
+        set_default,
+    )?;
+    let fresh = audio_list()?;
+    match fresh.sinks.iter().find(|sink| sink.name == device.name) {
+        Some(current) if current.default => Ok(current.clone()),
+        _ => Err(ArchelError::Internal(format!(
+            "wpctl set-default accepted '{}' but read-back shows no new default",
+            device.name
+        ))),
+    }
+}
+
+/// Live `set-input`: same list-resolve-confirm-read-back shape over
+/// the sources.
+pub fn set_input_by_name(name: &str) -> Result<AudioDevice, ArchelError> {
+    let snapshot = audio_list()?;
+    let device = set_input_picked_with(
+        &snapshot,
+        name,
+        crate::packages::confirm_action,
+        set_default,
+    )?;
+    let fresh = audio_list()?;
+    match fresh.sources.iter().find(|source| source.name == device.name) {
+        Some(current) if current.default => Ok(current.clone()),
+        _ => Err(ArchelError::Internal(format!(
+            "wpctl set-default accepted '{}' but read-back shows no new default",
+            device.name
+        ))),
+    }
+}
+
+/// Confirmation prompt naming the target sink, from the catalog.
+pub fn confirm_output_prompt(device: &AudioDevice) -> String {
+    rust_i18n::t!("audio.confirm_output", name = device.name.as_str()).to_string()
+}
+
+/// Confirmation prompt naming the target source, from the catalog.
+pub fn confirm_input_prompt(device: &AudioDevice) -> String {
+    rust_i18n::t!("audio.confirm_input", name = device.name.as_str()).to_string()
+}
+
+/// Success line naming the new default sink, from the catalog.
+pub fn output_ok_line(device: &AudioDevice) -> String {
+    rust_i18n::t!("audio.output_ok", name = device.name.as_str()).to_string()
+}
+
+/// Success line naming the new default source, from the catalog.
+pub fn input_ok_line(device: &AudioDevice) -> String {
+    rust_i18n::t!("audio.input_ok", name = device.name.as_str()).to_string()
+}
+
 /// French list title from the catalog (bin owns no copy).
-pub fn list_title() -> String {
-    rust_i18n::t!("audio.list_title").to_string()
+pub fn list_title() -> String {    rust_i18n::t!("audio.list_title").to_string()
 }
 
 /// French sinks/sources section headers from the catalog.
@@ -416,5 +560,143 @@ mod tests {
         let cols = audio_columns();
         assert!(!cols.name.is_empty() && !cols.description.is_empty());
         assert!(!default_cell(true).is_empty() && !default_cell(false).is_empty());
+    }
+
+    fn renamed_snapshot(first_id: u32, second_id: u32) -> AudioSnapshot {
+        AudioSnapshot {
+            sinks: vec![
+                AudioDevice {
+                    id: first_id,
+                    name: "alsa_output.usb-Sennheiser_SC60-00.analog-stereo".to_string(),
+                    description: "SC60".to_string(),
+                    kind: AudioKind::Sink,
+                    default: false,
+                },
+                AudioDevice {
+                    id: second_id,
+                    name: "alsa_output.pci-0000_0a_00.4.analog-stereo".to_string(),
+                    description: "ALC1220".to_string(),
+                    kind: AudioKind::Sink,
+                    default: true,
+                },
+            ],
+            sources: vec![],
+        }
+    }
+
+    #[test]
+    fn name_resolver_tracks_stable_names_across_id_renumbering() {
+        // Same node.names, fresh session IDs (PipeWire renumbers every
+        // restart): the resolver must follow the name, never the ID.
+        let before = renamed_snapshot(47, 59);
+        let after = renamed_snapshot(104, 97);
+        assert_eq!(
+            resolve_sink_id(
+                &before,
+                "alsa_output.usb-Sennheiser_SC60-00.analog-stereo"
+            )
+            .expect("known name resolves"),
+            47
+        );
+        assert_eq!(
+            resolve_sink_id(&after, "alsa_output.usb-Sennheiser_SC60-00.analog-stereo")
+                .expect("same name, new session"),
+            104
+        );
+        assert_eq!(
+            resolve_sink_id(&after, "alsa_output.pci-0000_0a_00.4.analog-stereo")
+                .expect("second name resolves"),
+            97
+        );
+    }
+
+    #[test]
+    fn name_resolver_rejects_unknown_and_ambiguous_names() {
+        let snap = renamed_snapshot(47, 59);
+        let err = resolve_sink_id(&snap, "alsa_output.ghost-00.analog-stereo")
+            .expect_err("unknown name must fail honestly");
+        assert!(
+            matches!(err, ArchelError::AudioDeviceNotFound { .. }),
+            "wrong variant: {err:?}"
+        );
+        // A stale numeric ID from a previous session is not a name:
+        // it must fail instead of switching the wrong device (T-4-07).
+        let stale = resolve_sink_id(&snap, "47").expect_err("IDs are not names");
+        assert!(matches!(stale, ArchelError::AudioDeviceNotFound { .. }));
+        // Duplicate names fail with the candidate list, never a guess.
+        let dup = AudioSnapshot {
+            sinks: vec![
+                AudioDevice {
+                    id: 1,
+                    name: "alsa_output.dup-00.analog-stereo".to_string(),
+                    description: "first".to_string(),
+                    kind: AudioKind::Sink,
+                    default: false,
+                },
+                AudioDevice {
+                    id: 2,
+                    name: "alsa_output.dup-00.analog-stereo".to_string(),
+                    description: "second".to_string(),
+                    kind: AudioKind::Sink,
+                    default: false,
+                },
+            ],
+            sources: vec![],
+        };
+        let ambiguous = resolve_sink_id(&dup, "alsa_output.dup-00.analog-stereo")
+            .expect_err("duplicates must not guess");
+        assert!(matches!(ambiguous, ArchelError::AudioDeviceNotFound { .. }));
+    }
+
+    #[test]
+    fn status_parse_carries_multibyte_descriptions_opaquely() {
+        // Descriptions travel byte-identical (never evaluated, T-4-SC):
+        // CJK text plus garbage lines parse without panicking.
+        let out = "Audio\n Sinks:\n *   47. USB \u{97f3}\u{9891} Audio\n garbage line\n     broken. \n Sources:\n     60. Mic\n";
+        let entries = parse_wpctl_status(out);
+        assert_eq!(entries.len(), 2, "both entries parse: {entries:?}");
+        assert!(entries[0].is_default);
+        assert_eq!(entries[0].id, 47);
+    }
+
+    #[test]
+    fn set_abort_path_spawns_nothing_without_auto_accept() {
+        use std::cell::Cell;
+        let snap = renamed_snapshot(47, 59);
+        let set_ran = Cell::new(false);
+        let err = set_output_picked_with(
+            &snap,
+            "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+            |_| Err(ArchelError::ConfirmationAborted),
+            |_| {
+                set_ran.set(true);
+                Ok(())
+            },
+        )
+        .expect_err("declined confirm must abort");
+        assert!(matches!(err, ArchelError::ConfirmationAborted));
+        assert!(!set_ran.get(), "abort must spawn nothing");
+    }
+
+    #[test]
+    fn set_confirm_path_reaches_set_once_with_the_current_id() {
+        use std::cell::Cell;
+        let snap = renamed_snapshot(104, 97);
+        let seen = Cell::new(None);
+        let device = set_output_picked_with(
+            &snap,
+            "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+            |prompt| {
+                assert!(prompt.contains("alsa_output.usb-Sennheiser_SC60-00.analog-stereo"));
+                Ok(())
+            },
+            |id| {
+                seen.set(Some(id));
+                Ok(())
+            },
+        )
+        .expect("confirmed set must run");
+        assert_eq!(seen.get(), Some(104), "current session ID, never stale");
+        assert_eq!(device.id, 104);
     }
 }

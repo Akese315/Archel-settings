@@ -1,13 +1,15 @@
-//! `archel audio list` renderer: French tables (default) or JSON
-//! (`--json`).
+//! `archel audio list|set-output|set-input` renderers: French
+//! tables (default) or JSON (`--json`).
 //!
 //! Bin-calls-core shape: every French string comes from
 //! `archel-core::audio` (title, section headers, column labels,
-//! default cells, honest-empty line) — this module only lays out
-//! columns (`std::fmt` widths, no table crate) and frames the JSON
-//! payload. A dead PipeWire session maps to the typed
-//! `AudioUnavailable` catalog error, never a panic, never fake
-//! devices. `set-output` / `set-input` land in the next task.
+//! default cells, honest-empty line, confirm prompts, ok lines) —
+//! this module only lays out columns (`std::fmt` widths, no table
+//! crate) and frames the JSON payloads. A dead PipeWire session maps
+//! to the typed `AudioUnavailable` catalog error, never a panic,
+//! never fake devices. Switches are confirm-gated in core
+//! (`confirm_action`: preview naming the target, `[o/N]`, `NeedsTty`
+//! when piped) and verified by read-back before the ok line prints.
 
 use archel_core::audio::{AudioDevice, AudioSnapshot};
 use archel_core::ArchelError;
@@ -21,6 +23,45 @@ pub fn run_list(json: bool) -> Result<(), ArchelError> {
         print!("{}", render_list_table(&snap));
     }
     Ok(())
+}
+
+/// Runs `archel audio set-output <name>`: resolve the stable name to
+/// the current session ID, confirm, switch, read back. `--json`
+/// emits the single-object mutation report shape.
+pub fn run_set_output(name: &str, json: bool) -> Result<(), ArchelError> {
+    let device = archel_core::audio::set_output_by_name(name)?;
+    let ok = archel_core::audio::output_ok_line(&device);
+    if json {
+        println!("{}", mutation_report_value("set-output", name, &ok));
+    } else {
+        println!("{ok}");
+    }
+    Ok(())
+}
+
+/// Runs `archel audio set-input <name>`: same shape over the sources.
+pub fn run_set_input(name: &str, json: bool) -> Result<(), ArchelError> {
+    let device = archel_core::audio::set_input_by_name(name)?;
+    let ok = archel_core::audio::input_ok_line(&device);
+    if json {
+        println!("{}", mutation_report_value("set-input", name, &ok));
+    } else {
+        println!("{ok}");
+    }
+    Ok(())
+}
+
+/// Builds the single-object mutation report: the action name, the
+/// target device name, and the catalog ok line as the transcript.
+/// Mirrors the pkg mutation shape (one object, always parseable).
+fn mutation_report_value(action: &str, name: &str, ok_line: &str) -> serde_json::Value {
+    serde_json::json!({
+        "action": action,
+        "device": name,
+        "ok": true,
+        "transcript": [ok_line],
+        "note": serde_json::Value::Null,
+    })
 }
 
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
@@ -172,5 +213,31 @@ mod tests {
     #[test]
     fn schema_audio_list_is_pinned() {
         insta::assert_json_snapshot!("audio_list", sample_snapshot());
+    }
+
+    #[test]
+    fn set_report_carries_action_device_and_transcript() {
+        archel_core::i18n::set_language("fr");
+        let report = mutation_report_value(
+            "set-output",
+            "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+            "ok line",
+        );
+        assert_eq!(report["action"], "set-output");
+        assert_eq!(report["device"], "alsa_output.usb-Sennheiser_SC60-00.analog-stereo");
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["transcript"][0], "ok line");
+        assert!(report["note"].is_null());
+    }
+
+    #[test]
+    fn schema_audio_set_output_is_pinned() {
+        archel_core::i18n::set_language("fr");
+        let report = mutation_report_value(
+            "set-output",
+            "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+            &archel_core::audio::output_ok_line(&sample_sink()),
+        );
+        insta::assert_json_snapshot!("audio_set_output", report);
     }
 }

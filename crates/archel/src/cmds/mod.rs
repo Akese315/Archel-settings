@@ -290,6 +290,16 @@ enum BtAction {
 enum AudioAction {
     /// Sinks and sources by stable name, with default flags (read-only)
     List,
+    /// Switch the default sink by exact stable name (see `audio list`)
+    SetOutput {
+        /// Exact stable device name (`node.name` from `archel audio list`)
+        name: String,
+    },
+    /// Switch the default source by exact stable name (see `audio list`)
+    SetInput {
+        /// Exact stable device name (`node.name` from `archel audio list`)
+        name: String,
+    },
 }
 #[derive(Debug, Subcommand)]
 enum DnsAction {
@@ -419,6 +429,8 @@ pub async fn run() -> Result<(), ArchelError> {
         },
         Command::Audio { action } => match action {
             AudioAction::List => audio_cmds::run_list(cli.json),
+            AudioAction::SetOutput { name } => audio_cmds::run_set_output(&name, cli.json),
+            AudioAction::SetInput { name } => audio_cmds::run_set_input(&name, cli.json),
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -493,6 +505,8 @@ mod tests {
                 "up",
                 "down",
                 "import",
+                "set-output",
+                "set-input",
                 "landing",
                 "privileged",
                 "settings",

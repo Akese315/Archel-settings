@@ -109,6 +109,13 @@ pub enum ArchelError {
     /// payload. Core never fabricates devices (honest N/A instead).
     #[error("audio unavailable: {detail}")]
     AudioUnavailable { detail: String },
+    /// An `audio set-output/set-input` name matched no current device
+    /// (unknown name, stale numeric ID, or an ambiguous duplicate).
+    /// Carries the rejected name for logs; the user sees the catalog
+    /// exact-name line with the candidate list (T-4-07: never a
+    /// guess, never a numeric-ID match).
+    #[error("audio device not found: '{query}'")]
+    AudioDeviceNotFound { query: String },
     /// BlueZ or the peer rejected the pairing (wrong code, declined on
     /// either side, agent refusal). Carries the device label for logs;
     /// nothing was bonded, nothing changed (T-4-05).
@@ -213,6 +220,14 @@ impl ArchelError {
         }
     }
 
+    /// Friendly constructor for a name miss on the audio switch path,
+    /// naming the rejected name (or the candidate list on ambiguity).
+    pub fn audio_device_not_found(query: impl Into<String>) -> Self {
+        Self::AudioDeviceNotFound {
+            query: query.into(),
+        }
+    }
+
     /// Friendly constructor for a refused pairing, naming the device
     /// label (name plus MAC, never the PIN — T-4-06).
     pub fn pairing_rejected(device: impl Into<String>) -> Self {
@@ -282,6 +297,9 @@ impl ArchelError {
             }
             Self::AudioUnavailable { .. } => {
                 rust_i18n::t!("errors.audio_unavailable").to_string()
+            }
+            Self::AudioDeviceNotFound { query } => {
+                rust_i18n::t!("errors.audio_device_not_found", query = query).to_string()
             }
             Self::PairingRejected { device } => {
                 rust_i18n::t!("errors.pairing_rejected", device = device).to_string()
@@ -360,6 +378,9 @@ mod tests {
             },
             ArchelError::AudioUnavailable {
                 detail: "no wpctl".to_string(),
+            },
+            ArchelError::AudioDeviceNotFound {
+                query: "alsa_output.ghost-00.analog-stereo".to_string(),
             },
             ArchelError::PairingRejected {
                 device: "Mouse (AA:BB:CC:DD:EE:FF)".to_string(),

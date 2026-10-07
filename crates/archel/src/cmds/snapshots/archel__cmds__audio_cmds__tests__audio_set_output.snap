@@ -1,0 +1,13 @@
+---
+source: crates/archel/src/cmds/audio_cmds.rs
+expression: report
+---
+{
+  "action": "set-output",
+  "device": "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+  "note": null,
+  "ok": true,
+  "transcript": [
+    "Sortie audio basculée vers « alsa_output.usb-Sennheiser_SC60-00.analog-stereo »."
+  ]
+}
