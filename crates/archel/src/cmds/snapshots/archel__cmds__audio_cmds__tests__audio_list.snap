@@ -1,0 +1,22 @@
+---
+source: crates/archel/src/cmds/audio_cmds.rs
+expression: sample_snapshot()
+---
+{
+  "sinks": [
+    {
+      "name": "alsa_output.usb-Sennheiser_SC60-00.analog-stereo",
+      "description": "SC60 for Lync Analog stereo",
+      "kind": "sink",
+      "default": true
+    }
+  ],
+  "sources": [
+    {
+      "name": "alsa_input.usb-Sennheiser_SC60-00.analog-stereo",
+      "description": "SC60 for Lync Analog stereo",
+      "kind": "source",
+      "default": true
+    }
+  ]
+}

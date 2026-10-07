@@ -13,6 +13,7 @@ mod net_cmds;
 mod pkg_cmds;
 mod sys_cmds;
 mod bt_cmds;
+mod audio_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -63,6 +64,11 @@ enum Command {
     Bt {
         #[command(subcommand)]
         action: BtAction,
+    },
+    /// Audio endpoints by stable name plus default switching (SND-01/02)
+    Audio {
+        #[command(subcommand)]
+        action: AudioAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -276,6 +282,15 @@ enum BtAction {
         pick: String,
     },
 }
+/// One audio query under `archel audio` (SND-01/02). `list` is the
+/// read-only device inventory; `set-output` / `set-input` switch the
+/// default sink/source by exact stable `node.name` (never a numeric
+/// ID — IDs renumber every PipeWire restart).
+#[derive(Debug, Subcommand)]
+enum AudioAction {
+    /// Sinks and sources by stable name, with default flags (read-only)
+    List,
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -402,6 +417,9 @@ pub async fn run() -> Result<(), ArchelError> {
                 bt_cmds::run_disconnect(&pick, cli.json).await
             }
         },
+        Command::Audio { action } => match action {
+            AudioAction::List => audio_cmds::run_list(cli.json),
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -458,6 +476,7 @@ mod tests {
                 "sys",
                 "net",
                 "bt",
+                "audio",
                 "devices",
                 "status",
                 "dns",

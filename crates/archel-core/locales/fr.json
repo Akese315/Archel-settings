@@ -170,6 +170,17 @@
     "connected_ok": "« %{name} » connecté.",
     "disconnected_ok": "« %{name} » déconnecté."
   },
+  "audio": {
+    "list_title": "Audio — périphériques",
+    "sinks_section": "Sorties",
+    "sources_section": "Entrées",
+    "col_name": "Nom",
+    "col_description": "Description",
+    "col_default": "Défaut",
+    "default_yes": "oui",
+    "default_no": "non",
+    "list_empty": "Aucun périphérique audio détecté."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
@@ -187,9 +198,9 @@
     "vpn_import_failed": "Échec de l'import de « %{file} » par le plugin VPN — vérifiez le fichier puis réessayez.",
     "polkit_denied": "Autorisation refusée pour « %{action} » — démarrez un agent polkit (hyprpolkitagent) puis réessayez. Archel ne contourne jamais ce refus.",
     "bluetooth_unavailable": "Bluetooth indisponible : le service « bluetooth » ne répond pas. Activez-le avec « sudo systemctl enable --now bluetooth » puis réessayez.",
-    "device_not_found": "Appareil Bluetooth « %{query} » introuvable : choisissez un appareil de la liste affichée par « archel bt scan ».",
-    "pairing_rejected": "Appariement avec « %{device} » refusé ou rejeté — rien n'a été modifié.",
+    "device_not_found": "Appareil Bluetooth « %{query} » introuvable : choisissez un appareil de la liste affichée par « archel bt scan ».",    "pairing_rejected": "Appariement avec « %{device} » refusé ou rejeté — rien n'a été modifié.",
     "pairing_timeout": "Appariement avec « %{device} » : délai dépassé — appareil hors de portée ou sans réponse.",
+    "audio_unavailable": "Audio indisponible : « wpctl » est introuvable ou PipeWire/WirePlumber ne répond pas. Installez « wireplumber » et vérifiez que la session PipeWire est démarrée.",
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",

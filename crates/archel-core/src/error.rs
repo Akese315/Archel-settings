@@ -103,6 +103,12 @@ pub enum ArchelError {
     /// scan-then-pick line (T-4-05: never a free-form MAC bypass).
     #[error("bluetooth device not found: '{query}'")]
     DeviceNotFound { query: String },
+    /// PipeWire/WirePlumber answered no audio command: `wpctl` missing
+    /// or the session PipeWire daemon unreachable. Carries log-only
+    /// detail; the user sees the catalog install hint, never this
+    /// payload. Core never fabricates devices (honest N/A instead).
+    #[error("audio unavailable: {detail}")]
+    AudioUnavailable { detail: String },
     /// BlueZ or the peer rejected the pairing (wrong code, declined on
     /// either side, agent refusal). Carries the device label for logs;
     /// nothing was bonded, nothing changed (T-4-05).
@@ -199,6 +205,14 @@ impl ArchelError {
         }
     }
 
+    /// Friendly constructor for an unreachable audio stack, naming
+    /// the log-only detail (missing `wpctl`, dead PipeWire session).
+    pub fn audio_unavailable(detail: impl Into<String>) -> Self {
+        Self::AudioUnavailable {
+            detail: detail.into(),
+        }
+    }
+
     /// Friendly constructor for a refused pairing, naming the device
     /// label (name plus MAC, never the PIN — T-4-06).
     pub fn pairing_rejected(device: impl Into<String>) -> Self {
@@ -265,6 +279,9 @@ impl ArchelError {
             }
             Self::DeviceNotFound { query } => {
                 rust_i18n::t!("errors.device_not_found", query = query).to_string()
+            }
+            Self::AudioUnavailable { .. } => {
+                rust_i18n::t!("errors.audio_unavailable").to_string()
             }
             Self::PairingRejected { device } => {
                 rust_i18n::t!("errors.pairing_rejected", device = device).to_string()
@@ -340,6 +357,9 @@ mod tests {
             },
             ArchelError::DeviceNotFound {
                 query: "00:11:22:33:44:55".to_string(),
+            },
+            ArchelError::AudioUnavailable {
+                detail: "no wpctl".to_string(),
             },
             ArchelError::PairingRejected {
                 device: "Mouse (AA:BB:CC:DD:EE:FF)".to_string(),

@@ -9,6 +9,7 @@
 //! domain modules land with their owning phases.
 
 pub mod aur;
+pub mod audio;
 pub mod bluetooth;
 pub mod error;
 pub mod i18n;
