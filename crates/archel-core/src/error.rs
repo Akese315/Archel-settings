@@ -68,6 +68,22 @@ pub enum ArchelError {
     /// prompted, the store is untouched.
     #[error("invalid proxy setting: {detail}")]
     ProxyInvalid { detail: String },
+    /// A VPN config-file import path failed client-side confinement
+    /// (missing, not a file, wrong extension, or under /proc, /sys,
+    /// /dev). Carries the operator-supplied path for logs; nothing was
+    /// spawned, no plugin ran (T-4-03).
+    #[error("invalid VPN import path: '{path}'")]
+    VpnPathInvalid { path: String },
+    /// The NM VPN plugin for `plugin` (e.g. openvpn) is not installed,
+    /// so the import cannot run. The user sees the catalog install
+    /// hint; nothing was imported.
+    #[error("VPN plugin missing: '{plugin}'")]
+    VpnPluginMissing { plugin: String },
+    /// A VPN config-file import failed inside the nmcli plugin (past
+    /// validation). Carries the operator-supplied file for logs; the
+    /// user sees the catalog line, never raw plugin stderr.
+    #[error("VPN import failed for '{file}'")]
+    VpnImportFailed { file: String },
     /// An NM write was refused by polkit. Carries the attempted action
     /// for logs; the user sees the catalog agent hint. Never retried
     /// through `archel-privileged`, never run as root (T-4-02).
@@ -178,6 +194,15 @@ impl ArchelError {
             Self::ProxyInvalid { detail } => {
                 rust_i18n::t!("errors.proxy_invalid", detail = detail).to_string()
             }
+            Self::VpnPathInvalid { path } => {
+                rust_i18n::t!("errors.vpn_path_invalid", path = path).to_string()
+            }
+            Self::VpnPluginMissing { plugin } => {
+                rust_i18n::t!("errors.vpn_plugin_missing", plugin = plugin).to_string()
+            }
+            Self::VpnImportFailed { file } => {
+                rust_i18n::t!("errors.vpn_import_failed", file = file).to_string()
+            }
             Self::PolkitDenied { action } => {
                 rust_i18n::t!("errors.polkit_denied", action = action).to_string()
             }
@@ -231,6 +256,15 @@ mod tests {
             },
             ArchelError::ProxyInvalid {
                 detail: "empty host".to_string(),
+            },
+            ArchelError::VpnPathInvalid {
+                path: "/proc/net/route".to_string(),
+            },
+            ArchelError::VpnPluginMissing {
+                plugin: "openvpn".to_string(),
+            },
+            ArchelError::VpnImportFailed {
+                file: "office.ovpn".to_string(),
             },
             ArchelError::PolkitDenied {
                 action: "set DNS".to_string(),

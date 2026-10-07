@@ -1,0 +1,10 @@
+---
+source: crates/archel/src/cmds/net_cmds.rs
+assertion_line: 791
+expression: value
+---
+{
+  "connection_name": "office",
+  "file": "office.ovpn",
+  "vpn_type": "openvpn"
+}

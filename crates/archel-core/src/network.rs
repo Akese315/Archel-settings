@@ -1883,3 +1883,563 @@ mod tests {
         );
     }
 }
+
+// --- Task 3 (TDD RED): VPN list/up/down/import behavior, written
+// before the `vpn` module below exists. This module fails to compile
+// until the implementation lands (RED evidence).
+#[cfg(test)]
+mod vpn_import_tests {
+    use super::vpn::{
+        infer_vpn_type, is_vpn_type, map_vpn_import_error, parse_import_connection_name,
+        parse_vpn_connections, validate_vpn_import_path, VpnConnection,
+    };
+    use crate::ArchelError;
+
+    #[test]
+    fn import_validator_accepts_configs_and_rejects_everything_else() {
+        let dir = std::env::temp_dir().join("archel-vpn-red");
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let ovpn = dir.join("office.ovpn");
+        let conf = dir.join("home.conf");
+        std::fs::write(&ovpn, "client\n").expect("fixture writes");
+        std::fs::write(&conf, "[Interface]\n").expect("fixture writes");
+        assert!(validate_vpn_import_path(ovpn.to_str().unwrap()).is_ok());
+        assert!(validate_vpn_import_path(conf.to_str().unwrap()).is_ok());
+        std::fs::remove_file(&ovpn).ok();
+        std::fs::remove_file(&conf).ok();
+        for bad in [
+            dir.join("missing.ovpn").to_str().unwrap().to_string(),
+            dir.to_str().unwrap().to_string(),
+            "/etc/hostname".to_string(),
+            "/proc/net/route".to_string(),
+            "/sys/class/net/lo".to_string(),
+            "/dev/null".to_string(),
+        ] {
+            let err = validate_vpn_import_path(&bad).expect_err("bad path must fail");
+            assert!(
+                matches!(err, ArchelError::VpnPathInvalid { .. }),
+                "typed path refusal for `{bad}`, got {err:?}"
+            );
+        }
+        std::fs::remove_dir(&dir).ok();
+    }
+
+    #[test]
+    fn import_errors_map_plugin_missing_polkit_and_generic_shapes() {
+        let err = map_vpn_import_error(
+            "import VPN",
+            "nmcli",
+            Some(1),
+            "Error: failed to load VPN plugin: unknown VPN plugin \"openvpn\".",
+            "openvpn",
+        );
+        assert!(
+            matches!(err, ArchelError::VpnPluginMissing { .. }),
+            "missing plugin maps typed, got {err:?}"
+        );
+        let err = map_vpn_import_error(
+            "import VPN",
+            "nmcli",
+            Some(1),
+            "Error: Not authorized to control networking.",
+            "openvpn",
+        );
+        assert!(
+            matches!(err, ArchelError::PolkitDenied { .. }),
+            "denials stay polkit, got {err:?}"
+        );
+        let err = map_vpn_import_error(
+            "import VPN",
+            "nmcli",
+            Some(1),
+            "Error: invalid file.",
+            "wireguard",
+        );
+        assert!(
+            matches!(err, ArchelError::VpnImportFailed { .. }),
+            "generic failures map typed, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn empty_vpn_list_serializes_to_honest_empty_array() {
+        let conns: Vec<VpnConnection> = parse_vpn_connections("", "");
+        assert!(conns.is_empty(), "no output means no VPN rows");
+        let payload = serde_json::to_string(&conns).expect("list serializes");
+        assert_eq!(payload, "[]", "empty VPN list is an honest empty array");
+        assert!(is_vpn_type("vpn"));
+        assert!(is_vpn_type("wireguard"));
+        assert!(!is_vpn_type("802-11-wireless"));
+        assert_eq!(infer_vpn_type(std::path::Path::new("a.ovpn")), Some("openvpn"));
+        assert_eq!(infer_vpn_type(std::path::Path::new("a.conf")), Some("wireguard"));
+        assert_eq!(infer_vpn_type(std::path::Path::new("a.txt")), None);
+        assert_eq!(
+            parse_import_connection_name("Connection 'office' (abc) successfully added.\n"),
+            Some("office".to_string())
+        );
+    }
+}
+
+/// Multi-protocol VPN management over the plan-01 NM path (NET-05).
+///
+/// Minimum: OpenVPN plus WireGuard, plus config-file import (per
+/// D-07; the popup GUI form stays deferred per D-08). List/up/down
+/// reuse the `nmcli` terse-field shape; import shells to `nmcli
+/// connection import` (plugin-implemented — `.ovpn`/`.conf` files are
+/// NEVER parsed in Rust).
+///
+/// Threat notes (T-4-03/T-4-04): the operator-supplied import path is
+/// confined client-side (exists, is-file, extension allowlist, no
+/// `/proc`/`/sys`/`/dev` even through symlinks) before any spawn or
+/// prompt; secrets are prompted by `nmcli --ask` itself at import
+/// time (never Archel argv, never logs, never snapshots); up/down and
+/// import are confirm-gated by the caller. Tests never down or delete
+/// the live `wg0` profile — coverage is read-only list assertions plus
+/// pure validators over fixtures.
+pub mod vpn {
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    use serde::Serialize;
+
+    use crate::error::ArchelError;
+
+    /// One NM VPN connection (WireGuard or plugin VPN).
+    ///
+    /// Serialized as-is for `--json`: an empty list encodes `[]`
+    /// (honest absence, never fake rows). Carries no secret material.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    pub struct VpnConnection {
+        /// Profile name (`Id`).
+        pub name: String,
+        /// Stable profile key (D-01 operate-on-UUID rule).
+        pub uuid: String,
+        /// NM connection type (`vpn`, `wireguard`, ...).
+        pub vpn_type: String,
+        /// True when the tunnel is currently active.
+        pub active: bool,
+    }
+
+    /// True for NM connection types managed on this path: plugin VPN
+    /// plus WireGuard. Pure over the terse TYPE field.
+    pub fn is_vpn_type(conn_type: &str) -> bool {
+        conn_type == "vpn" || conn_type.contains("wireguard")
+    }
+
+    /// Parses `nmcli -t -f NAME,UUID,TYPE connection show` output into
+    /// VPN connections, joining the `--active` output for the active
+    /// flags. Pure over captured stdout (both locales share the terse
+    /// shape), so headless fixtures cover it without touching `wg0`.
+    pub fn parse_vpn_connections(all_out: &str, active_out: &str) -> Vec<VpnConnection> {
+        let active: HashSet<String> = active_out
+            .lines()
+            .filter_map(|line| parse_terse_row(line).map(|(_, uuid, _)| uuid))
+            .collect();
+        all_out
+            .lines()
+            .filter_map(parse_terse_row)
+            .filter(|(_, _, conn_type)| is_vpn_type(conn_type))
+            .map(|(name, uuid, conn_type)| VpnConnection {
+                active: active.contains(&uuid),
+                name,
+                uuid,
+                vpn_type: conn_type,
+            })
+            .collect()
+    }
+
+    /// Splits one terse `NAME:UUID:TYPE` row. Names may carry escaped
+    /// colons (`\\:`); the split runs from the right (UUID then TYPE
+    /// have no colons) and the name is unescaped last.
+    fn parse_terse_row(line: &str) -> Option<(String, String, String)> {
+        const PLACEHOLDER: &str = "\u{0}";
+        let masked = line.replace("\\:", PLACEHOLDER);
+        let mut parts = masked.rsplitn(3, ':');
+        let conn_type = parts.next()?.trim().to_string();
+        let uuid = parts.next()?.trim().to_string();
+        let name = parts
+            .next()?
+            .replace(PLACEHOLDER, ":")
+            .trim()
+            .to_string();
+        if name.is_empty() || uuid.is_empty() || conn_type.is_empty() {
+            return None;
+        }
+        Some((name, uuid, conn_type))
+    }
+
+    /// Lists VPN connections: all profiles plus the active set, joined
+    /// into one honest list (empty when none — never fake rows).
+    pub fn vpn_list() -> Result<Vec<VpnConnection>, ArchelError> {
+        let all = super::run_nm_query(
+            "nmcli",
+            &["-t", "-f", "NAME,UUID,TYPE", "connection", "show"],
+        )?;
+        let active = super::run_nm_query(
+            "nmcli",
+            &["-t", "-f", "NAME,UUID,TYPE", "connection", "show", "--active"],
+        )?;
+        Ok(parse_vpn_connections(&all, &active))
+    }
+
+    /// Resolves an exact profile name or UUID against a fetched list.
+    /// UUID matches win; ambiguous duplicate names and misses both
+    /// land on the typed [`ArchelError::ProfileNotFound`] — never a
+    /// guess (T-4-01 adjacency rule, same as DNS resolution).
+    pub fn resolve_vpn_connection(
+        conns: &[VpnConnection],
+        query: &str,
+    ) -> Result<VpnConnection, ArchelError> {
+        if let Some(hit) = conns.iter().find(|conn| conn.uuid == query) {
+            return Ok(hit.clone());
+        }
+        let mut hits = conns.iter().filter(|conn| conn.name == query);
+        match (hits.next(), hits.next()) {
+            (Some(hit), None) => Ok(hit.clone()),
+            _ => Err(ArchelError::ProfileNotFound {
+                query: query.to_string(),
+            }),
+        }
+    }
+
+    /// Exact argv for `nmcli connection up <uuid>`. Pure for headless
+    /// coverage; the secret (if the profile needs one) is prompted by
+    /// the polkit/NM path, never by Archel.
+    pub fn vpn_up_argv(uuid: &str) -> Vec<String> {
+        vec![
+            "connection".to_string(),
+            "up".to_string(),
+            uuid.to_string(),
+        ]
+    }
+
+    /// Exact argv for `nmcli connection down <uuid>`.
+    pub fn vpn_down_argv(uuid: &str) -> Vec<String> {
+        vec![
+            "connection".to_string(),
+            "down".to_string(),
+            uuid.to_string(),
+        ]
+    }
+
+    /// Secret-free outcome of an up/down/import, for tables + `--json`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    pub struct VpnActionReport {
+        /// Action performed: `up`, `down` or `import`.
+        pub action: String,
+        /// Profile name acted on.
+        pub name: String,
+        /// Stable profile key.
+        pub uuid: String,
+        /// Tunnel state after the action (import leaves it to `up`).
+        pub active: bool,
+    }
+
+    /// Outcome of a config-file import, for tables + `--json`. The
+    /// source file is operator-supplied (like DNS servers); plugin
+    /// stdout is parsed, never executed; no secret material included.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    pub struct VpnImportReport {
+        /// Imported file path as given.
+        pub file: String,
+        /// Plugin used (`openvpn` or `wireguard`).
+        pub vpn_type: String,
+        /// Connection name the plugin reported, when parseable.
+        pub connection_name: Option<String>,
+    }
+
+    /// Activates one VPN connection by exact name or UUID.
+    pub fn vpn_up(query: &str) -> Result<VpnActionReport, ArchelError> {
+        let conns = vpn_list()?;
+        let target = resolve_vpn_connection(&conns, query)?;
+        let argv = vpn_up_argv(&target.uuid);
+        let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
+        super::run_nm_write("nmcli", &argv_ref, "activate VPN")?;
+        Ok(VpnActionReport {
+            action: "up".to_string(),
+            name: target.name,
+            uuid: target.uuid,
+            active: true,
+        })
+    }
+
+    /// Deactivates one VPN connection by exact name or UUID.
+    pub fn vpn_down(query: &str) -> Result<VpnActionReport, ArchelError> {
+        let conns = vpn_list()?;
+        let target = resolve_vpn_connection(&conns, query)?;
+        let argv_ref: Vec<&str> = vec!["connection", "down", &target.uuid];
+        super::run_nm_write("nmcli", &argv_ref, "deactivate VPN")?;
+        Ok(VpnActionReport {
+            action: "down".to_string(),
+            name: target.name,
+            uuid: target.uuid,
+            active: false,
+        })
+    }
+
+    /// Path prefixes never allowed for config-file import (T-4-03).
+    /// Checked on the raw path AND the canonicalized target, so a
+    /// symlink cannot smuggle `/proc` or `/dev` past the gate.
+    const FORBIDDEN_PREFIXES: &[&str] = &["/proc", "/sys", "/dev"];
+
+    /// Returns true when `path` is exactly or under a forbidden prefix
+    /// (boundary-safe: `/devfoo` is not `/dev`).
+    fn is_forbidden_path(path: &str) -> bool {
+        FORBIDDEN_PREFIXES.iter().any(|prefix| {
+            path == *prefix || path.starts_with(&format!("{prefix}/"))
+        })
+    }
+
+    /// Validates a VPN config-file path client-side, before any spawn
+    /// or prompt: non-empty, outside the forbidden prefixes, existing
+    /// regular file (not a directory), `.ovpn` or `.conf` extension,
+    /// canonical target also outside the forbidden prefixes.
+    pub fn validate_vpn_import_path(path: &str) -> Result<PathBuf, ArchelError> {
+        let refused = |p: &str| ArchelError::VpnPathInvalid { path: p.to_string() };
+        if path.trim().is_empty() || is_forbidden_path(path) {
+            return Err(refused(path));
+        }
+        let candidate = Path::new(path);
+        let valid_extension = candidate
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ovpn") || ext.eq_ignore_ascii_case("conf"));
+        if !valid_extension {
+            return Err(refused(path));
+        }
+        let canonical = std::fs::canonicalize(candidate).map_err(|_| refused(path))?;
+        if !canonical.is_file() {
+            return Err(refused(path));
+        }
+        if let Some(canonical_str) = canonical.to_str()
+            && is_forbidden_path(canonical_str)
+        {
+            return Err(refused(path));
+        }
+        Ok(canonical)
+    }
+
+    /// Infers the nmcli import plugin from the file extension: `.ovpn`
+    /// is OpenVPN, `.conf` is WireGuard (per D-07). Anything else is
+    /// rejected upstream by [`validate_vpn_import_path`].
+    pub fn infer_vpn_type(path: &Path) -> Option<&'static str> {
+        match path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("ovpn") => Some("openvpn"),
+            Some("conf") => Some("wireguard"),
+            _ => None,
+        }
+    }
+
+    /// Exact argv for `nmcli --ask connection import type <plugin>
+    /// file <path>`. `--ask` lets nmcli prompt for plugin-requested
+    /// secrets itself — Archel never sees, passes, logs or stores key
+    /// material (T-4-04). Pure for headless coverage.
+    pub fn vpn_import_argv(vpn_type: &str, path: &str) -> Vec<String> {
+        vec![
+            "--ask".to_string(),
+            "connection".to_string(),
+            "import".to_string(),
+            "type".to_string(),
+            vpn_type.to_string(),
+            "file".to_string(),
+            path.to_string(),
+        ]
+    }
+
+    /// Maps an `nmcli connection import` failure: polkit refusals stay
+    /// [`ArchelError::PolkitDenied`] (via the shared writer map),
+    /// missing-plugin stderr becomes [`ArchelError::VpnPluginMissing`]
+    /// with the install hint, everything else is
+    /// [`ArchelError::VpnImportFailed`]. Pure over captured stderr.
+    pub fn map_vpn_import_error(
+        action: &str,
+        tool: &str,
+        code: Option<i32>,
+        stderr: &str,
+        plugin: &str,
+    ) -> ArchelError {
+        let shared = super::map_nm_write_error(action, tool, code, stderr);
+        if matches!(shared, ArchelError::PolkitDenied { .. }) {
+            return shared;
+        }
+        const PLUGIN_MARKERS: &[&str] = &[
+            "unknown vpn plugin",
+            "failed to load vpn plugin",
+            "vpn plugin",
+        ];
+        let lowered = stderr.to_lowercase();
+        if PLUGIN_MARKERS.iter().any(|marker| lowered.contains(marker)) {
+            return ArchelError::VpnPluginMissing {
+                plugin: plugin.to_string(),
+            };
+        }
+        ArchelError::VpnImportFailed {
+            file: action.to_string(),
+        }
+    }
+
+    /// Runs one mutating `nmcli connection import` argv with the
+    /// import-specific error map (same spawn discipline as the other
+    /// NM writes: exact argv, `LC_ALL=C`, `wait_timeout` plus kill).
+    fn run_vpn_import(tool: &str, args: &[&str], action: &str, plugin: &str) -> Result<String, ArchelError> {
+        let binary = which::which(tool)
+            .map_err(|err| ArchelError::network_unavailable(format!("{tool} ({err})")))?;
+        let handle = duct::cmd(&binary, args)
+            .unchecked()
+            .env("LC_ALL", "C")
+            .stdout_capture()
+            .stderr_capture()
+            .start()
+            .map_err(|err| ArchelError::Internal(format!("cannot run '{tool}': {err}")))?;
+        let output = match handle
+            .wait_timeout(crate::packages::QUERY_TIMEOUT)
+            .map_err(|err| ArchelError::Internal(format!("cannot wait on '{tool}': {err}")))? {
+            Some(output) => output.clone(),
+            None => {
+                let _ = handle.kill();
+                return Err(ArchelError::Internal(format!(
+                    "'{tool}' exceeded the query timeout"
+                )));
+            }
+        };
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        match output.status.code() {
+            Some(0) => Ok(String::from_utf8_lossy(&output.stdout).into_owned()),
+            code => Err(map_vpn_import_error(action, tool, code, &stderr, plugin)),
+        }
+    }
+
+    /// Parses the connection name from `nmcli connection import`
+    /// stdout (`Connection 'office' (...) successfully added.`).
+    /// Best-effort: `None` when the plugin prints something else.
+    pub fn parse_import_connection_name(stdout: &str) -> Option<String> {
+        let (_, rest) = stdout.split_once("Connection '")?;
+        let (name, _) = rest.split_once('\'')?;
+        if name.trim().is_empty() {
+            None
+        } else {
+            Some(name.to_string())
+        }
+    }
+
+    /// Imports one config file through the nmcli plugin: validate,
+    /// infer the plugin, spawn `connection import --ask`, parse the
+    /// reported connection name. Never parses `.ovpn`/`.conf` in Rust.
+    pub fn vpn_import(path: &str) -> Result<VpnImportReport, ArchelError> {
+        let canonical = validate_vpn_import_path(path)?;
+        let vpn_type = infer_vpn_type(&canonical).ok_or_else(|| ArchelError::VpnPathInvalid {
+            path: path.to_string(),
+        })?;
+        let canonical_str = canonical.to_string_lossy().into_owned();
+        let argv = vpn_import_argv(vpn_type, &canonical_str);
+        let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let stdout = run_vpn_import("nmcli", &argv_ref, path, vpn_type)?;
+        Ok(VpnImportReport {
+            file: path.to_string(),
+            vpn_type: vpn_type.to_string(),
+            connection_name: parse_import_connection_name(&stdout),
+        })
+    }
+
+    /// French window title for every VPN table, from the catalog so
+    /// the binary owns no French copy (D-05/D-07).
+    pub fn vpn_title() -> String {
+        rust_i18n::t!("net.vpn_title").to_string()
+    }
+
+    /// French `(label, value)` rows for one up/down/import preview or
+    /// report. Import rows name the file plus plugin; up/down rows
+    /// name the connection plus target state.
+    pub fn action_preview_rows(name: &str, detail: &str) -> Vec<(String, String)> {
+        vec![
+            (rust_i18n::t!("net.label_name").to_string(), name.to_string()),
+            (rust_i18n::t!("net.label_type").to_string(), detail.to_string()),
+        ]
+    }
+
+    /// French `(label, value)` rows for a [`VpnActionReport`] (shown
+    /// after apply): connection, UUID and resulting active state.
+    pub fn action_report_rows(report: &VpnActionReport) -> Vec<(String, String)> {
+        let yes = rust_i18n::t!("net.value_yes").to_string();
+        let no = rust_i18n::t!("net.value_no").to_string();
+        vec![
+            (rust_i18n::t!("net.label_name").to_string(), report.name.clone()),
+            (rust_i18n::t!("net.label_uuid").to_string(), report.uuid.clone()),
+            (
+                rust_i18n::t!("net.label_active").to_string(),
+                if report.active { yes } else { no }.to_string(),
+            ),
+        ]
+    }
+
+    /// French `(label, value)` rows for a [`VpnImportReport`] (shown
+    /// after apply): file, plugin and reported connection name.
+    pub fn import_report_rows(report: &VpnImportReport) -> Vec<(String, String)> {
+        let na = || rust_i18n::t!("sys.unavailable").to_string();
+        vec![
+            (rust_i18n::t!("net.label_file").to_string(), report.file.clone()),
+            (
+                rust_i18n::t!("net.label_type").to_string(),
+                report.vpn_type.clone(),
+            ),
+            (
+                rust_i18n::t!("net.label_name").to_string(),
+                report.connection_name.clone().unwrap_or_else(na),
+            ),
+        ]
+    }
+
+    /// French `(label, value)` preview rows for an import (shown
+    /// before `[o/N]`): file plus plugin, both known pre-spawn.
+    pub fn import_preview_rows(file: &str, vpn_type: &str) -> Vec<(String, String)> {
+        vec![
+            (rust_i18n::t!("net.label_file").to_string(), file.to_string()),
+            (
+                rust_i18n::t!("net.label_type").to_string(),
+                vpn_type.to_string(),
+            ),
+        ]
+    }
+
+    /// French confirmation prompt for a VPN up/down/import.
+    pub fn confirm_vpn_prompt(kind: &str, name: &str) -> String {
+        match kind {
+            "down" => rust_i18n::t!("net.confirm_vpn_down", name = name).to_string(),
+            "import" => rust_i18n::t!("net.confirm_vpn_import", file = name, kind = "").to_string(),
+            _ => rust_i18n::t!("net.confirm_vpn_up", name = name).to_string(),
+        }
+    }
+
+    /// French confirmation prompt for an import, naming file + plugin.
+    pub fn confirm_vpn_import_prompt(file: &str, vpn_type: &str) -> String {
+        rust_i18n::t!("net.confirm_vpn_import", file = file, kind = vpn_type).to_string()
+    }
+
+    /// French `(label, value)` rows for one [`VpnConnection`] in the
+    /// list table.
+    pub fn connection_rows(conn: &VpnConnection) -> Vec<(String, String)> {        let yes = rust_i18n::t!("net.value_yes").to_string();
+        let no = rust_i18n::t!("net.value_no").to_string();
+        vec![
+            (rust_i18n::t!("net.label_name").to_string(), conn.name.clone()),
+            (rust_i18n::t!("net.label_uuid").to_string(), conn.uuid.clone()),
+            (
+                rust_i18n::t!("net.label_type").to_string(),
+                conn.vpn_type.clone(),
+            ),
+            (
+                rust_i18n::t!("net.label_active").to_string(),
+                if conn.active { yes } else { no }.to_string(),
+            ),
+        ]
+    }
+
+    /// French honest-empty line for a VPN-less list (never fake rows).
+    pub fn vpn_empty_line() -> String {
+        rust_i18n::t!("net.vpn_empty").to_string()
+    }
+}

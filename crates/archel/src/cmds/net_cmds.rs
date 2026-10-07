@@ -191,6 +191,153 @@ fn run_proxy_plan_confirmed(
     Ok(())
 }
 
+/// Runs `archel net vpn list`: configured tunnels plus active state
+/// (NET-05, read-only). An empty store renders the honest-empty line —
+/// never fake rows; `--json` encodes `[]`.
+pub fn run_vpn_list(json: bool) -> Result<(), ArchelError> {
+    use archel_core::network::vpn as core_vpn;
+    let conns = core_vpn::vpn_list()?;
+    if json {
+        println!("{}", encode_json(&conns, "net vpn list")?);
+    } else {
+        print!("{}", render_vpn_list_table(&conns));
+    }
+    Ok(())
+}
+
+/// French list table for VPN connections: title plus one line per
+/// tunnel, or the honest-empty line when none is configured.
+fn render_vpn_list_table(conns: &[archel_core::network::vpn::VpnConnection]) -> String {
+    use archel_core::network::vpn as core_vpn;
+    let mut out = format!("{}\n", core_vpn::vpn_title());
+    if conns.is_empty() {
+        out.push_str(&format!("{}\n", core_vpn::vpn_empty_line()));
+        return out;
+    }
+    for conn in conns {
+        let rows = core_vpn::connection_rows(conn);
+        let flat = rows
+            .iter()
+            .map(|(label, value)| format!("{label}={value}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push_str(&format!("- {flat}\n"));
+    }
+    out
+}
+
+/// Runs `archel net vpn up`: resolve read-only, preview, confirm, then
+/// activate (NET-05). The secret (if the profile needs one) is
+/// prompted by the NM path, never by Archel.
+pub fn run_vpn_up(connection: &str, json: bool) -> Result<(), ArchelError> {
+    use archel_core::network::vpn as core_vpn;
+    let conns = core_vpn::vpn_list()?;
+    let target = core_vpn::resolve_vpn_connection(&conns, connection)?;
+    run_vpn_action_confirmed(
+        "up",
+        &target.name,
+        &target.vpn_type,
+        &core_vpn::confirm_vpn_prompt("up", &target.name),
+        &target.uuid,
+        json,
+        |key| {
+            let report = core_vpn::vpn_up(key)?;
+            Ok(VpnReport::Action(report))
+        },
+    )
+}
+
+/// Runs `archel net vpn down`: same gate as up, then deactivate.
+pub fn run_vpn_down(connection: &str, json: bool) -> Result<(), ArchelError> {
+    use archel_core::network::vpn as core_vpn;
+    let conns = core_vpn::vpn_list()?;
+    let target = core_vpn::resolve_vpn_connection(&conns, connection)?;
+    run_vpn_action_confirmed(
+        "down",
+        &target.name,
+        &target.vpn_type,
+        &core_vpn::confirm_vpn_prompt("down", &target.name),
+        &target.uuid,
+        json,
+        |key| {
+            let report = core_vpn::vpn_down(key)?;
+            Ok(VpnReport::Action(report))
+        },
+    )
+}
+
+/// Runs `archel net vpn import`: validate the path client-side (no
+/// spawn, no prompt on failure), preview file plus plugin, confirm,
+/// then import through the nmcli plugin with `--ask` secrets.
+pub fn run_vpn_import(path: &str, json: bool) -> Result<(), ArchelError> {
+    use archel_core::network::vpn as core_vpn;
+    let canonical = core_vpn::validate_vpn_import_path(path)?;
+    let vpn_type = core_vpn::infer_vpn_type(&canonical).ok_or_else(|| {
+        ArchelError::VpnPathInvalid {
+            path: path.to_string(),
+        }
+    })?;
+    run_vpn_action_confirmed(
+        "import",
+        path,
+        vpn_type,
+        &core_vpn::confirm_vpn_import_prompt(path, vpn_type),
+        path,
+        json,
+        |file| {
+            let report = core_vpn::vpn_import(file)?;
+            Ok(VpnReport::Import(report))
+        },
+    )
+}
+
+/// Confirm-then-execute gate for VPN up/down/import (mirrors the DNS
+/// shape): the preview renders, `confirm_action` enforces the TTY +
+/// `[o/N]` rule, and only a yes reaches `apply`. The injectable
+/// `apply` keeps the abort path unit-coverable headless: refusal
+/// happens before the closure, so the closure structurally never runs
+/// on abort.
+fn run_vpn_action_confirmed(
+    kind: &str,
+    display_name: &str,
+    display_detail: &str,
+    prompt: &str,
+    apply_key: &str,
+    json: bool,
+    apply: impl FnOnce(&str) -> Result<VpnReport, ArchelError>,
+) -> Result<(), ArchelError> {
+    use archel_core::network::vpn as core_vpn;
+    let preview_rows: Vec<(String, String)> = if kind == "import" {
+        core_vpn::import_preview_rows(display_name, display_detail)
+    } else {
+        core_vpn::action_preview_rows(display_name, display_detail)
+    };
+    if !json {
+        print!("{}", render_label_table(&core_vpn::vpn_title(), &preview_rows));
+    }
+    archel_core::packages::confirm_action(prompt)?;
+    let report = apply(apply_key)?;
+    if json {
+        println!("{}", encode_json(&report, "net vpn")?);
+    } else {
+        let rows: Vec<(String, String)> = match &report {
+            VpnReport::Action(action) => core_vpn::action_report_rows(action),
+            VpnReport::Import(import) => core_vpn::import_report_rows(import),
+        };
+        print!("{}", render_label_table(&core_vpn::vpn_title(), &rows));
+    }
+    Ok(())
+}
+
+/// One VPN mutation outcome for `--json`: up/down share the action
+/// report, import has its own. Both shapes are secret-free (T-4-04).
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum VpnReport {
+    Action(archel_core::network::vpn::VpnActionReport),
+    Import(archel_core::network::vpn::VpnImportReport),
+}
+
 /// Encodes one `--json` payload (single object per line, NDJSON-safe).
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
     serde_json::to_string(payload)
@@ -517,8 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn proxy_confirm_abort_spawns_no_write() {
-        // Same injectable-closure abort gate as DNS: headless stdin is
+    fn proxy_confirm_abort_spawns_no_write() {        // Same injectable-closure abort gate as DNS: headless stdin is
         // not a TTY, so the gate refuses before the closure — the abort
         // path structurally spawns no `gsettings set`.
         use std::io::IsTerminal;
@@ -543,6 +689,149 @@ mod tests {
             writes.load(Ordering::SeqCst),
             0,
             "the abort path spawns no gsettings write"
+        );
+    }
+
+    fn sample_vpn_conns() -> Vec<archel_core::network::vpn::VpnConnection> {
+        use archel_core::network::vpn::VpnConnection;
+        vec![
+            VpnConnection {
+                name: "office".to_string(),
+                uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+                vpn_type: "vpn".to_string(),
+                active: true,
+            },
+            VpnConnection {
+                name: "wg-home".to_string(),
+                uuid: "66666666-7777-8888-9999-000000000000".to_string(),
+                vpn_type: "wireguard".to_string(),
+                active: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn vpn_empty_table_is_honest_without_fake_rows() {
+        archel_core::i18n::set_language("fr");
+        let table = render_vpn_list_table(&[]);
+        assert!(
+            table.contains(&archel_core::network::vpn::vpn_title()),
+            "empty list keeps its title"
+        );
+        assert!(
+            table.contains(&archel_core::network::vpn::vpn_empty_line()),
+            "empty list says so honestly: {table:?}"
+        );
+        assert!(
+            !table.contains("office") && !table.contains("wg-home"),
+            "no fake rows in the empty table"
+        );
+        let payload =
+            serde_json::to_string(&Vec::<archel_core::network::vpn::VpnConnection>::new())
+                .expect("empty list serializes");
+        assert_eq!(payload, "[]", "empty VPN list JSON is an honest empty array");
+    }
+
+    #[test]
+    fn vpn_list_table_names_every_tunnel_and_state() {
+        archel_core::i18n::set_language("fr");
+        let table = render_vpn_list_table(&sample_vpn_conns());
+        for needle in ["office", "wg-home", "wireguard"] {
+            assert!(table.contains(needle), "list must show `{needle}`");
+        }
+    }
+
+    #[test]
+    fn vpn_list_json_schema_pins_connection_fields() {
+        let value: serde_json::Value =
+            serde_json::to_value(&sample_vpn_conns()).expect("VPN list serializes");
+        let conns = value.as_array().expect("two tunnels");
+        assert_eq!(conns.len(), 2);
+        for conn in conns {
+            for field in ["name", "uuid", "vpn_type", "active"] {
+                assert!(conn.get(field).is_some(), "tunnel must carry `{field}`");
+            }
+        }
+        assert!(conns[0]["active"].as_bool().unwrap(), "office is active");
+        insta::assert_json_snapshot!(value);
+    }
+
+    #[test]
+    fn vpn_reports_json_pin_action_and_import_fields() {
+        use archel_core::network::vpn::{VpnActionReport, VpnImportReport};
+        let action = VpnReport::Action(VpnActionReport {
+            action: "up".to_string(),
+            name: "office".to_string(),
+            uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            active: true,
+        });
+        let value: serde_json::Value =
+            serde_json::to_value(&action).expect("action report serializes");
+        for field in ["action", "name", "uuid", "active"] {
+            assert!(value.get(field).is_some(), "action report carries `{field}`");
+        }
+        insta::assert_json_snapshot!("vpn_action_report", value);
+        let import = VpnReport::Import(VpnImportReport {
+            file: "office.ovpn".to_string(),
+            vpn_type: "openvpn".to_string(),
+            connection_name: Some("office".to_string()),
+        });
+        let value: serde_json::Value =
+            serde_json::to_value(&import).expect("import report serializes");
+        for field in ["file", "vpn_type", "connection_name"] {
+            assert!(value.get(field).is_some(), "import report carries `{field}`");
+        }
+        let joined = serde_json::to_string(&value).expect("import encodes");
+        for marker in ["password", "secret"] {
+            assert!(
+                !joined.to_lowercase().contains(marker),
+                "no secret-shaped field `{marker}` in VPN JSON"
+            );
+        }
+        insta::assert_json_snapshot!("vpn_import_report", value);
+    }
+
+    #[test]
+    fn vpn_action_confirm_abort_spawns_no_write() {
+        // Same injectable-closure abort gate as DNS/proxy: headless
+        // stdin is not a TTY, so the gate refuses before the closure —
+        // the abort path structurally spawns no `nmcli` up/down/import.
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return;
+        }
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let writes = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::clone(&writes);
+        let err = run_vpn_action_confirmed(
+            "up",
+            "office",
+            "vpn",
+            "Activer ? [o/N]",
+            "11111111-2222-3333-4444-555555555555",
+            false,
+            move |_| {
+                probe.fetch_add(1, Ordering::SeqCst);
+                Ok(VpnReport::Action(
+                    archel_core::network::vpn::VpnActionReport {
+                        action: "up".to_string(),
+                        name: "office".to_string(),
+                        uuid: "x".to_string(),
+                        active: true,
+                    },
+                ))
+            },
+        )
+        .expect_err("headless confirm must refuse");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "abort path needs the typed refusal, never a write: {err:?}"
+        );
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            0,
+            "the abort path spawns no nmcli write"
         );
     }
 }

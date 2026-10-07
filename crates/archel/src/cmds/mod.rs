@@ -182,6 +182,35 @@ enum NetAction {
         #[command(subcommand)]
         action: Option<ProxyAction>,
     },
+    /// VPN tunnels: list, connect, disconnect, import (NET-05)
+    Vpn {
+        #[command(subcommand)]
+        action: VpnAction,
+    },
+}
+
+/// One VPN operation under `archel net vpn` (NET-05, D-07/D-08).
+/// Import delegates to the nmcli plugin (`--ask` prompts for secrets);
+/// `.ovpn`/`.conf` files are never parsed by Archel.
+#[derive(Debug, Subcommand)]
+enum VpnAction {
+    /// Configured VPN tunnels and their active state (read-only)
+    List,
+    /// Activate one VPN connection by exact name or UUID
+    Up {
+        /// Exact connection name or UUID (see `net vpn list`)
+        connection: String,
+    },
+    /// Deactivate one VPN connection by exact name or UUID
+    Down {
+        /// Exact connection name or UUID (see `net vpn list`)
+        connection: String,
+    },
+    /// Import one .ovpn (OpenVPN) or .conf (WireGuard) file
+    Import {
+        /// Path to the .ovpn or .conf file (never /proc, /sys, /dev)
+        path: String,
+    },
 }
 
 /// One proxy operation under `archel net proxy` (NET-04). Bare
@@ -306,7 +335,12 @@ pub async fn run() -> Result<(), ArchelError> {
                 DnsAction::Reset { profile } => net_cmds::run_dns_reset(profile, cli.json),
             },
             NetAction::Test => net_cmds::run_test(cli.json).await,
-            NetAction::Proxy { action } => match action {
+            NetAction::Vpn { action } => match action {
+                VpnAction::List => net_cmds::run_vpn_list(cli.json),
+                VpnAction::Up { connection } => net_cmds::run_vpn_up(&connection, cli.json),
+                VpnAction::Down { connection } => net_cmds::run_vpn_down(&connection, cli.json),
+                VpnAction::Import { path } => net_cmds::run_vpn_import(&path, cli.json),
+            },            NetAction::Proxy { action } => match action {
                 None => net_cmds::run_proxy(cli.json),
                 Some(ProxyAction::Off) => net_cmds::run_proxy_off(cli.json),
                 Some(ProxyAction::Manual {
@@ -393,6 +427,11 @@ mod tests {
                 "off",
                 "manual",
                 "auto",
+                "vpn",
+                "list",
+                "up",
+                "down",
+                "import",
                 "landing",
                 "privileged",
                 "settings",
