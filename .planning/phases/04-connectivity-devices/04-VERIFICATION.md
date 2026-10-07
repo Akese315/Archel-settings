@@ -175,3 +175,18 @@ No gaps. All 16 must-haves verified against the codebase with unit + live-CLI ev
 ---
 _Verified: 2026-10-07_
 _Verifier: the agent (gsd-verifier)_
+
+## Gap Re-verification (G-04-2)
+
+**Scope:** plan 04-05 (commits a29ddf5, 3fb5336), gap G-04-2 only. Full-phase 16/16 verdict above untouched.
+
+| # | Item | Status | Evidence |
+|---|------|--------|----------|
+| 1 | vpn list surfaces provenance (stored vs ephemeral) in table + --json | ✓ closed | `vpn_list()` queries `-f NAME,UUID,TYPE,FILENAME` on both full + `--active` (network.rs:2273-2289); `is_persistent_filename` classifies empty/`--`→false, `/run/`→false, else true (2168-2177); `connection_rows` adds Provenance row stocké/éphémère (2698-2717); `VpnConnection.persistent: bool` serializes to --json; tests `provenance_parser_classifies_empty_dash_run_and_keyfile` + `vpn_list_table_names_every_tunnel_and_state` + `vpn_list_json_schema_pins_connection_fields` pass (6/6 core vpn, 5/5 cli vpn) |
+| 2 | vpn down on ephemeral warns tracking-loss + import hint through confirm gate | ✓ closed | `run_vpn_down` passes `down_preview_warning_rows(&target)` as extra preview rows + `confirm_vpn_down_prompt(&target)` as prompt (net_cmds.rs:257-274); ephemeral → `(Avertissement, <warning>)` row + warned prompt, persistent → empty/plain (network.rs:2654-2675); warning text carries `vpn import` hint (fr.json `vpn_ephemeral_warning`, test asserts `contains("vpn import")`); warn-and-continue through existing `[o/N]` gate, no new error type |
+| 3 | vpn_down reports post-deactivate read-back | ✓ closed | `vpn_down` routes deactivate then re-queries `vpn_list()` and reports `any(uuid match && active)`, degrading to `active:false` on read-back failure instead of hardcoded flag (network.rs:2382-2401) |
+| 4 | single argv builder, no delete verb | ✓ closed | `vpn_down` calls `vpn_down_argv(&target.uuid)` (2385); builder pinned to exactly `[connection, down, uuid]` by test `down_argv_is_exactly_connection_down_uuid_with_no_delete_verb`; grep: `delete` appears only in doc/test/defect comments, zero in any argv builder |
+| 5 | regression tests cover the above | ✓ closed | `cargo test -p archel-core --no-default-features network::vpn` 6/6 pass; `cargo test -p archel --no-default-features vpn` 5/5 pass; fixtures pure headless (never spawn nmcli, never touch wg0) |
+| 6 | prohibitions hold (no delete path, no secrets, no live wg0 mutation) | ✓ closed | No delete path added; `VpnConnection` carries no key material, only derived `persistent` flag surfaces (raw FILENAME never leaves parser — T-4-05); snapshot diff contains only new `persistent` field, secret-free; tests use fixtures only |
+
+**Verdict: gap-closed.** G-04-2 closure confirmed in code. Live-UAT caveat stands: re-running UAT test 2 against a real ephemeral tunnel still needs a human with a tunnel to sacrifice (automation cannot down a live tunnel).
