@@ -25,6 +25,10 @@ alpm = { version = "5.0.2", features = ["checkver"] }
 # prompt lands in a later plan); `networkmanager` 0.5.0 stays OUT —
 # SUS legitimacy verdict, human-gated spike only.
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "time", "macros"] }
+# Phase 4 (BT-02): stream combinators for the timed BlueZ discovery sweep
+# (`StreamExt::next` over `discover_devices`). Official futures-rs crate,
+# already in the lockfile via bluer — pinned direct here for the import.
+futures-util = "0.3"
 zbus = "5.19.0"
 # Phase 4 (NET-04/05): no-echo stdin prompts for proxy/VPN secrets.
 # Version verified via `cargo search` at plan time (7.5.4). Secrets are

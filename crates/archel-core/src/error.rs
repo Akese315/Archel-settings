@@ -97,11 +97,26 @@ pub enum ArchelError {
     /// scope) and every bt command probes before touching bluer.
     #[error("bluetooth unavailable: {detail}")]
     BluetoothUnavailable { detail: String },
+    /// A `bt pair/connect/disconnect` pick matched nothing in the
+    /// just-printed scanned set (free-form MAC or out-of-range index).
+    /// Carries the rejected pick for logs; the user sees the catalog
+    /// scan-then-pick line (T-4-05: never a free-form MAC bypass).
+    #[error("bluetooth device not found: '{query}'")]
+    DeviceNotFound { query: String },
+    /// BlueZ or the peer rejected the pairing (wrong code, declined on
+    /// either side, agent refusal). Carries the device label for logs;
+    /// nothing was bonded, nothing changed (T-4-05).
+    #[error("bluetooth pairing rejected for '{device}'")]
+    PairingRejected { device: String },
+    /// The pairing handshake outlived its ceiling (peer silent or out
+    /// of range). Carries the device label for logs; the attempt was
+    /// abandoned, nothing was bonded (T-4-05).
+    #[error("bluetooth pairing timed out for '{device}'")]
+    PairingTimeout { device: String },
     /// A named package has no repo or AUR record. Carries the name for
     /// logs; the user sees the catalog French line (used by `pkg info`).
     #[error("package not found: '{name}'")]
-    PackageNotFound { name: String },
-    /// A PKGBUILD failed the static `bash -n` gate. Carries the name for
+    PackageNotFound { name: String },    /// A PKGBUILD failed the static `bash -n` gate. Carries the name for
     /// the catalog line plus the log-only syntax detail (stderr text never
     /// reaches the terminal, T-3-11): nothing was built, nothing changed.
     #[error("PKGBUILD rejected for '{name}': {reason}")]
@@ -175,6 +190,30 @@ impl ArchelError {
             detail: detail.into(),
         }
     }
+
+    /// Friendly constructor for a scan-then-pick miss, naming the
+    /// rejected pick (index or MAC the scanned set did not contain).
+    pub fn device_not_found(query: impl Into<String>) -> Self {
+        Self::DeviceNotFound {
+            query: query.into(),
+        }
+    }
+
+    /// Friendly constructor for a refused pairing, naming the device
+    /// label (name plus MAC, never the PIN — T-4-06).
+    pub fn pairing_rejected(device: impl Into<String>) -> Self {
+        Self::PairingRejected {
+            device: device.into(),
+        }
+    }
+
+    /// Friendly constructor for a pairing that outlived its ceiling,
+    /// naming the device label (never the PIN — T-4-06).
+    pub fn pairing_timeout(device: impl Into<String>) -> Self {
+        Self::PairingTimeout {
+            device: device.into(),
+        }
+    }
     /// French user-facing rendering from the catalog — the ONLY string that
     /// may reach the terminal for this error (D-05/D-07/D-12).
     pub fn message(&self) -> String {
@@ -223,6 +262,15 @@ impl ArchelError {
             }
             Self::BluetoothUnavailable { .. } => {
                 rust_i18n::t!("errors.bluetooth_unavailable").to_string()
+            }
+            Self::DeviceNotFound { query } => {
+                rust_i18n::t!("errors.device_not_found", query = query).to_string()
+            }
+            Self::PairingRejected { device } => {
+                rust_i18n::t!("errors.pairing_rejected", device = device).to_string()
+            }
+            Self::PairingTimeout { device } => {
+                rust_i18n::t!("errors.pairing_timeout", device = device).to_string()
             }
             Self::PackageNotFound { name } => {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
@@ -289,6 +337,15 @@ mod tests {
             },
             ArchelError::BluetoothUnavailable {
                 detail: "no bus".to_string(),
+            },
+            ArchelError::DeviceNotFound {
+                query: "00:11:22:33:44:55".to_string(),
+            },
+            ArchelError::PairingRejected {
+                device: "Mouse (AA:BB:CC:DD:EE:FF)".to_string(),
+            },
+            ArchelError::PairingTimeout {
+                device: "Mouse (AA:BB:CC:DD:EE:FF)".to_string(),
             },
             ArchelError::PackageNotFound {
                 name: "firefox".to_string(),

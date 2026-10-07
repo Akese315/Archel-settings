@@ -159,7 +159,16 @@
     "signal_unknown": "N/A",
     "state_paired": "apparié",
     "state_connected": "connecté",
-    "state_known": "connu"
+    "state_known": "connu",
+    "scan_title": "Bluetooth — appareils à proximité",
+    "scan_empty": "Aucun appareil détecté à proximité.",
+    "pair_confirm": "Apparier %{name} (%{address}) ? [o/N]",
+    "pair_code": "Confirmez le code %{code} sur « %{name} » (%{address}) ? [o/N]",
+    "connect_confirm": "Connecter %{name} (%{address}) ? [o/N]",
+    "disconnect_confirm": "Déconnecter %{name} (%{address}) ? [o/N]",
+    "paired_ok": "« %{name} » apparié.",
+    "connected_ok": "« %{name} » connecté.",
+    "disconnected_ok": "« %{name} » déconnecté."
   },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
@@ -178,6 +187,9 @@
     "vpn_import_failed": "Échec de l'import de « %{file} » par le plugin VPN — vérifiez le fichier puis réessayez.",
     "polkit_denied": "Autorisation refusée pour « %{action} » — démarrez un agent polkit (hyprpolkitagent) puis réessayez. Archel ne contourne jamais ce refus.",
     "bluetooth_unavailable": "Bluetooth indisponible : le service « bluetooth » ne répond pas. Activez-le avec « sudo systemctl enable --now bluetooth » puis réessayez.",
+    "device_not_found": "Appareil Bluetooth « %{query} » introuvable : choisissez un appareil de la liste affichée par « archel bt scan ».",
+    "pairing_rejected": "Appariement avec « %{device} » refusé ou rejeté — rien n'a été modifié.",
+    "pairing_timeout": "Appariement avec « %{device} » : délai dépassé — appareil hors de portée ou sans réponse.",
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",

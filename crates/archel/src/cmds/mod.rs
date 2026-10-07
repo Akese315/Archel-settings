@@ -250,13 +250,31 @@ enum ProxyAction {
     },
 }
 
-/// One Bluetooth query under `archel bt` (BT-01/02). The tracer ships
-/// `devices`; scan plus confirm-gated pair/connect/disconnect land in
-/// the next task on the proven degrade slice.
+/// One Bluetooth query under `archel bt` (BT-01/02). `devices` is
+/// the read-only known list; `scan` is the timed live sweep whose
+/// numbered rows are the ONLY valid `pair/connect/disconnect` picks
+/// (scan-then-pick, D-06 — never a free-form MAC).
 #[derive(Debug, Subcommand)]
 enum BtAction {
     /// Known devices with name, MAC, signal and state (read-only)
     Devices,
+    /// Timed discovery sweep into a numbered live list (read-only)
+    Scan,
+    /// Pair the picked scan-list device (index or in-list MAC)
+    Pair {
+        /// 1-based scan-list index or MAC from `archel bt scan`
+        pick: String,
+    },
+    /// Connect the picked scan-list device (index or in-list MAC)
+    Connect {
+        /// 1-based scan-list index or MAC from `archel bt scan`
+        pick: String,
+    },
+    /// Disconnect the picked scan-list device (index or in-list MAC)
+    Disconnect {
+        /// 1-based scan-list index or MAC from `archel bt scan`
+        pick: String,
+    },
 }
 #[derive(Debug, Subcommand)]
 enum DnsAction {
@@ -377,6 +395,12 @@ pub async fn run() -> Result<(), ArchelError> {
         },
         Command::Bt { action } => match action {
             BtAction::Devices => bt_cmds::run_devices(cli.json).await,
+            BtAction::Scan => bt_cmds::run_scan(cli.json).await.map(|_| ()),
+            BtAction::Pair { pick } => bt_cmds::run_pair(&pick, cli.json).await,
+            BtAction::Connect { pick } => bt_cmds::run_connect(&pick, cli.json).await,
+            BtAction::Disconnect { pick } => {
+                bt_cmds::run_disconnect(&pick, cli.json).await
+            }
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`

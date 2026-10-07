@@ -57,6 +57,7 @@
 
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde::Serialize;
 
 use crate::error::ArchelError;
@@ -71,6 +72,11 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Ceiling for one timed discovery sweep (`bt scan`, BT-01).
 pub const SCAN_TIMEOUT: Duration = Duration::from_secs(12);
+
+/// Ceiling for one pairing handshake (`bt pair`, BT-02): past this
+/// the attempt is abandoned as [`ArchelError::PairingTimeout`] —
+/// a silent peer must never hang the CLI.
+pub const PAIR_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// One Bluetooth device row: name plus MAC plus signal are ALWAYS all
 /// shown together (T-4-05 rogue-spoof mitigation — a name alone never
@@ -288,6 +294,315 @@ pub fn signal_cell(rssi: Option<i16>) -> String {
     }
 }
 
+/// Resolves a `pair/connect/disconnect` pick against the just-printed
+/// scanned set (D-06 scan-then-pick, T-4-05): a 1-based list index or
+/// an in-list MAC (case-insensitive, trimmed) resolves; a free-form
+/// MAC never seen in the scan — or any other input, including a bare
+/// device name — fails as [`ArchelError::DeviceNotFound`]. There is
+/// no path from a raw MAC string to a mutation without membership
+/// in the scanned set.
+pub fn resolve_pick(
+    scanned: &[BtDevice],
+    pick: &str,
+) -> Result<BtDevice, ArchelError> {
+    let trimmed = pick.trim();
+    if let Ok(index) = trimmed.parse::<usize>()
+        && index >= 1
+        && index <= scanned.len()
+    {
+        return Ok(scanned[index - 1].clone());
+    }
+    let upper = trimmed.to_uppercase();
+    if let Some(device) = scanned
+        .iter()
+        .find(|row| row.address.to_uppercase() == upper)
+    {
+        return Ok(device.clone());
+    }
+    Err(ArchelError::device_not_found(pick))
+}
+
+/// Renders a BlueZ passkey for user confirmation: always 6 digits,
+/// zero-padded (the 2.1+harmony note in the bluer spike — a bare
+/// `42` would mismatch the peer's `000042`). Display-only: the
+/// value never enters logs or snapshots (T-4-06).
+pub fn format_passkey(passkey: u32) -> String {
+    format!("{passkey:06}")
+}
+
+/// Constant-shape passkey compare (T-4-06): every call walks all
+/// four octets and accumulates the difference, so the comparison
+/// shape never depends on where two codes differ. Used to verify
+/// the displayed code round-trips exactly before it is shown.
+pub fn passkeys_equal(expected: u32, observed: u32) -> bool {
+    let mut diff = 0u32;
+    for shift in [0, 8, 16, 24] {
+        diff |= ((expected >> shift) & 0xFF) ^ ((observed >> shift) & 0xFF);
+    }
+    diff == 0
+}
+
+/// Shape gate for a BlueZ-supplied code: 6-digit range AND an exact
+/// format round-trip (catches truncation/padding bugs before the
+/// code reaches the user — showing `42` for `000042` would fail
+/// the peer compare). Rejects malformed codes as `false` so the
+/// live agent handler can decline instead of prompting.
+pub fn check_passkey_shape(passkey: u32) -> bool {
+    passkey <= 999_999
+        && format_passkey(passkey).parse::<u32>().is_ok_and(|back| passkeys_equal(passkey, back))
+}
+
+/// Validates the pick against the scanned set, then runs the
+/// injectable confirm gate BEFORE the pair step: a declined (or
+/// non-TTY) confirm returns `ConfirmationAborted`/`NeedsTty` with
+/// the pair closure never invoked — the abort path is unit-covered
+/// headless, spawns nothing, and has no auto-accept fallback
+/// (T-4-05/T-4-06). Live callers pass [`crate::packages::confirm_action`]
+/// as `confirm`; tests inject literals.
+pub async fn pair_picked_with<F, P, Fut>(
+    scanned: &[BtDevice],
+    pick: &str,
+    confirm: F,
+    pair: P,
+) -> Result<BtDevice, ArchelError>
+where
+    F: FnOnce(&str) -> Result<(), ArchelError>,
+    P: FnOnce(BtDevice) -> Fut,
+    Fut: std::future::Future<Output = Result<(), ArchelError>>,
+{
+    let device = resolve_pick(scanned, pick)?;
+    confirm(&pair_confirm_prompt(&device))?;
+    pair(device.clone()).await?;
+    Ok(device)
+}
+
+/// Timed discovery sweep (`bt scan`, BT-01): probes the daemon
+/// first, then collects `DeviceAdded` sightings for [`SCAN_TIMEOUT`]
+/// into the merged live list (dedupe by MAC, stable signal order).
+/// Empty air yields an empty vec — the honest-empty table.
+pub async fn bt_scan() -> Result<Vec<BtDevice>, ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    let mut stream = adapter.discover_devices().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("discovery start: {err}"))
+    })?;
+    let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+    let mut sightings = Vec::new();
+    loop {
+        let remaining =
+            deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, stream.next()).await {
+            Ok(Some(bluer::AdapterEvent::DeviceAdded(address))) => {
+                let mac = address.to_string();
+                let (name, rssi) = match adapter.device(address) {
+                    Ok(device) => (
+                        device
+                            .alias()
+                            .await
+                            .ok()
+                            .filter(|alias| !alias.is_empty()),
+                        device.rssi().await.ok().flatten(),
+                    ),
+                    Err(_) => (None, None),
+                };
+                sightings.push(ScannedEvent::new(mac, name, rssi));
+            }
+            Ok(Some(_)) => {}
+            Ok(None) | Err(_) => break,
+        }
+    }
+    Ok(merge_scan_events(sightings))
+}
+
+/// Pairs an already scan-picked device (BT-02): registers a
+/// confirm-only agent — `request_confirmation` surfaces the BlueZ
+/// code with an explicit `[o/N]` prompt and maps decline/no-TTY to
+/// `Rejected`; every other handler stays `None` so those requests
+/// reject (never a default-`Agent` auto-accept constructor, T-4-05).
+/// The agent is per-application (bluer routes our own `pair()` to
+/// it), `request_default` stays `false`, and the handle drops on
+/// return. Past [`PAIR_TIMEOUT`] the attempt is abandoned as
+/// `PairingTimeout`; any other bluer failure is `PairingRejected`.
+/// The code is displayed for confirm only — never logged (T-4-06).
+pub async fn pair_device(device: &BtDevice) -> Result<(), ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let label = format!("{} ({})", device.name, device.address);
+    let address: bluer::Address = device
+        .address
+        .parse()
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    let peer = adapter
+        .device(address)
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    let prompt_name = device.name.clone();
+    let prompt_address = device.address.clone();
+    let agent = bluer::agent::Agent {
+        request_confirmation: Some(Box::new(move |req| {
+            let name = prompt_name.clone();
+            let address = prompt_address.clone();
+            Box::pin(async move {
+                if !check_passkey_shape(req.passkey) {
+                    return Err(bluer::agent::ReqError::Rejected);
+                }
+                // Display for confirm only: the code travels to the
+                // prompt string, never to logs or error payloads.
+                let code = format_passkey(req.passkey);
+                let prompt = pair_code_prompt(&name, &address, &code);
+                let answer = tokio::task::spawn_blocking(move || {
+                    crate::packages::confirm_action(&prompt)
+                })
+                .await;
+                match answer {
+                    Ok(Ok(())) => Ok(()),
+                    _ => Err(bluer::agent::ReqError::Rejected),
+                }
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = bluer::agent::ReqResult<()>> + Send>,
+                >
+        })),
+        ..bluer::agent::Agent::default()
+    };
+    let _agent = session.register_agent(agent).await.map_err(|err| {
+        ArchelError::pairing_rejected(format!("{label}: agent: {err}"))
+    })?;
+    match tokio::time::timeout(PAIR_TIMEOUT, peer.pair()).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => Err(ArchelError::pairing_rejected(format!("{label}: {err}"))),
+        Err(_) => Err(ArchelError::pairing_timeout(label)),
+    }
+}
+
+/// Connects an already scan-picked device (BT-02): daemon probe
+/// first, then the bluer connect. Bluer failures surface as
+/// `Internal` with log-only detail (pairing has the dedicated
+/// typed variants; connect is a transport call).
+pub async fn connect_device(device: &BtDevice) -> Result<(), ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let address: bluer::Address = device
+        .address
+        .parse()
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    let peer = adapter
+        .device(address)
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    peer.connect().await.map_err(|err| {
+        ArchelError::Internal(format!(
+            "bluetooth connect {} ({}): {err}",
+            device.name, device.address
+        ))
+    })
+}
+
+/// Disconnects an already scan-picked device (BT-02): same probe
+/// and lookup shape as [`connect_device`].
+pub async fn disconnect_device(device: &BtDevice) -> Result<(), ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let address: bluer::Address = device
+        .address
+        .parse()
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    let peer = adapter
+        .device(address)
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    peer.disconnect().await.map_err(|err| {
+        ArchelError::Internal(format!(
+            "bluetooth disconnect {} ({}): {err}",
+            device.name, device.address
+        ))
+    })
+}
+
+/// French section title for the live scan table, from the catalog.
+pub fn scan_title() -> String {
+    rust_i18n::t!("bt.scan_title").to_string()
+}
+
+/// French honest-empty line for a scan that saw no air traffic.
+pub fn scan_empty_line() -> String {
+    rust_i18n::t!("bt.scan_empty").to_string()
+}
+
+/// French pair-intent prompt naming name plus MAC (`[o/N]`),
+/// from the catalog (D-05/D-07).
+pub fn pair_confirm_prompt(device: &BtDevice) -> String {
+    rust_i18n::t!(
+        "bt.pair_confirm",
+        name = device.name,
+        address = device.address
+    )
+    .to_string()
+}
+
+/// French code-confirm prompt: the BlueZ code plus the peer name
+/// plus MAC travel together so the user confirms the RIGHT device
+/// (T-4-05 rogue-spoof mitigation). The code is display-only.
+pub fn pair_code_prompt(name: &str, address: &str, code: &str) -> String {
+    rust_i18n::t!("bt.pair_code", name = name, address = address, code = code)
+        .to_string()
+}
+
+/// French connect-intent prompt, from the catalog.
+pub fn connect_confirm_prompt(device: &BtDevice) -> String {
+    rust_i18n::t!(
+        "bt.connect_confirm",
+        name = device.name,
+        address = device.address
+    )
+    .to_string()
+}
+
+/// French disconnect-intent prompt, from the catalog.
+pub fn disconnect_confirm_prompt(device: &BtDevice) -> String {
+    rust_i18n::t!(
+        "bt.disconnect_confirm",
+        name = device.name,
+        address = device.address
+    )
+    .to_string()
+}
+
+/// French paired-ok line naming the device, from the catalog.
+pub fn paired_ok_line(device: &BtDevice) -> String {
+    rust_i18n::t!("bt.paired_ok", name = device.name).to_string()
+}
+
+/// French connected-ok line naming the device, from the catalog.
+pub fn connected_ok_line(device: &BtDevice) -> String {
+    rust_i18n::t!("bt.connected_ok", name = device.name).to_string()
+}
+
+/// French disconnected-ok line naming the device, from the catalog.
+pub fn disconnected_ok_line(device: &BtDevice) -> String {
+    rust_i18n::t!("bt.disconnected_ok", name = device.name).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +673,105 @@ mod tests {
             !unknown.contains('0'),
             "unknown signal must not render a zero: {unknown}"
         );
+    }
+
+    fn scanned_pair() -> Vec<BtDevice> {
+        vec![
+            BtDevice {
+                address: "AA:BB:CC:DD:EE:FF".to_string(),
+                name: "Mouse".to_string(),
+                rssi: Some(-50),
+                paired: false,
+                connected: false,
+            },
+            BtDevice {
+                address: "11:22:33:44:55:66".to_string(),
+                name: "Keyboard".to_string(),
+                rssi: Some(-70),
+                paired: true,
+                connected: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn pick_validator_accepts_in_list_index_and_mac() {
+        let scanned = scanned_pair();
+        let by_index = resolve_pick(&scanned, "1")
+            .expect("in-list 1-based index must resolve");
+        assert_eq!(by_index.address, "AA:BB:CC:DD:EE:FF");
+        let by_mac = resolve_pick(&scanned, "11:22:33:44:55:66")
+            .expect("in-list MAC must resolve");
+        assert_eq!(by_mac.name, "Keyboard");
+        let by_mac_lower = resolve_pick(&scanned, "aa:bb:cc:dd:ee:ff")
+            .expect("MAC match must be case-insensitive");
+        assert_eq!(by_mac_lower.name, "Mouse");
+        let padded = resolve_pick(&scanned, "  AA:BB:CC:DD:EE:FF ")
+            .expect("surrounding whitespace must not break an in-list MAC");
+        assert_eq!(padded.name, "Mouse");
+    }
+
+    #[test]
+    fn pick_validator_rejects_free_form_mac_and_garbage() {
+        let scanned = scanned_pair();
+        for pick in ["00:11:22:33:44:55", "3", "0", "", "mouse", "not-a-mac"] {
+            let err = resolve_pick(&scanned, pick)
+                .expect_err(&format!("pick {pick:?} must be rejected"));
+            assert!(
+                matches!(err, ArchelError::DeviceNotFound { .. }),
+                "wrong variant for {pick:?}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn passkey_renders_zero_padded_and_compares_constant_shape() {
+        assert_eq!(format_passkey(42), "000042");
+        assert_eq!(format_passkey(999999), "999999");
+        assert!(passkeys_equal(123456, 123456));
+        assert!(!passkeys_equal(123456, 123457));
+        assert!(!passkeys_equal(0, 999999));
+    }
+
+    #[tokio::test]
+    async fn pair_abort_path_spawns_nothing_without_auto_accept() {
+        let scanned = scanned_pair();
+        let mut paired = false;
+        let err = pair_picked_with(
+            &scanned,
+            "1",
+            |_| Err(ArchelError::ConfirmationAborted),
+            |_| {
+                paired = true;
+                async { Ok(()) }
+            },
+        )
+        .await
+        .expect_err("declined confirm must abort the pair");
+        assert!(
+            matches!(err, ArchelError::ConfirmationAborted),
+            "wrong variant: {err:?}"
+        );
+        assert!(!paired, "abort path must never reach the pair step");
+    }
+
+    #[tokio::test]
+    async fn pair_confirm_path_reaches_pair_step_once() {
+        let scanned = scanned_pair();
+        let mut calls = 0;
+        let picked = pair_picked_with(
+            &scanned,
+            "AA:BB:CC:DD:EE:FF",
+            |_| Ok(()),
+            |device: BtDevice| {
+                calls += 1;
+                assert_eq!(device.address, "AA:BB:CC:DD:EE:FF");
+                async { Ok(()) }
+            },
+        )
+        .await
+        .expect("confirmed pick must pair");
+        assert_eq!(picked.address, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(calls, 1);
     }
 }

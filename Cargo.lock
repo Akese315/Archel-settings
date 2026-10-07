@@ -131,6 +131,7 @@ dependencies = [
  "bluer",
  "directories",
  "duct",
+ "futures-util",
  "nvml-wrapper",
  "rpassword",
  "rust-i18n",
