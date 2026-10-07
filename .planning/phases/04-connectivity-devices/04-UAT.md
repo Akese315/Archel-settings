@@ -51,8 +51,8 @@ blocked: 0
 - gap_id: G-04-2
   truth: "vpn down deactivates the tunnel, profile remains configured and re-activatable via vpn up"
   status: failed
-  reason: "User reported: vpn down wg0 deleted the NM profile (nmcli empty, vpn list empty, vpn up fails for name and UUID)"
+  reason: "User reported: vpn down wg0 dropped NM tracking (vpn list empty, vpn up fails for name and UUID). Diagnosis: wg0 was an ephemeral NM-assumed profile for an externally-created WireGuard iface (wg-quick, managed-type external, no keyfile, journal shows only connection-deactivate success, zero connection-delete). No delete path exists in codebase (vpn_down builds connection/down/<uuid>). True defect: vpn list hides provenance and vpn down warns nothing about ephemeral profiles."
   severity: blocker
   test: 2
-  artifacts: []
-  missing: []
+  artifacts: ["crates/archel-core/src/network.rs (parse_vpn_connections, vpn_list, vpn_down)", "crates/archel/src/cmds/net_cmds.rs (run_vpn_down)"]
+  missing: ["FILENAME provenance column in vpn list query + VpnConnection persistence flag", "ephemeral-profile warning in down confirm preview", "post-deactivate read-back instead of hardcoded active:false", "vpn_down routed through vpn_down_argv single builder + regression tests"]
