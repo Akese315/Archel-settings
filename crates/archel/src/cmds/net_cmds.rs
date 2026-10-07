@@ -98,6 +98,21 @@ pub async fn run_test(json: bool) -> Result<(), ArchelError> {
     Ok(())
 }
 
+/// Runs `archel net proxy` (bare): one-line session proxy state plus
+/// the shell export hint for Hyprland terminals (NET-04 tracer).
+/// Read-only over the `gsettings` CLI; a missing store maps to the
+/// typed unavailable error, never a panic.
+pub fn run_proxy(json: bool) -> Result<(), ArchelError> {
+    let state = archel_core::proxy::proxy_status()?;
+    if json {
+        println!("{}", encode_json(&state, "net proxy")?);
+    } else {
+        println!("{}", archel_core::proxy::status_line(&state));
+        println!("{}", archel_core::proxy::export_hint());
+    }
+    Ok(())
+}
+
 /// Encodes one `--json` payload (single object per line, NDJSON-safe).
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
     serde_json::to_string(payload)

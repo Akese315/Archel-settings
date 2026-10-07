@@ -177,6 +177,8 @@ enum NetAction {
     },
     /// Gateway ping, DNS resolution and internet reachability (raw ms)
     Test,
+    /// Session proxy state (gsettings store, NET-04)
+    Proxy,
 }
 
 /// One DNS operation under `archel net dns` (NET-03, D-01/D-02/D-03).
@@ -270,6 +272,7 @@ pub async fn run() -> Result<(), ArchelError> {
                 DnsAction::Reset { profile } => net_cmds::run_dns_reset(profile, cli.json),
             },
             NetAction::Test => net_cmds::run_test(cli.json).await,
+            NetAction::Proxy => net_cmds::run_proxy(cli.json),
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -332,6 +335,7 @@ mod tests {
                 "set",
                 "reset",
                 "test",
+                "proxy",
                 "landing",
                 "privileged",
                 "settings",

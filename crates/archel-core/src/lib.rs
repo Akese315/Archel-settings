@@ -15,6 +15,7 @@ pub mod landing;
 pub mod network;
 pub mod packages;
 pub mod privileged;
+pub mod proxy;
 pub mod sensors;
 pub mod system;
 pub mod updates;
