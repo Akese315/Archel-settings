@@ -2007,7 +2007,8 @@ pub mod vpn {
     /// One NM VPN connection (WireGuard or plugin VPN).
     ///
     /// Serialized as-is for `--json`: an empty list encodes `[]`
-    /// (honest absence, never fake rows). Carries no secret material.
+    /// (honest absence, never fake rows). Carries no secret material —
+    /// provenance is a derived flag only, never the raw FILENAME path.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
     pub struct VpnConnection {
         /// Profile name (`Id`).
@@ -2018,6 +2019,15 @@ pub mod vpn {
         pub vpn_type: String,
         /// True when the tunnel is currently active.
         pub active: bool,
+        /// Profile provenance from the nmcli FILENAME field (G-04-2):
+        /// `true` when NM tracks a stored keyfile (e.g. under
+        /// `/etc/NetworkManager/system-connections`); `false` for
+        /// ephemeral assumed/generated profiles — empty or `--`
+        /// FILENAME, or a `/run/` generated path (externally-created
+        /// WireGuard iface with no keyfile). Deactivating a
+        /// non-persistent profile drops NM tracking, so `vpn up`
+        /// cannot restore it.
+        pub persistent: bool,
     }
 
     /// True for NM connection types managed on this path: plugin VPN
@@ -2026,26 +2036,89 @@ pub mod vpn {
         conn_type == "vpn" || conn_type.contains("wireguard")
     }
 
-    /// Parses `nmcli -t -f NAME,UUID,TYPE connection show` output into
-    /// VPN connections, joining the `--active` output for the active
-    /// flags. Pure over captured stdout (both locales share the terse
-    /// shape), so headless fixtures cover it without touching `wg0`.
+    /// Classifies the nmcli FILENAME field into the persistence signal
+    /// (G-04-2, T-4-05): empty or `--` (nmcli's absent marker) means
+    /// NM-assumed with no backing file; a `/run/` path means a
+    /// generated profile; anything else is a stored keyfile. Pure so
+    /// headless fixtures cover it without touching `wg0`.
+    pub fn is_persistent_filename(filename: &str) -> bool {
+        let filename = filename.trim();
+        if filename.is_empty() || filename == "--" {
+            return false;
+        }
+        if filename.starts_with("/run/") {
+            return false;
+        }
+        true
+    }
+
+    /// Parses `nmcli -t -f NAME,UUID,TYPE,FILENAME connection show`
+    /// output into VPN connections, joining the `--active` output for
+    /// the active flags. Pure over captured stdout (both locales share
+    /// the terse shape), so headless fixtures cover it without
+    /// touching `wg0`.
     pub fn parse_vpn_connections(all_out: &str, active_out: &str) -> Vec<VpnConnection> {
         let active: HashSet<String> = active_out
             .lines()
-            .filter_map(|line| parse_terse_row(line).map(|(_, uuid, _)| uuid))
+            .filter_map(parse_active_uuid)
             .collect();
         all_out
             .lines()
-            .filter_map(parse_terse_row)
-            .filter(|(_, _, conn_type)| is_vpn_type(conn_type))
-            .map(|(name, uuid, conn_type)| VpnConnection {
+            .filter_map(parse_vpn_row)
+            .filter(|(_, _, conn_type, _)| is_vpn_type(conn_type))
+            .map(|(name, uuid, conn_type, filename)| VpnConnection {
+                persistent: is_persistent_filename(&filename),
                 active: active.contains(&uuid),
                 name,
                 uuid,
                 vpn_type: conn_type,
             })
             .collect()
+    }
+
+    /// Splits one terse `NAME:UUID:TYPE:FILENAME` row. Names may carry
+    /// escaped colons (`\\:`); the split runs from the right (UUID,
+    /// TYPE and FILENAME have no colons) and the name is unescaped
+    /// last. A trailing empty FILENAME (assumed profile, no keyfile)
+    /// parses to `""`, never to a dropped row.
+    fn parse_vpn_row(line: &str) -> Option<(String, String, String, String)> {
+        const PLACEHOLDER: &str = "\u{0}";
+        let masked = line.replace("\\:", PLACEHOLDER);
+        let mut parts = masked.rsplitn(4, ':');
+        let filename = parts.next()?.trim().to_string();
+        let conn_type = parts.next()?.trim().to_string();
+        let uuid = parts.next()?.trim().to_string();
+        let name = parts
+            .next()?
+            .replace(PLACEHOLDER, ":")
+            .trim()
+            .to_string();
+        if name.is_empty() || uuid.is_empty() || conn_type.is_empty() {
+            return None;
+        }
+        Some((name, uuid, conn_type, filename))
+    }
+
+    /// Extracts the UUID from one `--active` terse row, tolerating both
+    /// the 4-field (`NAME:UUID:TYPE:FILENAME`) and legacy 3-field
+    /// (`NAME:UUID:TYPE`) shapes: the separator count (on the
+    /// escaped-colon-masked line) decides which field is the UUID.
+    fn parse_active_uuid(line: &str) -> Option<String> {
+        const PLACEHOLDER: &str = "\u{0}";
+        let masked = line.replace("\\:", PLACEHOLDER);
+        let separators = masked.chars().filter(|&c| c == ':').count();
+        if separators >= 3 {
+            let mut parts = masked.rsplitn(4, ':');
+            let _filename = parts.next()?;
+            let _conn_type = parts.next()?;
+            let uuid = parts.next()?.trim().to_string();
+            if uuid.is_empty() {
+                return None;
+            }
+            Some(uuid)
+        } else {
+            parse_terse_row(line).map(|(_, uuid, _)| uuid)
+        }
     }
 
     /// Splits one terse `NAME:UUID:TYPE` row. Names may carry escaped
@@ -2069,15 +2142,24 @@ pub mod vpn {
     }
 
     /// Lists VPN connections: all profiles plus the active set, joined
-    /// into one honest list (empty when none — never fake rows).
+    /// into one honest list (empty when none — never fake rows). The
+    /// FILENAME field carries provenance (G-04-2); only the derived
+    /// persistence flag is surfaced, never the raw path (T-4-05).
     pub fn vpn_list() -> Result<Vec<VpnConnection>, ArchelError> {
         let all = super::run_nm_query(
             "nmcli",
-            &["-t", "-f", "NAME,UUID,TYPE", "connection", "show"],
+            &["-t", "-f", "NAME,UUID,TYPE,FILENAME", "connection", "show"],
         )?;
         let active = super::run_nm_query(
             "nmcli",
-            &["-t", "-f", "NAME,UUID,TYPE", "connection", "show", "--active"],
+            &[
+                "-t",
+                "-f",
+                "NAME,UUID,TYPE,FILENAME",
+                "connection",
+                "show",
+                "--active",
+            ],
         )?;
         Ok(parse_vpn_connections(&all, &active))
     }
@@ -2420,10 +2502,25 @@ pub mod vpn {
         rust_i18n::t!("net.confirm_vpn_import", file = file, kind = vpn_type).to_string()
     }
 
+    /// French provenance word for a [`VpnConnection`]: stored keyfile
+    /// vs ephemeral assumed/generated profile (G-04-2). Pure over the
+    /// flag so renderers and tests share one wording.
+    pub fn provenance_label(persistent: bool) -> String {
+        rust_i18n::t!(if persistent {
+            "net.vpn_stored"
+        } else {
+            "net.vpn_ephemeral"
+        })
+        .to_string()
+    }
+
     /// French `(label, value)` rows for one [`VpnConnection`] in the
-    /// list table.
+    /// list table. The provenance row (G-04-2) marks ephemeral
+    /// assumed/generated profiles so they are never mistaken for
+    /// stored ones.
     pub fn connection_rows(conn: &VpnConnection) -> Vec<(String, String)> {        let yes = rust_i18n::t!("net.value_yes").to_string();
         let no = rust_i18n::t!("net.value_no").to_string();
+        let provenance = provenance_label(conn.persistent);
         vec![
             (rust_i18n::t!("net.label_name").to_string(), conn.name.clone()),
             (rust_i18n::t!("net.label_uuid").to_string(), conn.uuid.clone()),
@@ -2434,6 +2531,10 @@ pub mod vpn {
             (
                 rust_i18n::t!("net.label_active").to_string(),
                 if conn.active { yes } else { no }.to_string(),
+            ),
+            (
+                rust_i18n::t!("net.label_provenance").to_string(),
+                provenance,
             ),
         ]
     }

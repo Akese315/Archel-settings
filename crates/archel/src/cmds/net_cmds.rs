@@ -700,12 +700,14 @@ mod tests {
                 uuid: "11111111-2222-3333-4444-555555555555".to_string(),
                 vpn_type: "vpn".to_string(),
                 active: true,
+                persistent: true,
             },
             VpnConnection {
                 name: "wg-home".to_string(),
                 uuid: "66666666-7777-8888-9999-000000000000".to_string(),
                 vpn_type: "wireguard".to_string(),
                 active: false,
+                persistent: false,
             },
         ]
     }
@@ -739,6 +741,16 @@ mod tests {
         for needle in ["office", "wg-home", "wireguard"] {
             assert!(table.contains(needle), "list must show `{needle}`");
         }
+        // G-04-2: provenance is visible per row — the stored office
+        // profile and the ephemeral wg-home tunnel read differently.
+        assert!(
+            table.contains(&archel_core::network::vpn::provenance_label(true)),
+            "stored profile must be marked: {table:?}"
+        );
+        assert!(
+            table.contains(&archel_core::network::vpn::provenance_label(false)),
+            "ephemeral tunnel must be marked: {table:?}"
+        );
     }
 
     #[test]
@@ -748,11 +760,19 @@ mod tests {
         let conns = value.as_array().expect("two tunnels");
         assert_eq!(conns.len(), 2);
         for conn in conns {
-            for field in ["name", "uuid", "vpn_type", "active"] {
+            for field in ["name", "uuid", "vpn_type", "active", "persistent"] {
                 assert!(conn.get(field).is_some(), "tunnel must carry `{field}`");
             }
         }
         assert!(conns[0]["active"].as_bool().unwrap(), "office is active");
+        assert!(
+            conns[0]["persistent"].as_bool().unwrap(),
+            "office is a stored profile"
+        );
+        assert!(
+            !conns[1]["persistent"].as_bool().unwrap(),
+            "wg-home is ephemeral"
+        );
         insta::assert_json_snapshot!(value);
     }
 
