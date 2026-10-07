@@ -163,12 +163,46 @@ enum PkgAction {
     },
 }
 
-/// One network query under `archel net` (NET-01/02). Status ships in
-/// plan 01; dns/vpn/test land in later plans of this phase.
+/// One network query under `archel net` (NET-01/02/03/06). Status and
+/// dns-show ship reads; dns-set/reset mutate after confirmation;
+/// test runs the D-09 triple.
 #[derive(Debug, Subcommand)]
 enum NetAction {
     /// Primary-connection state, interface, SSID, IP, gateway and DNS
     Status,
+    /// Per-profile DNS: show, set, or reset to DHCP
+    Dns {
+        #[command(subcommand)]
+        action: DnsAction,
+    },
+    /// Gateway ping, DNS resolution and internet reachability (raw ms)
+    Test,
+}
+
+/// One DNS operation under `archel net dns` (NET-03, D-01/D-02/D-03).
+#[derive(Debug, Subcommand)]
+enum DnsAction {
+    /// Configured profile DNS plus effective DNS (read-only)
+    Show {
+        /// Exact profile name or UUID (default: active profile)
+        #[arg(long)]
+        profile: Option<String>,
+    },
+    /// Replace the profile DNS (IPv4 only) and reactivate
+    Set {
+        /// Exact profile name or UUID (default: active profile)
+        #[arg(long)]
+        profile: Option<String>,
+        /// One or more IPv4 DNS servers (replaces DHCP DNS)
+        #[arg(required = true, num_args(1..))]
+        servers: Vec<String>,
+    },
+    /// Clear custom DNS back to DHCP and reactivate
+    Reset {
+        /// Exact profile name or UUID (default: active profile)
+        #[arg(long)]
+        profile: Option<String>,
+    },
 }
 
 /// Runs the parsed subcommand.
@@ -228,6 +262,14 @@ pub async fn run() -> Result<(), ArchelError> {
         },
         Command::Net { action } => match action {
             NetAction::Status => net_cmds::run_status(cli.json).await,
+            NetAction::Dns { action } => match action {
+                DnsAction::Show { profile } => net_cmds::run_dns_show(profile, cli.json).await,
+                DnsAction::Set { profile, servers } => {
+                    net_cmds::run_dns_set(profile, servers, cli.json)
+                }
+                DnsAction::Reset { profile } => net_cmds::run_dns_reset(profile, cli.json),
+            },
+            NetAction::Test => net_cmds::run_test(cli.json).await,
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -285,6 +327,11 @@ mod tests {
                 "sys",
                 "net",
                 "status",
+                "dns",
+                "show",
+                "set",
+                "reset",
+                "test",
                 "landing",
                 "privileged",
                 "settings",

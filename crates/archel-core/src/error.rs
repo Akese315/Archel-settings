@@ -53,6 +53,20 @@ pub enum ArchelError {
     /// the catalog hint (check NM is running), never this payload.
     #[error("network unavailable: {detail}")]
     NetworkUnavailable { detail: String },
+    /// No NM profile matches `query` (exact name or UUID required;
+    /// ambiguous duplicate names also land here — never a guess).
+    #[error("network profile not found: '{query}'")]
+    ProfileNotFound { query: String },
+    /// A DNS server failed the strict IPv4 gate (v6, hostname,
+    /// leading-zero octet or out-of-range quad). Carries the offending
+    /// input for logs; nothing was spawned.
+    #[error("invalid DNS server: '{server}'")]
+    DnsInvalid { server: String },
+    /// An NM write was refused by polkit. Carries the attempted action
+    /// for logs; the user sees the catalog agent hint. Never retried
+    /// through `archel-privileged`, never run as root (T-4-02).
+    #[error("polkit denied for action '{action}': start a polkit agent (hyprpolkitagent) and retry")]
+    PolkitDenied { action: String },
     /// A named package has no repo or AUR record. Carries the name for
     /// logs; the user sees the catalog French line (used by `pkg info`).
     #[error("package not found: '{name}'")]
@@ -149,6 +163,15 @@ impl ArchelError {
             Self::NetworkUnavailable { .. } => {
                 rust_i18n::t!("errors.network_unavailable").to_string()
             }
+            Self::ProfileNotFound { query } => {
+                rust_i18n::t!("errors.profile_not_found", query = query).to_string()
+            }
+            Self::DnsInvalid { server } => {
+                rust_i18n::t!("errors.dns_invalid", server = server).to_string()
+            }
+            Self::PolkitDenied { action } => {
+                rust_i18n::t!("errors.polkit_denied", action = action).to_string()
+            }
             Self::PackageNotFound { name } => {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
             }
@@ -190,6 +213,15 @@ mod tests {
             },
             ArchelError::NetworkUnavailable {
                 detail: "no bus".to_string(),
+            },
+            ArchelError::ProfileNotFound {
+                query: "ghost".to_string(),
+            },
+            ArchelError::DnsInvalid {
+                server: "::1".to_string(),
+            },
+            ArchelError::PolkitDenied {
+                action: "set DNS".to_string(),
             },
             ArchelError::PackageNotFound {
                 name: "firefox".to_string(),

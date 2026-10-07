@@ -1,0 +1,24 @@
+---
+source: crates/archel/src/cmds/net_cmds.rs
+assertion_line: 370
+expression: value
+---
+{
+  "hops": [
+    {
+      "hop": "Passerelle",
+      "ms": 0.317,
+      "target": "10.192.61.1"
+    },
+    {
+      "hop": "DNS",
+      "ms": 12.0,
+      "target": "archlinux.org"
+    },
+    {
+      "hop": "Internet",
+      "ms": null,
+      "target": "1.1.1.1"
+    }
+  ]
+}

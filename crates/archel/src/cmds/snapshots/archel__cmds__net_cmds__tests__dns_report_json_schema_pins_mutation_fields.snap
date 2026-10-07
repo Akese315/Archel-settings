@@ -1,0 +1,17 @@
+---
+source: crates/archel/src/cmds/net_cmds.rs
+assertion_line: 293
+expression: value
+---
+{
+  "effective_dns": [
+    "1.1.1.1"
+  ],
+  "new_servers": [
+    "1.1.1.1"
+  ],
+  "old_servers": [],
+  "profile_name": "work",
+  "profile_uuid": "uuid-3",
+  "reactivated": true
+}
