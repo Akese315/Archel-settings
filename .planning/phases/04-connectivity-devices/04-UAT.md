@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 04-connectivity-devices
 source: [04-VERIFICATION.md]
 started: 2026-10-07T00:00:00Z
@@ -8,41 +8,51 @@ updated: 2026-10-07T00:00:00Z
 
 ## Current Test
 
-number: 1
-name: Live DNS round-trip
-expected: |
-  `archel net dns set 1.1.1.1` on a scratch profile shows old-to-new preview + [o/N] confirm, `net dns show` reports effective DNS read-back, `net dns reset` restores DHCP.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
 ### 1. Live DNS round-trip
 expected: set replaces profile DNS with preview + [o/N] confirm, show reports effective DNS read-back, reset restores DHCP
-result: [pending]
+result: pass
 
 ### 2. Live VPN connect + import
 expected: up/down activate by UUID with confirm; import delegates to nmcli plugin; plugin-missing yields VpnPluginMissing hint
-result: [pending]
+result: issue
+reported: "vpn down wg0 succeeded but deleted the NM profile instead of deactivating it — nmcli connection show no longer lists wg0, vpn list shows empty, and vpn up fails for both name and UUID"
+severity: blocker
 
 ### 3. Real-peer BT pair
 expected: PIN surfaces for explicit confirmation, pair-then-connect offer appears, no auto-accept
-result: [pending]
+result: pass
+note: "MAC pick accepted after name pick correctly rejected; pair [o/N] then pair-then-connect [o/N] offer both shown; WH-1000XM4 paired and connected"
 
 ### 4. Audible audio switch
 expected: default sink switches by stable name with read-back ok line; unknown names fail with candidate list
-result: [pending]
+result: pass
+note: "list shows 4 sinks + 2 sources with stable names; set-output to HDMI then WH-1000XM4 both confirmed with read-back; unknown name cleanly rejected with hint"
 
 ### 5. Live governor switch
 expected: typed hint without privilege; backend tag present on every output
-result: [pending]
+result: pass
+note: "status shows power-saver/cpufreq + collapse note; set balanced as non-root yields typed PolkitDenied hint with hyprpolkitagent guidance, no bypass"
 
 ## Summary
 
 total: 5
-passed: 0
-issues: 0
-pending: 5
+passed: 4
+issues: 1
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+- gap_id: G-04-2
+  truth: "vpn down deactivates the tunnel, profile remains configured and re-activatable via vpn up"
+  status: failed
+  reason: "User reported: vpn down wg0 deleted the NM profile (nmcli empty, vpn list empty, vpn up fails for name and UUID)"
+  severity: blocker
+  test: 2
+  artifacts: []
+  missing: []
