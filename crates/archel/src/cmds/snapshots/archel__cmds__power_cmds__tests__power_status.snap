@@ -1,0 +1,9 @@
+---
+source: crates/archel/src/cmds/power_cmds.rs
+expression: cpufreq_status()
+---
+{
+  "profile": "power-saver",
+  "backend": "cpufreq",
+  "note": "collapse note"
+}

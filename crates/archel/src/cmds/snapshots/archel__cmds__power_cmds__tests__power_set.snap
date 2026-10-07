@@ -1,0 +1,18 @@
+---
+source: crates/archel/src/cmds/power_cmds.rs
+expression: report
+---
+{
+  "action": "set",
+  "note": null,
+  "ok": true,
+  "profile": "balanced",
+  "status": {
+    "backend": "cpufreq",
+    "note": "collapse note",
+    "profile": "power-saver"
+  },
+  "transcript": [
+    "ok line"
+  ]
+}

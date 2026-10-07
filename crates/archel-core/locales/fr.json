@@ -185,6 +185,15 @@
     "output_ok": "Sortie audio basculée vers « %{name} ».",
     "input_ok": "Entrée audio basculée vers « %{name} »."
   },
+  "power": {
+    "status_title": "Alimentation — profil",
+    "label_profile": "Profil",
+    "label_backend": "Backend",
+    "label_note": "Note",
+    "cpufreq_note": "« balanced » et « power-saver » partagent le gouverneur powersave sur ce noyau : après un réglage « balanced », l'état affiché reste « power-saver ».",
+    "confirm_set": "Passer le profil d'alimentation en « %{profile} » ? [o/N]",
+    "set_ok": "Profil d'alimentation passé en « %{profile} »."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",

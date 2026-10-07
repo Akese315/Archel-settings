@@ -14,6 +14,7 @@ mod pkg_cmds;
 mod sys_cmds;
 mod bt_cmds;
 mod audio_cmds;
+mod power_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -69,6 +70,11 @@ enum Command {
     Audio {
         #[command(subcommand)]
         action: AudioAction,
+    },
+    /// Power profiles with backend provenance (PWR-01)
+    Power {
+        #[command(subcommand)]
+        action: PowerAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -301,6 +307,21 @@ enum AudioAction {
         name: String,
     },
 }
+/// One power query under `archel power` (PWR-01). `status` is the
+/// read-only profile-plus-backend readout; `set` switches the
+/// profile after confirmation (PPD property when PPD is present,
+/// cpufreq governor writes otherwise).
+#[derive(Debug, Subcommand)]
+enum PowerAction {
+    /// Active profile plus backend provenance (read-only)
+    Status,
+    /// Switch the power profile (confirm-gated)
+    Set {
+        /// Target profile: performance, balanced or power-saver
+        #[arg(value_parser = ["performance", "balanced", "power-saver"])]
+        profile: String,
+    },
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -432,6 +453,10 @@ pub async fn run() -> Result<(), ArchelError> {
             AudioAction::SetOutput { name } => audio_cmds::run_set_output(&name, cli.json),
             AudioAction::SetInput { name } => audio_cmds::run_set_input(&name, cli.json),
         },
+        Command::Power { action } => match action {
+            PowerAction::Status => power_cmds::run_status(cli.json).await,
+            PowerAction::Set { profile } => power_cmds::run_set(&profile, cli.json).await,
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -489,6 +514,7 @@ mod tests {
                 "net",
                 "bt",
                 "audio",
+                "power",
                 "devices",
                 "status",
                 "dns",

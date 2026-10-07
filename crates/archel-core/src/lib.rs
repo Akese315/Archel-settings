@@ -16,6 +16,7 @@ pub mod i18n;
 pub mod landing;
 pub mod network;
 pub mod packages;
+pub mod power;
 pub mod privileged;
 pub mod proxy;
 pub mod sensors;
