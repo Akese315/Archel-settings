@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundations & Safety Rails** - Workspace, error model, privilege helper skeleton, Qt spike gate
 - [x] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
 - [x] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
-- [ ] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control
+- [x] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control (completed 2026-10-07)
 - [ ] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes
 - [ ] **Phase 6: GUI Shell & Tabs** - archel-settings vertical-tab GUI over the proven API
 
@@ -82,13 +82,14 @@ Plans:
   3. User can scan, pair, connect, and disconnect Bluetooth devices including a working pairing flow
   4. User can select audio output and input devices and switch power profiles (performance/balanced/power-saver)
   5. User can perform every action above through `archel-cli`, proving each write path before GUI work starts
-**Plans**: 4 plans
+**Plans**: 5 plans (4 + 1 gap-closure)
 
 Plans:
-- [ ] 04-01-PLAN.md — Net tracer: live-bus spike, async foundation, status/DNS/triple-test (NET-01, NET-02, NET-03, NET-06)
-- [ ] 04-02-PLAN.md — Session proxy modes plus VPN list/up/down/import (NET-04, NET-05)
-- [ ] 04-03-PLAN.md — Bluetooth spike-first: scan plus PIN-confirm pair/connect/disconnect (BT-01, BT-02)
-- [ ] 04-04-PLAN.md — Audio sink/source by name plus power profiles with backend tag (SND-01, SND-02, PWR-01)
+- [x] 04-01-PLAN.md — Net tracer: live-bus spike, async foundation, status/DNS/triple-test (NET-01, NET-02, NET-03, NET-06)
+- [x] 04-02-PLAN.md — Session proxy modes plus VPN list/up/down/import (NET-04, NET-05)
+- [x] 04-03-PLAN.md — Bluetooth spike-first: scan plus PIN-confirm pair/connect/disconnect (BT-01, BT-02)
+- [x] 04-04-PLAN.md — Audio sink/source by name plus power profiles with backend tag (SND-01, SND-02, PWR-01)
+- [x] 04-05-PLAN.md — Gap closure G-04-2: VPN provenance in list + ephemeral down warning (NET-05)
 
 ### Phase 5: Hyprland Desktop
 **Goal**: Users can personalize and configure their Hyprland desktop — look, monitors, and inputs — safely
