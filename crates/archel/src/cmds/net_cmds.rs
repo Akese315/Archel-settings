@@ -239,6 +239,7 @@ pub fn run_vpn_up(connection: &str, json: bool) -> Result<(), ArchelError> {
         &target.vpn_type,
         &core_vpn::confirm_vpn_prompt("up", &target.name),
         &target.uuid,
+        Vec::new(),
         json,
         |key| {
             let report = core_vpn::vpn_up(key)?;
@@ -248,6 +249,11 @@ pub fn run_vpn_up(connection: &str, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel net vpn down`: same gate as up, then deactivate.
+///
+/// The confirm preview carries the ephemeral tracking-loss warning
+/// (G-04-2): deactivating a non-persistent profile drops NM tracking
+/// and `vpn up` cannot restore it — the operator sees this before
+/// the `[o/N]` gate, with the `vpn import` hint.
 pub fn run_vpn_down(connection: &str, json: bool) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
     let conns = core_vpn::vpn_list()?;
@@ -256,8 +262,9 @@ pub fn run_vpn_down(connection: &str, json: bool) -> Result<(), ArchelError> {
         "down",
         &target.name,
         &target.vpn_type,
-        &core_vpn::confirm_vpn_prompt("down", &target.name),
+        &core_vpn::confirm_vpn_down_prompt(&target),
         &target.uuid,
+        core_vpn::down_preview_warning_rows(&target),
         json,
         |key| {
             let report = core_vpn::vpn_down(key)?;
@@ -283,6 +290,7 @@ pub fn run_vpn_import(path: &str, json: bool) -> Result<(), ArchelError> {
         vpn_type,
         &core_vpn::confirm_vpn_import_prompt(path, vpn_type),
         path,
+        Vec::new(),
         json,
         |file| {
             let report = core_vpn::vpn_import(file)?;
@@ -303,15 +311,20 @@ fn run_vpn_action_confirmed(
     display_detail: &str,
     prompt: &str,
     apply_key: &str,
+    extra_preview_rows: Vec<(String, String)>,
     json: bool,
     apply: impl FnOnce(&str) -> Result<VpnReport, ArchelError>,
 ) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
-    let preview_rows: Vec<(String, String)> = if kind == "import" {
+    let mut preview_rows: Vec<(String, String)> = if kind == "import" {
         core_vpn::import_preview_rows(display_name, display_detail)
     } else {
         core_vpn::action_preview_rows(display_name, display_detail)
     };
+    // Down-preview warnings (G-04-2: ephemeral tracking loss) ride
+    // along here so the operator sees them before the `[o/N]` gate;
+    // up/import pass no extra rows.
+    preview_rows.extend(extra_preview_rows);
     if !json {
         print!("{}", render_label_table(&core_vpn::vpn_title(), &preview_rows));
     }
@@ -830,6 +843,7 @@ mod tests {
             "vpn",
             "Activer ? [o/N]",
             "11111111-2222-3333-4444-555555555555",
+            Vec::new(),
             false,
             move |_| {
                 probe.fetch_add(1, Ordering::SeqCst);

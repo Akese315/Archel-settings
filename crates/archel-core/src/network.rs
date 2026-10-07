@@ -1884,6 +1884,130 @@ mod tests {
     }
 }
 
+// --- Task 2 (TDD RED, G-04-2): provenance + ephemeral-down behavior,
+// written before the implementation below exists. These tests fail to
+// compile until `is_persistent_filename` handling, `down_preview_
+// warning_rows`, `confirm_vpn_down_prompt` and the read-back `vpn_down`
+// land (RED evidence). Headless fixtures only — never spawn nmcli,
+// never touch the live `wg0`.
+#[cfg(test)]
+mod vpn_provenance_tests {
+    use super::vpn::{
+        confirm_vpn_down_prompt, confirm_vpn_prompt, down_preview_warning_rows,
+        is_persistent_filename, parse_vpn_connections, vpn_down_argv, vpn_ephemeral_warning,
+        VpnConnection,
+    };
+
+    fn fixture(name: &str, persistent: bool) -> VpnConnection {
+        VpnConnection {
+            name: name.to_string(),
+            uuid: "4228f697-0000-4000-8000-000000000000".to_string(),
+            vpn_type: "wireguard".to_string(),
+            active: true,
+            persistent,
+        }
+    }
+
+    #[test]
+    fn provenance_parser_classifies_empty_dash_run_and_keyfile() {
+        assert!(!is_persistent_filename(""));
+        assert!(!is_persistent_filename("--"));
+        assert!(!is_persistent_filename("/run/NetworkManager/system-connections/gen.nmconnection"));
+        assert!(is_persistent_filename(
+            "/etc/NetworkManager/system-connections/office.nmconnection"
+        ));
+        let all = [
+            "office:11111111-2222-3333-4444-555555555555:vpn:/etc/NetworkManager/system-connections/office.nmconnection",
+            "wg0:4228f697-0000-4000-8000-000000000000:wireguard:",
+            "ext:99999999-0000-4000-8000-000000000000:vpn:--",
+            "gen:aaaaaaaa-0000-4000-8000-000000000000:wireguard:/run/NetworkManager/system-connections/gen.nmconnection",
+            "KLEY\\:home:bbbbbbbb-0000-4000-8000-000000000000:vpn:/etc/NetworkManager/system-connections/kley.nmconnection",
+        ]
+        .join("\n");
+        let active = "wg0:4228f697-0000-4000-8000-000000000000:wireguard:\n";
+        let conns = parse_vpn_connections(&all, active);
+        assert_eq!(conns.len(), 5, "every row parses, none dropped: {conns:?}");
+        let by_name = |wanted: &str| {
+            conns
+                .iter()
+                .find(|conn| conn.name == wanted)
+                .unwrap_or_else(|| panic!("{wanted} must parse"))
+        };
+        assert!(by_name("office").persistent, "keyfile path is stored");
+        assert!(!by_name("wg0").persistent, "empty FILENAME is ephemeral");
+        assert!(by_name("wg0").active, "active set still joins");
+        assert!(!by_name("ext").persistent, "`--` FILENAME is ephemeral");
+        assert!(!by_name("gen").persistent, "/run/ path is generated");
+        assert!(
+            by_name("KLEY:home").persistent,
+            "escaped-colon names keep the right-split discipline"
+        );
+        // Legacy 3-field `--active` output still joins (defense in depth).
+        let legacy = parse_vpn_connections(&all, "office:11111111-2222-3333-4444-555555555555:vpn\n");
+        assert!(
+            legacy
+                .iter()
+                .find(|conn| conn.name == "office")
+                .is_some_and(|conn| conn.active),
+            "legacy active shape still marks office active"
+        );
+    }
+
+    #[test]
+    fn down_argv_is_exactly_connection_down_uuid_with_no_delete_verb() {
+        let argv = vpn_down_argv("4228f697-0000-4000-8000-000000000000");
+        assert_eq!(
+            argv,
+            vec![
+                "connection",
+                "down",
+                "4228f697-0000-4000-8000-000000000000"
+            ],
+            "down argv is pinned — any drift is a defect"
+        );
+        assert!(
+            !argv.iter().any(|arg| arg == "delete"),
+            "down deactivates only: a delete verb here is a defect, not a fix"
+        );
+    }
+
+    #[test]
+    fn down_preview_warns_for_ephemeral_and_stays_quiet_for_stored() {
+        let warning = vpn_ephemeral_warning();
+        assert!(
+            warning.contains("vpn import"),
+            "the warning carries the import hint: {warning:?}"
+        );
+        let ephemeral_rows = down_preview_warning_rows(&fixture("wg0", false));
+        let flat = ephemeral_rows
+            .iter()
+            .map(|(label, value)| format!("{label}={value}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            flat.contains(&warning),
+            "ephemeral preview warns about tracking loss: {flat:?}"
+        );
+        assert!(
+            flat.contains("vpn import"),
+            "ephemeral preview hints `vpn import`: {flat:?}"
+        );
+        assert!(
+            confirm_vpn_down_prompt(&fixture("wg0", false)).contains(&warning),
+            "ephemeral confirm prompt warns too"
+        );
+        assert!(
+            down_preview_warning_rows(&fixture("office", true)).is_empty(),
+            "stored profiles preview with no warning row"
+        );
+        assert_eq!(
+            confirm_vpn_down_prompt(&fixture("office", true)),
+            confirm_vpn_prompt("down", "office"),
+            "stored profiles keep the plain down prompt"
+        );
+    }
+}
+
 // --- Task 3 (TDD RED): VPN list/up/down/import behavior, written
 // before the `vpn` module below exists. This module fails to compile
 // until the implementation lands (RED evidence).
@@ -2246,16 +2370,33 @@ pub mod vpn {
     }
 
     /// Deactivates one VPN connection by exact name or UUID.
+    ///
+    /// Routes through the single [`vpn_down_argv`] builder (no second
+    /// argv spelling may exist — a `delete` verb anywhere on this path
+    /// is a defect), then re-queries the list for the true post-action
+    /// state (same effective-read-back discipline as DNS show): an
+    /// ephemeral profile vanishes from NM tracking on down, so the
+    /// report carries the real active flag, never a hardcoded one. A
+    /// failed read-back degrades honestly to `active: false` instead
+    /// of failing the whole deactivation.
     pub fn vpn_down(query: &str) -> Result<VpnActionReport, ArchelError> {
         let conns = vpn_list()?;
         let target = resolve_vpn_connection(&conns, query)?;
-        let argv_ref: Vec<&str> = vec!["connection", "down", &target.uuid];
+        let argv = vpn_down_argv(&target.uuid);
+        let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
         super::run_nm_write("nmcli", &argv_ref, "deactivate VPN")?;
+        let active = vpn_list()
+            .map(|after| {
+                after
+                    .iter()
+                    .any(|conn| conn.uuid == target.uuid && conn.active)
+            })
+            .unwrap_or(false);
         Ok(VpnActionReport {
             action: "down".to_string(),
             name: target.name,
             uuid: target.uuid,
-            active: false,
+            active,
         })
     }
 
@@ -2494,6 +2635,42 @@ pub mod vpn {
             "down" => rust_i18n::t!("net.confirm_vpn_down", name = name).to_string(),
             "import" => rust_i18n::t!("net.confirm_vpn_import", file = name, kind = "").to_string(),
             _ => rust_i18n::t!("net.confirm_vpn_up", name = name).to_string(),
+        }
+    }
+
+    /// French tracking-loss warning for ephemeral profiles (G-04-2,
+    /// T-4-06): deactivation drops NM tracking and `vpn up` cannot
+    /// restore the tunnel — make it persistent via `vpn import`
+    /// first. Shown in the down preview and prompt, never a refusal:
+    /// the existing `[o/N]` gate carries the decision.
+    pub fn vpn_ephemeral_warning() -> String {
+        rust_i18n::t!("net.vpn_ephemeral_warning").to_string()
+    }
+
+    /// Down-preview warning rows for one resolved target (G-04-2):
+    /// exactly one `(Avertissement, …)` row when the profile is
+    /// ephemeral, empty when it is stored. Pure over the resolved
+    /// [`VpnConnection`] so the confirm preview pins it headlessly.
+    pub fn down_preview_warning_rows(target: &VpnConnection) -> Vec<(String, String)> {
+        if target.persistent {
+            return Vec::new();
+        }
+        vec![(
+            rust_i18n::t!("net.label_warning").to_string(),
+            vpn_ephemeral_warning(),
+        )]
+    }
+
+    /// Down confirm prompt for one resolved target: the plain down
+    /// prompt for stored profiles, with the tracking-loss warning
+    /// appended for ephemeral ones (warn-and-continue through the
+    /// existing `[o/N]` gate — no new refusal error type).
+    pub fn confirm_vpn_down_prompt(target: &VpnConnection) -> String {
+        let base = confirm_vpn_prompt("down", &target.name);
+        if target.persistent {
+            base
+        } else {
+            format!("{base} {}", vpn_ephemeral_warning())
         }
     }
 
