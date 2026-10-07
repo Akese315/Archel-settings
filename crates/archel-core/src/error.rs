@@ -89,6 +89,14 @@ pub enum ArchelError {
     /// through `archel-privileged`, never run as root (T-4-02).
     #[error("polkit denied for action '{action}': start a polkit agent (hyprpolkitagent) and retry")]
     PolkitDenied { action: String },
+    /// The BlueZ daemon (`bluetooth.service`) answered no bt command:
+    /// no `org.bluez` bus owner, no adapter, or the bluer session
+    /// failed. Carries log-only detail; the user sees the catalog
+    /// enable hint, never this payload. Core never auto-starts the
+    /// service (T-4-05/T-4-SC: hint only, service management out of
+    /// scope) and every bt command probes before touching bluer.
+    #[error("bluetooth unavailable: {detail}")]
+    BluetoothUnavailable { detail: String },
     /// A named package has no repo or AUR record. Carries the name for
     /// logs; the user sees the catalog French line (used by `pkg info`).
     #[error("package not found: '{name}'")]
@@ -160,6 +168,13 @@ impl ArchelError {
         }
     }
 
+    /// Friendly constructor for an unreachable Bluetooth stack, naming
+    /// the log-only detail (no bus owner, no adapter, bluer failure).
+    pub fn bluetooth_unavailable(detail: impl Into<String>) -> Self {
+        Self::BluetoothUnavailable {
+            detail: detail.into(),
+        }
+    }
     /// French user-facing rendering from the catalog — the ONLY string that
     /// may reach the terminal for this error (D-05/D-07/D-12).
     pub fn message(&self) -> String {
@@ -205,6 +220,9 @@ impl ArchelError {
             }
             Self::PolkitDenied { action } => {
                 rust_i18n::t!("errors.polkit_denied", action = action).to_string()
+            }
+            Self::BluetoothUnavailable { .. } => {
+                rust_i18n::t!("errors.bluetooth_unavailable").to_string()
             }
             Self::PackageNotFound { name } => {
                 rust_i18n::t!("errors.package_not_found", name = name).to_string()
@@ -268,6 +286,9 @@ mod tests {
             },
             ArchelError::PolkitDenied {
                 action: "set DNS".to_string(),
+            },
+            ArchelError::BluetoothUnavailable {
+                detail: "no bus".to_string(),
             },
             ArchelError::PackageNotFound {
                 name: "firefox".to_string(),

@@ -12,6 +12,7 @@ mod landing_cmd;
 mod net_cmds;
 mod pkg_cmds;
 mod sys_cmds;
+mod bt_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -57,6 +58,11 @@ enum Command {
     Net {
         #[command(subcommand)]
         action: NetAction,
+    },
+    /// Nearby and known Bluetooth devices plus pairing (BT-01/02)
+    Bt {
+        #[command(subcommand)]
+        action: BtAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -244,7 +250,14 @@ enum ProxyAction {
     },
 }
 
-/// One DNS operation under `archel net dns` (NET-03, D-01/D-02/D-03).
+/// One Bluetooth query under `archel bt` (BT-01/02). The tracer ships
+/// `devices`; scan plus confirm-gated pair/connect/disconnect land in
+/// the next task on the proven degrade slice.
+#[derive(Debug, Subcommand)]
+enum BtAction {
+    /// Known devices with name, MAC, signal and state (read-only)
+    Devices,
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -362,6 +375,9 @@ pub async fn run() -> Result<(), ArchelError> {
                 }
             },
         },
+        Command::Bt { action } => match action {
+            BtAction::Devices => bt_cmds::run_devices(cli.json).await,
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -417,6 +433,8 @@ mod tests {
                 "info",
                 "sys",
                 "net",
+                "bt",
+                "devices",
                 "status",
                 "dns",
                 "show",

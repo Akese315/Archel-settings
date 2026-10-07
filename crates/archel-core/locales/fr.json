@@ -149,6 +149,18 @@
     "label_latency": "Latence",
     "unit_ms": "ms"
   },
+  "bt": {
+    "devices_title": "Bluetooth — appareils connus",
+    "devices_empty": "Aucun appareil Bluetooth connu.",
+    "label_name": "Nom",
+    "label_mac": "Adresse MAC",
+    "label_signal": "Signal",
+    "label_state": "État",
+    "signal_unknown": "N/A",
+    "state_paired": "apparié",
+    "state_connected": "connecté",
+    "state_known": "connu"
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
@@ -165,6 +177,7 @@
     "vpn_plugin_missing": "Plugin VPN « %{plugin} » introuvable : installez le paquet du protocole (ex. « networkmanager-openvpn ») puis réessayez — rien n'a été importé.",
     "vpn_import_failed": "Échec de l'import de « %{file} » par le plugin VPN — vérifiez le fichier puis réessayez.",
     "polkit_denied": "Autorisation refusée pour « %{action} » — démarrez un agent polkit (hyprpolkitagent) puis réessayez. Archel ne contourne jamais ce refus.",
+    "bluetooth_unavailable": "Bluetooth indisponible : le service « bluetooth » ne répond pas. Activez-le avec « sudo systemctl enable --now bluetooth » puis réessayez.",
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",
