@@ -241,6 +241,405 @@ pub fn export_hint() -> String {
     rust_i18n::t!("net.proxy_export_hint").to_string()
 }
 
+// --- Mode transitions (NET-04): off/manual/auto with optional auth.
+//
+// Writes are confirm-gated by the caller (preview plus `[o/N]` via
+// `confirm_action`, `NeedsTty` when piped — same phase rule as DNS).
+// Passwords arrive here already prompted (see [`prompt_proxy_password`]);
+// this module never reads argv for secrets and never stores them.
+
+/// A validated proxy transition, planned read-only before any prompt.
+///
+/// Carries the password in memory ONLY between the no-echo prompt and
+/// the `gsettings set` spawn: no `Serialize` derive (it can never
+/// reach `--json`), and the manual `Debug` below redacts the secret
+/// so logs and test failures stay clean (T-4-04).
+pub struct ProxyPlan {
+    /// Target gsettings mode word (`none`, `manual`, `auto`).
+    pub mode: String,
+    /// Mode observed before the transition (for the preview table).
+    pub old_mode: String,
+    /// Manual-mode host (both schemes share it).
+    pub host: Option<String>,
+    /// Manual-mode port (both schemes share it).
+    pub port: Option<u16>,
+    /// Auto-mode PAC URL.
+    pub pac_url: Option<String>,
+    /// Bypass list applied as gsettings `ignore-hosts`.
+    pub exceptions: Vec<String>,
+    /// Optional proxy auth username (gsettings auth keys).
+    pub user: Option<String>,
+    /// Optional proxy auth password: in-memory only, never serialized.
+    pub password: Option<String>,
+}
+
+impl std::fmt::Debug for ProxyPlan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxyPlan")
+            .field("mode", &self.mode)
+            .field("old_mode", &self.old_mode)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("pac_url", &self.pac_url)
+            .field("exceptions", &self.exceptions)
+            .field("user", &self.user)
+            .field("password_set", &self.password.is_some())
+            .finish()
+    }
+}
+
+impl ProxyPlan {
+    /// Plans the `off` transition (used by the argv unit test without
+    /// touching the store).
+    pub fn off(old_mode: &str) -> Self {
+        Self {
+            mode: MODE_NONE.to_string(),
+            old_mode: old_mode.to_string(),
+            host: None,
+            port: None,
+            pac_url: None,
+            exceptions: Vec::new(),
+            user: None,
+            password: None,
+        }
+    }
+}
+
+/// Validates a manual proxy host: non-empty, no whitespace or quote
+/// characters (quotes would break the gsettings GVariant quoting).
+pub fn validate_proxy_host(host: &str) -> Result<String, ArchelError> {
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return Err(ArchelError::ProxyInvalid {
+            detail: "empty proxy host".to_string(),
+        });
+    }
+    if trimmed
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || c == '\'' || c == '"')
+    {
+        return Err(ArchelError::ProxyInvalid {
+            detail: format!("rejected proxy host {trimmed:?}"),
+        });
+    }
+    Ok(trimmed.to_string())
+}
+
+/// Validates a proxy port: 0 is never a usable proxy port.
+pub fn validate_proxy_port(port: u16) -> Result<u16, ArchelError> {
+    if port == 0 {
+        return Err(ArchelError::ProxyInvalid {
+            detail: "proxy port 0 is out of range (1-65535)".to_string(),
+        });
+    }
+    Ok(port)
+}
+
+/// Validates an auto-mode PAC URL: `http(s)` scheme, non-empty
+/// remainder, no whitespace. Anything else fails before any prompt.
+pub fn validate_pac_url(url: &str) -> Result<String, ArchelError> {
+    let trimmed = url.trim();
+    let rest = trimmed
+        .strip_prefix("http://")
+        .or_else(|| trimmed.strip_prefix("https://"));
+    match rest {
+        Some(rest) if !rest.is_empty() && !rest.chars().any(|c| c.is_whitespace() || c == '\'') => {
+            Ok(trimmed.to_string())
+        }
+        _ => Err(ArchelError::ProxyInvalid {
+            detail: format!("malformed PAC URL {trimmed:?} (http(s)://host/path expected)"),
+        }),
+    }
+}
+
+/// Splits the `--exceptions` comma list, trimming and dropping empties.
+/// Pure and total — an absent flag plans no bypass list.
+pub fn parse_exceptions(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Plans the `manual` transition: validates host/port client-side
+/// before any prompt or spawn (nothing mutates on validation error).
+pub fn plan_proxy_manual(
+    old_mode: &str,
+    host: &str,
+    port: u16,
+    exceptions: &str,
+    user: Option<&str>,
+    password: Option<String>,
+) -> Result<ProxyPlan, ArchelError> {
+    Ok(ProxyPlan {
+        mode: MODE_MANUAL.to_string(),
+        old_mode: old_mode.to_string(),
+        host: Some(validate_proxy_host(host)?),
+        port: Some(validate_proxy_port(port)?),
+        pac_url: None,
+        exceptions: parse_exceptions(exceptions),
+        user: user.map(str::to_string),
+        password,
+    })
+}
+
+/// Plans the `auto` transition: validates the PAC URL client-side.
+pub fn plan_proxy_auto(old_mode: &str, pac_url: &str) -> Result<ProxyPlan, ArchelError> {
+    Ok(ProxyPlan {
+        mode: MODE_AUTO.to_string(),
+        old_mode: old_mode.to_string(),
+        host: None,
+        port: None,
+        pac_url: Some(validate_pac_url(pac_url)?),
+        exceptions: Vec::new(),
+        user: None,
+        password: None,
+    })
+}
+
+/// Quotes one value for `gsettings set` (GVariant strings need single
+/// quotes). Callers validate first, so no quote characters survive to
+/// this point — the debug assertion guards the invariant.
+fn gsettings_string(value: &str) -> String {
+    debug_assert!(
+        !value.contains('\''),
+        "gsettings values must be quote-free after validation"
+    );
+    format!("'{value}'")
+}
+
+/// Formats a bypass list for `gsettings set` (`['a', 'b']` strv).
+fn gsettings_strv(values: &[String]) -> String {
+    let items = values
+        .iter()
+        .map(|item| gsettings_string(item))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{items}]")
+}
+
+/// Builds the exact `gsettings set` sequences for a [`ProxyPlan`].
+///
+/// Pure over the plan (pkg_helper_argv purity precedent): every mode
+/// maps to `mode` plus its scheme keys, so the transition is
+/// unit-coverable without spawning. Auth keys land only when a
+/// username was provided; the password travels as an in-process argv
+/// element (never through a shell, never logged, never snapshotted).
+pub fn proxy_write_argv(plan: &ProxyPlan) -> Vec<Vec<String>> {
+    let set = |key_path: &[&str], value: String| -> Vec<String> {
+        let mut argv = vec!["gsettings".to_string(), "set".to_string(), PROXY_SCHEMA.to_string()];
+        argv.extend(key_path.iter().map(|key| (*key).to_string()));
+        argv.push(value);
+        argv
+    };
+    let mut steps = vec![set(&["mode"], gsettings_string(&plan.mode))];
+    match plan.mode.as_str() {
+        MODE_MANUAL => {
+            if let (Some(host), Some(port)) = (plan.host.as_deref(), plan.port) {
+                for scheme in ["http", "https"] {
+                    steps.push(set(&[scheme, "host"], gsettings_string(host)));
+                    steps.push(set(&[scheme, "port"], port.to_string()));
+                }
+            }
+            if !plan.exceptions.is_empty() {
+                steps.push(set(&["ignore-hosts"], gsettings_strv(&plan.exceptions)));
+            }
+            if let Some(user) = plan.user.as_deref() {
+                for scheme in ["http", "https"] {
+                    steps.push(set(
+                        &[scheme, "authentication-user"],
+                        gsettings_string(user),
+                    ));
+                    if let Some(password) = plan.password.as_deref() {
+                        steps.push(set(
+                            &[scheme, "authentication-password"],
+                            gsettings_string(password),
+                        ));
+                    }
+                }
+            }
+        }
+        MODE_AUTO => {
+            if let Some(pac_url) = plan.pac_url.as_deref() {
+                steps.push(set(&["autoconfig-url"], gsettings_string(pac_url)));
+            }
+        }
+        _ => {}
+    }
+    steps
+}
+
+/// Applies one [`ProxyPlan`] through the `gsettings` CLI and reports
+/// the secret-free outcome for tables and `--json`.
+pub fn apply_proxy_plan(plan: &ProxyPlan) -> Result<ProxyApplyReport, ArchelError> {
+    for argv in proxy_write_argv(plan) {
+        run_gsettings_write(&argv, &format!("set proxy {}", plan.mode))?;
+    }
+    Ok(ProxyApplyReport::from_plan(plan))
+}
+
+/// Runs one mutating `gsettings set` argv (exact args, never shelled).
+fn run_gsettings_write(argv: &[String], action: &str) -> Result<(), ArchelError> {
+    let binary = which::which(&argv[0])
+        .map_err(|err| ArchelError::network_unavailable(format!("{} ({err})", argv[0])))?;
+    let handle = duct::cmd(&binary, &argv[1..])
+        .unchecked()
+        .env("LC_ALL", "C")
+        .stdout_capture()
+        .stderr_capture()
+        .start()
+        .map_err(|err| ArchelError::Internal(format!("cannot run gsettings: {err}")))?;
+    let output = match handle.wait_timeout(QUERY_TIMEOUT).map_err(|err| {
+        ArchelError::Internal(format!("cannot wait on gsettings: {err}"))
+    })? {
+        Some(output) => output.clone(),
+        None => {
+            let _ = handle.kill();
+            return Err(ArchelError::Internal("gsettings exceeded the query timeout".to_string()));
+        }
+    };
+    // Stderr stays log-only: auth-adjacent failures must never echo
+    // argv (which may carry the password element) to the terminal.
+    let _stderr_for_logs = String::from_utf8_lossy(&output.stderr);
+    match output.status.code() {
+        Some(0) => Ok(()),
+        code => Err(ArchelError::Internal(format!(
+            "cannot {action} (gsettings exit {code:?})"
+        ))),
+    }
+}
+
+/// Reads the proxy password via a no-echo stdin prompt at use time
+/// (researcher ruling: gsettings auth keys trivially supported).
+/// Never a CLI arg, never stored — the caller moves it straight into
+/// the plan. A prompt failure without a terminal maps to the typed
+/// `NeedsTty` refusal (same phase rule as mutations).
+pub fn prompt_proxy_password() -> Result<String, ArchelError> {
+    let prompt = rust_i18n::t!("net.proxy_password_prompt").to_string();
+    rpassword::prompt_password(prompt).map_err(|_| ArchelError::NeedsTty)
+}
+
+/// Secret-free outcome of [`apply_proxy_plan`]: the only shape that
+/// may reach tables and `--json` (T-4-04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProxyApplyReport {
+    /// Target mode word that was applied.
+    pub mode: String,
+    /// Human endpoint detail (`host:port`, PAC URL, or `None` for off).
+    pub endpoint: Option<String>,
+    /// Bypass list that was applied.
+    pub exceptions: Vec<String>,
+    /// Whether an auth username was configured (never the secret).
+    pub auth_configured: bool,
+}
+
+impl ProxyApplyReport {
+    /// Derives the report from the plan, dropping the password.
+    pub fn from_plan(plan: &ProxyPlan) -> Self {
+        let endpoint = match plan.mode.as_str() {
+            MODE_MANUAL => match (plan.host.as_deref(), plan.port) {
+                (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+                (Some(host), None) => Some(host.to_string()),
+                _ => None,
+            },
+            MODE_AUTO => plan.pac_url.clone(),
+            _ => None,
+        };
+        Self {
+            mode: plan.mode.clone(),
+            endpoint,
+            exceptions: plan.exceptions.clone(),
+            auth_configured: plan.user.is_some(),
+        }
+    }
+}
+
+/// French preview title for the confirm gate (shown before `[o/N]`).
+pub fn proxy_preview_title(plan: &ProxyPlan) -> String {
+    let _ = plan;
+    rust_i18n::t!("net.proxy_preview_title").to_string()
+}
+
+/// French `(label, value)` preview rows: old mode plus new endpoint.
+pub fn proxy_preview_rows(plan: &ProxyPlan) -> Vec<(String, String)> {
+    let report = ProxyApplyReport::from_plan(plan);
+    let na = || rust_i18n::t!("sys.unavailable").to_string();
+    vec![
+        (
+            rust_i18n::t!("net.label_old").to_string(),
+            mode_word(&plan.old_mode),
+        ),
+        (
+            rust_i18n::t!("net.label_new").to_string(),
+            mode_word(&plan.mode),
+        ),
+        (
+            rust_i18n::t!("net.label_server").to_string(),
+            report.endpoint.unwrap_or_else(na),
+        ),
+        (
+            rust_i18n::t!("net.label_exceptions").to_string(),
+            if report.exceptions.is_empty() {
+                na()
+            } else {
+                report.exceptions.join(" ")
+            },
+        ),
+    ]
+}
+
+/// French confirmation prompt naming the target mode and endpoint.
+pub fn confirm_proxy_prompt(plan: &ProxyPlan) -> String {
+    let report = ProxyApplyReport::from_plan(plan);
+    let na = || rust_i18n::t!("sys.unavailable").to_string();
+    rust_i18n::t!(
+        "net.confirm_proxy",
+        mode = mode_word(&plan.mode),
+        endpoint = report.endpoint.unwrap_or_else(na)
+    )
+    .to_string()
+}
+
+/// French title for the post-apply report table.
+pub fn proxy_report_title() -> String {
+    rust_i18n::t!("net.proxy_report_title").to_string()
+}
+
+/// French rows for the post-apply report table.
+pub fn proxy_report_rows(report: &ProxyApplyReport) -> Vec<(String, String)> {
+    let na = || rust_i18n::t!("sys.unavailable").to_string();
+    vec![
+        (
+            rust_i18n::t!("net.label_mode").to_string(),
+            mode_word(&report.mode),
+        ),
+        (
+            rust_i18n::t!("net.label_server").to_string(),
+            report.endpoint.clone().unwrap_or_else(na),
+        ),
+        (
+            rust_i18n::t!("net.label_exceptions").to_string(),
+            if report.exceptions.is_empty() {
+                na()
+            } else {
+                report.exceptions.join(" ")
+            },
+        ),
+    ]
+}
+
+/// French wording for a gsettings mode word (raw fallback for exotic
+/// modes — honest display, never a default-ok label).
+fn mode_word(mode: &str) -> String {
+    match mode {
+        MODE_MANUAL => rust_i18n::t!("net.proxy_mode_manual").to_string(),
+        MODE_AUTO => rust_i18n::t!("net.proxy_mode_auto").to_string(),
+        MODE_NONE => rust_i18n::t!("net.proxy_mode_none").to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,8 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn proxy_state_json_carries_no_secret_shape() {
-        // Guard for T-4-04: the serialized struct has no field that
+    fn proxy_state_json_carries_no_secret_shape() {        // Guard for T-4-04: the serialized struct has no field that
         // could carry key material — auth never enters this struct.
         let value =
             serde_json::to_value(&manual_state()).expect("ProxyState serializes");
@@ -380,6 +778,116 @@ mod tests {
             assert!(
                 !joined.to_lowercase().contains(marker),
                 "no secret-shaped field `{marker}` in proxy JSON"
+            );
+        }
+    }
+
+    // --- Task 2 (TDD RED): mode-transition behavior, written before
+    // the implementation. These fail to compile until the plan/argv
+    // API below them exists.
+
+    #[test]
+    fn argv_builder_maps_modes_to_exact_gsettings_sequences() {
+        let off = ProxyPlan::off("manual");
+        assert_eq!(
+            proxy_write_argv(&off),
+            vec![vec![
+                "gsettings".to_string(),
+                "set".to_string(),
+                "org.gnome.system.proxy".to_string(),
+                "mode".to_string(),
+                "'none'".to_string(),
+            ]]
+        );
+        let manual = plan_proxy_manual(
+            "none",
+            "proxy.example",
+            8080,
+            "localhost, 127.0.0.0/8",
+            Some("alice"),
+            Some("s3cret".to_string()),
+        )
+        .expect("valid manual input plans");
+        let argv = proxy_write_argv(&manual);
+        let flat = argv
+            .iter()
+            .map(|step| step.join(" "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for needle in [
+            "set org.gnome.system.proxy mode 'manual'",
+            "set org.gnome.system.proxy http host 'proxy.example'",
+            "set org.gnome.system.proxy http port 8080",
+            "set org.gnome.system.proxy https host 'proxy.example'",
+            "set org.gnome.system.proxy https port 8080",
+            "ignore-hosts ['localhost', '127.0.0.0/8']",
+            "http authentication-user 'alice'",
+            "https authentication-user 'alice'",
+        ] {
+            assert!(flat.contains(needle), "manual argv must carry `{needle}`");
+        }
+        let auto = plan_proxy_auto("none", "http://pac.example/proxy.pac")
+            .expect("valid PAC URL plans");
+        let argv = proxy_write_argv(&auto);
+        let flat = argv
+            .iter()
+            .map(|step| step.join(" "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for needle in [
+            "set org.gnome.system.proxy mode 'auto'",
+            "set org.gnome.system.proxy autoconfig-url 'http://pac.example/proxy.pac'",
+        ] {
+            assert!(flat.contains(needle), "auto argv must carry `{needle}`");
+        }
+    }
+
+    #[test]
+    fn host_port_and_pac_validators_reject_garbage() {
+        for bad_host in ["", "   ", "has space.example", "quote'.example"] {
+            assert!(
+                validate_proxy_host(bad_host).is_err(),
+                "host `{bad_host:?}` must fail validation"
+            );
+        }
+        assert!(validate_proxy_port(0).is_err(), "port 0 must fail");
+        assert!(validate_proxy_port(8080).is_ok());
+        for bad_pac in ["", "notaurl", "ftp://x/y.pac", "http://", "http://has space/x"] {
+            assert!(
+                validate_pac_url(bad_pac).is_err(),
+                "PAC URL `{bad_pac:?}` must fail validation"
+            );
+        }
+        assert!(validate_pac_url("https://pac.example/p.pac").is_ok());
+    }
+
+    #[test]
+    fn secret_redaction_keeps_passwords_out_of_debug_json_and_reports() {
+        let plan = plan_proxy_manual(
+            "none",
+            "proxy.example",
+            8080,
+            "",
+            Some("alice"),
+            Some("s3cret-pw".to_string()),
+        )
+        .expect("valid manual input plans");
+        let debug = format!("{plan:?}");
+        assert!(
+            !debug.contains("s3cret-pw"),
+            "Debug must never echo the password: {debug:?}"
+        );
+        let report = ProxyApplyReport::from_plan(&plan);
+        let joined =
+            serde_json::to_string(&report).expect("apply report serializes");
+        assert!(
+            !joined.contains("s3cret-pw"),
+            "apply report JSON must never carry the password"
+        );
+        for marker in ["password", "secret"] {
+            assert!(
+                !joined.to_lowercase().contains(marker),
+                "no secret-shaped field `{marker}` in report JSON"
             );
         }
     }

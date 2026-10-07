@@ -62,6 +62,12 @@ pub enum ArchelError {
     /// input for logs; nothing was spawned.
     #[error("invalid DNS server: '{server}'")]
     DnsInvalid { server: String },
+    /// A proxy mode transition failed client-side validation (empty or
+    /// quoted host, zero/out-of-range port, malformed PAC URL).
+    /// Carries the log-only detail; nothing was spawned, nothing was
+    /// prompted, the store is untouched.
+    #[error("invalid proxy setting: {detail}")]
+    ProxyInvalid { detail: String },
     /// An NM write was refused by polkit. Carries the attempted action
     /// for logs; the user sees the catalog agent hint. Never retried
     /// through `archel-privileged`, never run as root (T-4-02).
@@ -169,6 +175,9 @@ impl ArchelError {
             Self::DnsInvalid { server } => {
                 rust_i18n::t!("errors.dns_invalid", server = server).to_string()
             }
+            Self::ProxyInvalid { detail } => {
+                rust_i18n::t!("errors.proxy_invalid", detail = detail).to_string()
+            }
             Self::PolkitDenied { action } => {
                 rust_i18n::t!("errors.polkit_denied", action = action).to_string()
             }
@@ -219,6 +228,9 @@ mod tests {
             },
             ArchelError::DnsInvalid {
                 server: "::1".to_string(),
+            },
+            ArchelError::ProxyInvalid {
+                detail: "empty host".to_string(),
             },
             ArchelError::PolkitDenied {
                 action: "set DNS".to_string(),

@@ -26,3 +26,8 @@ alpm = { version = "5.0.2", features = ["checkver"] }
 # SUS legitimacy verdict, human-gated spike only.
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "time", "macros"] }
 zbus = "5.19.0"
+# Phase 4 (NET-04/05): no-echo stdin prompts for proxy/VPN secrets.
+# Version verified via `cargo search` at plan time (7.5.4). Secrets are
+# prompted at use time only — never CLI args, never stored, never
+# logged (T-4-04).
+rpassword = "7.5"

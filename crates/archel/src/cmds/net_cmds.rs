@@ -113,6 +113,84 @@ pub fn run_proxy(json: bool) -> Result<(), ArchelError> {
     Ok(())
 }
 
+/// Runs `archel net proxy off`: clear the session proxy after
+/// confirmation (NET-04). Planned read-only first (old mode read
+/// before any prompt), so store failures surface typed with no TTY
+/// need.
+pub fn run_proxy_off(json: bool) -> Result<(), ArchelError> {
+    let old = archel_core::proxy::proxy_status()?;
+    let plan = archel_core::proxy::ProxyPlan::off(&old.mode);
+    run_proxy_plan_confirmed(&plan, json, archel_core::proxy::apply_proxy_plan)
+}
+
+/// Runs `archel net proxy manual`: per-scheme host/port with optional
+/// bypass list and auth (NET-04). `--password` triggers a no-echo
+/// stdin prompt at use time — the secret travels straight into the
+/// plan, never through argv, logs or snapshots.
+pub fn run_proxy_manual(
+    host: &str,
+    port: u16,
+    exceptions: Option<&str>,
+    user: Option<&str>,
+    prompt_password: bool,
+    json: bool,
+) -> Result<(), ArchelError> {
+    let old = archel_core::proxy::proxy_status()?;
+    let password = if prompt_password {
+        Some(archel_core::proxy::prompt_proxy_password()?)
+    } else {
+        None
+    };
+    let plan = archel_core::proxy::plan_proxy_manual(
+        &old.mode,
+        host,
+        port,
+        exceptions.unwrap_or(""),
+        user,
+        password,
+    )?;
+    run_proxy_plan_confirmed(&plan, json, archel_core::proxy::apply_proxy_plan)
+}
+
+/// Runs `archel net proxy auto`: PAC-URL mode after confirmation.
+pub fn run_proxy_auto(pac_url: &str, json: bool) -> Result<(), ArchelError> {
+    let old = archel_core::proxy::proxy_status()?;
+    let plan = archel_core::proxy::plan_proxy_auto(&old.mode, pac_url)?;
+    run_proxy_plan_confirmed(&plan, json, archel_core::proxy::apply_proxy_plan)
+}
+
+/// Confirm-then-execute gate for proxy plans (mirrors the DNS shape):
+/// the preview renders, `confirm_action` enforces the TTY + `[o/N]`
+/// rule, and only a yes reaches `apply`. The injectable `apply` keeps
+/// the abort path unit-coverable headless.
+fn run_proxy_plan_confirmed(
+    plan: &archel_core::proxy::ProxyPlan,
+    json: bool,
+    apply: impl FnOnce(&archel_core::proxy::ProxyPlan) -> Result<
+        archel_core::proxy::ProxyApplyReport,
+        ArchelError,
+    >,
+) -> Result<(), ArchelError> {
+    use archel_core::proxy as core_proxy;
+    if !json {
+        print!(
+            "{}",
+            render_label_table(&core_proxy::proxy_preview_title(plan), &core_proxy::proxy_preview_rows(plan))
+        );
+    }
+    archel_core::packages::confirm_action(&core_proxy::confirm_proxy_prompt(plan))?;
+    let report = apply(plan)?;
+    if json {
+        println!("{}", encode_json(&report, "net proxy")?);
+    } else {
+        print!(
+            "{}",
+            render_label_table(&core_proxy::proxy_report_title(), &core_proxy::proxy_report_rows(&report))
+        );
+    }
+    Ok(())
+}
+
 /// Encodes one `--json` payload (single object per line, NDJSON-safe).
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
     serde_json::to_string(payload)
@@ -371,8 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn test_json_schema_pins_hop_fields() {
-        let value: serde_json::Value =
+    fn test_json_schema_pins_hop_fields() {        let value: serde_json::Value =
             serde_json::to_value(&sample_test()).expect("NetTest serializes");
         let hops = value["hops"].as_array().expect("three hops");
         assert_eq!(hops.len(), 3);
@@ -383,5 +460,89 @@ mod tests {
         }
         assert!(hops[2]["ms"].is_null(), "dead hop encodes null, never 0");
         insta::assert_json_snapshot!(value);
+    }
+
+    fn sample_proxy_plan() -> archel_core::proxy::ProxyPlan {
+        archel_core::proxy::plan_proxy_manual(
+            "none",
+            "proxy.example",
+            8080,
+            "localhost",
+            Some("alice"),
+            Some("s3cret-pw".to_string()),
+        )
+        .expect("sample proxy plan validates")
+    }
+
+    #[test]
+    fn proxy_preview_names_mode_and_endpoint() {
+        use archel_core::proxy as core_proxy;
+        archel_core::i18n::set_language("fr");
+        let plan = sample_proxy_plan();
+        let preview = render_label_table(
+            &core_proxy::proxy_preview_title(&plan),
+            &core_proxy::proxy_preview_rows(&plan),
+        );
+        for needle in ["proxy.example:8080", "localhost"] {
+            assert!(preview.contains(needle), "preview must show `{needle}`");
+        }
+        let prompt = core_proxy::confirm_proxy_prompt(&plan);
+        assert!(
+            prompt.contains("proxy.example:8080"),
+            "confirm prompt names the endpoint: {prompt:?}"
+        );
+    }
+
+    #[test]
+    fn proxy_report_json_schema_pins_apply_fields_without_secrets() {
+        let plan = sample_proxy_plan();
+        let report = archel_core::proxy::ProxyApplyReport::from_plan(&plan);
+        let value: serde_json::Value =
+            serde_json::to_value(&report).expect("ProxyApplyReport serializes");
+        for field in ["mode", "endpoint", "exceptions", "auth_configured"] {
+            assert!(value.get(field).is_some(), "report must carry `{field}`");
+        }
+        let joined = serde_json::to_string(&value).expect("report encodes");
+        assert!(
+            !joined.contains("s3cret-pw"),
+            "report JSON never carries the password"
+        );
+        for marker in ["password", "secret"] {
+            assert!(
+                !joined.to_lowercase().contains(marker),
+                "no secret-shaped field `{marker}` in proxy report JSON"
+            );
+        }
+        insta::assert_json_snapshot!(value);
+    }
+
+    #[test]
+    fn proxy_confirm_abort_spawns_no_write() {
+        // Same injectable-closure abort gate as DNS: headless stdin is
+        // not a TTY, so the gate refuses before the closure — the abort
+        // path structurally spawns no `gsettings set`.
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return;
+        }
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let writes = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::clone(&writes);
+        let plan = sample_proxy_plan();
+        let err = run_proxy_plan_confirmed(&plan, false, move |planned| {
+            probe.fetch_add(1, Ordering::SeqCst);
+            Ok(archel_core::proxy::ProxyApplyReport::from_plan(planned))
+        })
+        .expect_err("headless confirm must refuse");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "abort path needs the typed refusal, never a write: {err:?}"
+        );
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            0,
+            "the abort path spawns no gsettings write"
+        );
     }
 }

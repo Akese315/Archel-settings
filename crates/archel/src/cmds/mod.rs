@@ -177,8 +177,42 @@ enum NetAction {
     },
     /// Gateway ping, DNS resolution and internet reachability (raw ms)
     Test,
-    /// Session proxy state (gsettings store, NET-04)
-    Proxy,
+    /// Session proxy state and mode transitions (gsettings store, NET-04)
+    Proxy {
+        #[command(subcommand)]
+        action: Option<ProxyAction>,
+    },
+}
+
+/// One proxy operation under `archel net proxy` (NET-04). Bare
+/// `proxy` (no subcommand) prints the one-line status; the arms below
+/// mutate after confirmation. Auth passwords are prompted at use time
+/// via `--password` (no-echo stdin), never passed as CLI values.
+#[derive(Debug, Subcommand)]
+enum ProxyAction {
+    /// Direct connection: clear any session proxy
+    Off,
+    /// Per-scheme host/port with optional bypass list and auth
+    Manual {
+        /// Proxy host for the http and https schemes
+        host: String,
+        /// Proxy port for the http and https schemes (1-65535)
+        port: u16,
+        /// Comma-separated bypass list (gsettings ignore-hosts)
+        #[arg(long)]
+        exceptions: Option<String>,
+        /// Proxy auth username (gsettings auth keys)
+        #[arg(long)]
+        user: Option<String>,
+        /// Prompt for the proxy auth password on stdin (no-echo)
+        #[arg(long)]
+        password: bool,
+    },
+    /// Automatic mode via a PAC URL
+    Auto {
+        /// Proxy auto-config URL (http(s)://host/path)
+        pac_url: String,
+    },
 }
 
 /// One DNS operation under `archel net dns` (NET-03, D-01/D-02/D-03).
@@ -272,7 +306,27 @@ pub async fn run() -> Result<(), ArchelError> {
                 DnsAction::Reset { profile } => net_cmds::run_dns_reset(profile, cli.json),
             },
             NetAction::Test => net_cmds::run_test(cli.json).await,
-            NetAction::Proxy => net_cmds::run_proxy(cli.json),
+            NetAction::Proxy { action } => match action {
+                None => net_cmds::run_proxy(cli.json),
+                Some(ProxyAction::Off) => net_cmds::run_proxy_off(cli.json),
+                Some(ProxyAction::Manual {
+                    host,
+                    port,
+                    exceptions,
+                    user,
+                    password,
+                }) => net_cmds::run_proxy_manual(
+                    &host,
+                    port,
+                    exceptions.as_deref(),
+                    user.as_deref(),
+                    password,
+                    cli.json,
+                ),
+                Some(ProxyAction::Auto { pac_url }) => {
+                    net_cmds::run_proxy_auto(&pac_url, cli.json)
+                }
+            },
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -336,6 +390,9 @@ mod tests {
                 "reset",
                 "test",
                 "proxy",
+                "off",
+                "manual",
+                "auto",
                 "landing",
                 "privileged",
                 "settings",
