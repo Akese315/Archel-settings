@@ -60,10 +60,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Input
 
-- [ ] **INP-01**: User can view current keyboard shortcuts (Hyprland binds)
-- [ ] **INP-02**: User can add, edit, and remove keyboard shortcuts
-- [ ] **INP-03**: User can configure mouse sensitivity
-- [ ] **INP-04**: User can configure mouse scrolling behavior
+- [x] **INP-01**: User can view current keyboard shortcuts (Hyprland binds)
+- [x] **INP-02**: User can add, edit, and remove keyboard shortcuts
+- [x] **INP-03**: User can configure mouse sensitivity
+- [x] **INP-04**: User can configure mouse scrolling behavior
 
 ### System Info
 
@@ -167,10 +167,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DSP-02 | Phase 5 | Complete |
 | DSP-03 | Phase 5 | Complete |
 | DSP-04 | Phase 5 | Complete |
-| INP-01 | Phase 5 | Pending |
-| INP-02 | Phase 5 | Pending |
-| INP-03 | Phase 5 | Pending |
-| INP-04 | Phase 5 | Pending |
+| INP-01 | Phase 5 | Complete |
+| INP-02 | Phase 5 | Complete |
+| INP-03 | Phase 5 | Complete |
+| INP-04 | Phase 5 | Complete |
 | SYS-01 | Phase 2 | Pending |
 | SYS-02 | Phase 2 | Pending |
 | SYS-03 | Phase 2 | Pending |
