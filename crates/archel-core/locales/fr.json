@@ -234,6 +234,17 @@
     "confirm_wallpaper": "Appliquer le fond d'écran « %{path} » ? [o/N]",
     "wallpaper_ok": "Fond d'écran « %{path} » appliqué."
   },
+  "display": {
+    "monitors_title": "Écrans détectés",
+    "set_preview_title": "Écran — changement prévu",
+    "set_report_title": "Écran — changement appliqué",
+    "confirm_set": "Appliquer « %{change} » sur %{output} ? [o/N]",
+    "confirm_keep": "Conserver « %{change} » sur %{output} ? Sans réponse sous 15 s, retour automatique à la configuration précédente. [o/N]",
+    "kept": "conservé",
+    "rolled_back": "restauré",
+    "set_ok": "%{output} : « %{change} » appliqué.",
+    "set_rolled_back": "%{output} : configuration précédente restaurée."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
@@ -258,6 +269,7 @@
     "package_not_found": "Paquet « %{name} » introuvable dans les dépôts ni dans AUR.",
     "yay_missing": "« yay » est introuvable : installez-le pour activer la recherche et la revue AUR.",
     "confirmation_aborted": "Opération annulée — rien n'a été modifié.",
+    "confirm_timeout": "Délai de confirmation dépassé (15 s) — la configuration précédente a été restaurée.",
     "needs_tty": "Opération interactive : aucun terminal détecté — annulée sans rien modifier.",
     "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
     "partial_upgrade_refused": "Mise à jour partielle refusée pour « %{name} » : utilisez « archel pkg upgrade » (mise à jour complète -Syu) — les mises à jour partielles cassent Arch.",

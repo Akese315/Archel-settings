@@ -144,6 +144,13 @@ pub enum ArchelError {
     /// The user sees the catalog abort line, never a stack trace.
     #[error("mutation declined at the confirmation prompt")]
     ConfirmationAborted,
+    /// The 15 s keep-or-rollback re-confirm (display path, D-04) got no
+    /// answer in time: the rollback legs already ran, the prior config
+    /// is live again. Distinct from [`Self::ConfirmationAborted`] so
+    /// triage tells a timeout from an explicit refusal. The user sees
+    /// the catalog line, never a stack trace.
+    #[error("confirmation timed out with no answer inside the window")]
+    ConfirmTimeout,
     /// A package mutation was requested without an interactive
     /// terminal on stdin (piped input, script, `--json` batch): the
     /// safety check refuses to mutate blindly. The user sees the
@@ -344,6 +351,9 @@ impl ArchelError {
             Self::ConfirmationAborted => {
                 rust_i18n::t!("errors.confirmation_aborted").to_string()
             }
+            Self::ConfirmTimeout => {
+                rust_i18n::t!("errors.confirm_timeout").to_string()
+            }
             Self::NeedsTty => rust_i18n::t!("errors.needs_tty").to_string(),
             Self::InvalidPackageName { name } => {
                 rust_i18n::t!("errors.invalid_package_name", name = name).to_string()
@@ -430,6 +440,7 @@ mod tests {
             },
             ArchelError::YayMissing,
             ArchelError::ConfirmationAborted,
+            ArchelError::ConfirmTimeout,
             ArchelError::NeedsTty,
             ArchelError::InvalidPackageName {
                 name: "-foo".to_string(),

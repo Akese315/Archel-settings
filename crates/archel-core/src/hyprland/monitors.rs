@@ -17,7 +17,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{appearance_float, lua_quote};
+use super::{
+    appearance_float, ensure_require_line_at, hypr_dir, lua_quote, run_hyprctl_eval,
+    snippet_path_at, write_snippet_at,
+};
 use crate::error::ArchelError;
 
 /// One connected monitor as reported by `hyprctl monitors -j`.
@@ -569,6 +572,115 @@ pub fn upsert_monitor_line(body: &str, output: &str, line: &str) -> String {
     out
 }
 
+/// Reads the current app-snippet body, defaulting to empty on first
+/// run (never touches user files — only the app-owned snippet).
+fn current_snippet_body(base: &std::path::Path) -> Result<String, ArchelError> {
+    match std::fs::read_to_string(snippet_path_at(base)) {
+        Ok(text) => Ok(text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(err) => Err(ArchelError::Internal(format!(
+            "cannot read snippet: {err}"
+        ))),
+    }
+}
+
+/// Persists the kept monitor line into the app snippet (D-08): upsert
+/// the `hl.monitor` line for the output, atomic publish, guarded
+/// require line. Runs only after the 15 s re-confirm kept the change
+/// (persist-on-agreement, WR-01).
+pub fn persist_monitor_plan(base: &std::path::Path, plan: &MonitorPlan) -> Result<(), ArchelError> {
+    let body = current_snippet_body(base)?;
+    let next = upsert_monitor_line(&body, &plan.output, &plan.snippet_line);
+    write_snippet_at(base, &next)?;
+    ensure_require_line_at(base)?;
+    Ok(())
+}
+
+/// Applies a monitor plan with the D-04 confirm-and-rollback contract:
+/// pre-confirm via `confirm_action` (abort structurally never
+/// mutates), apply all eval legs, then a 15 s timed re-confirm — on
+/// reject or timeout the rollback legs run and the exit stays
+/// distinctive (`ConfirmationAborted` vs `ConfirmTimeout`). Every leg
+/// runs through the shared runner semantics (rc != 0 OR stdout
+/// starting with `error:` fails; `wait_timeout` plus kill per leg in
+/// production via [`run_hyprctl_eval`]). The snippet persists only the
+/// kept config (WR-01 persist-on-agreement).
+pub fn apply_monitor_plan(
+    base: &std::path::Path,
+    plan: &MonitorPlan,
+    confirm: impl FnOnce(&str) -> Result<(), ArchelError>,
+    applier: impl Fn(&str) -> Result<(), ArchelError>,
+    rollbacker: impl Fn(&str) -> Result<(), ArchelError>,
+    timed_confirm: impl FnOnce(&str) -> Result<bool, ArchelError>,
+) -> Result<MonitorReport, ArchelError> {
+    confirm(&confirm_monitor_prompt(plan))?;
+    for leg in &plan.apply {
+        if let Err(err) = applier(leg) {
+            for rollback_leg in &plan.rollback {
+                let _ = rollbacker(rollback_leg);
+            }
+            return Err(err);
+        }
+    }
+    match timed_confirm(&confirm_monitor_keep_prompt(plan)) {
+        Ok(true) => {
+            persist_monitor_plan(base, plan)?;
+            Ok(report_for(plan, true))
+        }
+        Ok(false) => {
+            for rollback_leg in &plan.rollback {
+                let _ = rollbacker(rollback_leg);
+            }
+            Err(ArchelError::ConfirmationAborted)
+        }
+        Err(err) => {
+            for rollback_leg in &plan.rollback {
+                let _ = rollbacker(rollback_leg);
+            }
+            Err(err)
+        }
+    }
+}
+
+/// Production leg: snippet under `~/.config/hypr/`, real hyprctl, real
+/// 15 s timed re-confirm (D-04). The caller renders the FR preview
+/// from the plan BEFORE calling (validate-plus-plan-plus-old-read run
+/// before any prompt, so typos fail fast with no TTY need).
+pub fn set_monitor(
+    monitors: &[Monitor],
+    want: &MonitorWant,
+) -> Result<MonitorReport, ArchelError> {
+    use crate::packages::{confirm_action, confirm_action_timed};
+    let base = hypr_dir();
+    let current = monitors
+        .iter()
+        .find(|monitor| monitor.name == want.output.trim())
+        .ok_or_else(|| {
+            ArchelError::desktop_invalid(format!(
+                "rejected monitor output {:?} (no such connected monitor)",
+                want.output
+            ))
+        })?;
+    let plan = plan_monitor_change(current, want)?;
+    let projected = project_layout(
+        monitors,
+        &plan.output,
+        &plan.mode,
+        plan.scale,
+        &plan.position,
+        plan.disabled,
+    );
+    validate_layout(&projected)?;
+    apply_monitor_plan(
+        &base,
+        &plan,
+        |prompt| confirm_action(prompt),
+        |lua| run_hyprctl_eval("hyprctl", lua),
+        |lua| run_hyprctl_eval("hyprctl", lua),
+        |prompt| confirm_action_timed(prompt, std::time::Duration::from_secs(15)),
+    )
+}
+
 /// French pre-apply confirmation prompt naming the output change.
 pub fn confirm_monitor_prompt(plan: &MonitorPlan) -> String {
     rust_i18n::t!(
@@ -930,6 +1042,178 @@ mod tests {
     }
 
     #[test]
+    fn orchestration_abort_writes_nothing_and_skips_both_legs() {
+        use std::cell::Cell;
+        let base = scratch_base("abort");
+        let monitors = fixture_monitors();
+        let hdmi = hdmi(&monitors);
+        let plan = plan_monitor_change(
+            hdmi,
+            &MonitorWant {
+                output: "HDMI-A-2".to_string(),
+                mode: Some("1280x720@59".to_string()),
+                scale: None,
+                position: None,
+                disabled: false,
+            },
+        )
+        .expect("plan builds");
+        let applied = Cell::new(false);
+        let rolled_back = Cell::new(false);
+        let err = apply_monitor_plan(
+            &base,
+            &plan,
+            |_| Err(ArchelError::ConfirmationAborted),
+            |_| {
+                applied.set(true);
+                Ok(())
+            },
+            |_| {
+                rolled_back.set(true);
+                Ok(())
+            },
+            |_| {
+                panic!("timed confirm must never run after a pre-apply abort");
+            },
+        )
+        .expect_err("declined pre-confirm aborts");
+        assert!(matches!(err, ArchelError::ConfirmationAborted));
+        assert!(!applied.get(), "abort applies nothing");
+        assert!(!rolled_back.get(), "abort rolls back nothing");
+        assert!(
+            !super::super::snippet_path_at(&base).exists(),
+            "abort writes no snippet"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn orchestration_timeout_runs_rollback_and_stays_distinctive() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        let base = scratch_base("timeout");
+        std::fs::write(base.join(super::super::ENTRY_FILE), "-- entry\n").expect("entry seeds");
+        let monitors = fixture_monitors();
+        let hdmi = hdmi(&monitors);
+        let plan = plan_monitor_change(
+            hdmi,
+            &MonitorWant {
+                output: "HDMI-A-2".to_string(),
+                mode: Some("1280x720@59".to_string()),
+                scale: None,
+                position: None,
+                disabled: false,
+            },
+        )
+        .expect("plan builds");
+        let legs = Rc::new(Cell::new(0));
+        let rollbacks = Rc::new(Cell::new(0));
+        let apply_probe = Rc::clone(&legs);
+        let rollback_probe = Rc::clone(&rollbacks);
+        let err = apply_monitor_plan(
+            &base,
+            &plan,
+            |_| Ok(()),
+            |_| {
+                apply_probe.set(apply_probe.get() + 1);
+                Ok(())
+            },
+            |_| {
+                rollback_probe.set(rollback_probe.get() + 1);
+                Ok(())
+            },
+            |_| Err(ArchelError::ConfirmTimeout),
+        )
+        .expect_err("timeout must fail");
+        assert!(
+            matches!(err, ArchelError::ConfirmTimeout),
+            "timeout stays distinctive from refusal: {err:?}"
+        );
+        assert_eq!(legs.get(), 1, "apply ran once");
+        assert_eq!(rollbacks.get(), 1, "rollback ran once");
+        assert!(
+            !super::super::snippet_path_at(&base).exists(),
+            "timeout persists nothing"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn orchestration_refusal_runs_rollback_with_aborted_exit() {
+        use std::cell::Cell;
+        let base = scratch_base("refusal");
+        std::fs::write(base.join(super::super::ENTRY_FILE), "-- entry\n").expect("entry seeds");
+        seed_snippet(&base, "-- prior\n");
+        let monitors = fixture_monitors();
+        let hdmi = hdmi(&monitors);
+        let plan = plan_monitor_change(
+            hdmi,
+            &MonitorWant {
+                output: "HDMI-A-2".to_string(),
+                mode: Some("1280x720@59".to_string()),
+                scale: None,
+                position: None,
+                disabled: false,
+            },
+        )
+        .expect("plan builds");
+        let rolled_back = Cell::new(0);
+        let err = apply_monitor_plan(
+            &base,
+            &plan,
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| {
+                rolled_back.set(rolled_back.get() + 1);
+                Ok(())
+            },
+            |_| Ok(false),
+        )
+        .expect_err("explicit no rolls back");
+        assert!(matches!(err, ArchelError::ConfirmationAborted));
+        assert_eq!(rolled_back.get(), 1);
+        assert_eq!(
+            std::fs::read_to_string(super::super::snippet_path_at(&base)).expect("snippet reads"),
+            "-- prior\n",
+            "refusal leaves the prior snippet body untouched"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn orchestration_keep_persists_the_snippet_line() {
+        let base = scratch_base("keep");
+        std::fs::write(base.join(super::super::ENTRY_FILE), "-- entry\n").expect("entry seeds");
+        let monitors = fixture_monitors();
+        let hdmi = hdmi(&monitors);
+        let plan = plan_monitor_change(
+            hdmi,
+            &MonitorWant {
+                output: "HDMI-A-2".to_string(),
+                mode: Some("1280x720@59".to_string()),
+                scale: None,
+                position: None,
+                disabled: false,
+            },
+        )
+        .expect("plan builds");
+        let report = apply_monitor_plan(
+            &base,
+            &plan,
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| panic!("kept change never rolls back"),
+            |_| Ok(true),
+        )
+        .expect("kept change reports");
+        assert!(report.kept);
+        let body = std::fs::read_to_string(super::super::snippet_path_at(&base)).expect("snippet reads");
+        assert!(body.contains("output = \"HDMI-A-2\""), "kept line persists: {body:?}");
+        assert!(body.contains("1280x720@59"), "kept mode persists: {body:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn labels_come_from_the_catalog() {
         crate::i18n::set_language("fr");
         let monitors = fixture_monitors();
@@ -956,4 +1240,16 @@ mod tests {
         assert!(!monitor_rollback_line("HDMI-A-2").is_empty());
     }
 
+    /// Unique scratch Hyprland config dir (std-only, no new deps).
+    fn scratch_base(tag: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!("archel-monitor-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("scratch base must create");
+        base
+    }
+
+    fn seed_snippet(base: &std::path::Path, body: &str) {
+        std::fs::create_dir_all(base.join(super::super::SNIPPET_DIR)).expect("modules creates");
+        std::fs::write(super::super::snippet_path_at(base), body).expect("snippet seeds");
+    }
 }

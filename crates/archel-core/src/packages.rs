@@ -495,6 +495,38 @@ pub fn confirm_action(prompt: &str) -> Result<(), ArchelError> {
     }
 }
 
+/// Asks a timed confirmation on the terminal (display keep-or-rollback,
+/// D-04): `Ok(true)` on an explicit yes, `Ok(false)` on an explicit
+/// no, `Err(ConfirmTimeout)` when `window` lapses with no answer. The
+/// caller runs the rollback legs on both the no and the timeout paths
+/// yet still exits distinctively. Keeps the `NeedsTty` gate verbatim
+/// (piped input refuses before any reader thread starts) and reuses
+/// [`parse_confirm_answer`], so only the window is new. Std-only: one
+/// stdin-reader thread plus `mpsc::recv_timeout`, no new crate.
+pub fn confirm_action_timed(
+    prompt: &str,
+    window: Duration,
+) -> Result<bool, ArchelError> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Err(ArchelError::NeedsTty);
+    }
+    eprint!("{prompt} ");
+    let _ = std::io::stderr().flush();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_ok() {
+            let _ = tx.send(line);
+        }
+    });
+    match rx.recv_timeout(window) {
+        Ok(line) => Ok(parse_confirm_answer(&line)),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(ArchelError::ConfirmTimeout),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(ArchelError::NeedsTty),
+    }
+}
+
 /// Confirmation prompt for an install, naming every package.
 pub fn confirm_install_prompt(packages: &[String]) -> String {
     rust_i18n::t!("pkg.confirm_install", packages = packages.join(" ")).to_string()
@@ -828,6 +860,26 @@ mod tests {
         assert!(
             matches!(err, ArchelError::NeedsTty),
             "piped input refuses the mutation: {err:?}"
+        );
+    }
+
+    #[test]
+    fn timed_confirm_refuses_without_a_tty() {
+        // Same gate as the untimed confirm: headless stdin refuses
+        // before any reader thread starts, so no test can hang on a
+        // 15 s window. The headless precondition is asserted, never a
+        // silent return (WR-04). Timeout-vs-refusal routing is covered
+        // by the injected orchestration tests in hyprland::monitors.
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "timed-confirm gate test requires headless stdin"
+        );
+        let err = super::confirm_action_timed("keep ? [o/N]", Duration::from_secs(15))
+            .expect_err("headless stdin must refuse before spawning a reader");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "piped input refuses the timed mutation: {err:?}"
         );
     }
 
