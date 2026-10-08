@@ -196,6 +196,79 @@ fn run_font_plan_confirmed(
     Ok(())
 }
 
+/// Runs `archel appearance wallpaper` (bare): the managed slice path,
+/// no confirm, no write (read-only).
+pub fn run_wallpaper(json: bool) -> Result<(), ArchelError> {
+    use archel_core::hyprland::wallpaper as core_wallpaper;
+    let status = core_wallpaper::read_wallpaper_at(&archel_core::hyprland::hypr_dir());
+    if json {
+        println!("{}", encode_json(&status, "appearance wallpaper")?);
+    } else if status.path.is_none() {
+        println!("{}", core_wallpaper::wallpaper_empty_line());
+    } else {
+        print!(
+            "{}",
+            render_label_table(
+                &core_wallpaper::wallpaper_title(),
+                &core_wallpaper::wallpaper_rows(&status)
+            )
+        );
+    }
+    Ok(())
+}
+
+/// Runs `archel appearance wallpaper set <path>`: validated path,
+/// preview, confirm, slice rewrite plus daemon restart (APP-01).
+pub fn run_wallpaper_set(path: String, json: bool) -> Result<(), ArchelError> {
+    use archel_core::hyprland::wallpaper as core_wallpaper;
+    // Read-only planning first: validation runs before any prompt, so
+    // bad paths fail fast with no TTY need.
+    let plan = core_wallpaper::plan_wallpaper_set(&path)?;
+    run_wallpaper_plan_confirmed(&plan, json, |plan| {
+        core_wallpaper::apply_wallpaper_with(
+            &archel_core::hyprland::hypr_dir(),
+            plan,
+            core_wallpaper::kill_hyprpaper,
+            core_wallpaper::respawn_hyprpaper,
+        )
+    })
+}
+
+/// Confirm-then-execute gate for wallpaper plans (mirrors the font
+/// shape): preview, TTY + `[o/N]`, injectable lifecycle for the
+/// headless abort test.
+fn run_wallpaper_plan_confirmed(
+    plan: &archel_core::hyprland::wallpaper::WallpaperPlan,
+    json: bool,
+    apply: impl FnOnce(
+        &archel_core::hyprland::wallpaper::WallpaperPlan,
+    ) -> Result<archel_core::hyprland::wallpaper::WallpaperReport, ArchelError>,
+) -> Result<(), ArchelError> {
+    use archel_core::hyprland::wallpaper as core_wallpaper;
+    if !json {
+        print!(
+            "{}",
+            render_label_table(
+                &core_wallpaper::wallpaper_preview_title(),
+                &core_wallpaper::wallpaper_preview_rows(plan)
+            )
+        );
+    }
+    archel_core::packages::confirm_action(&core_wallpaper::confirm_wallpaper_prompt(plan))?;
+    let report = apply(plan)?;
+    if !report.restarted {
+        return Err(ArchelError::hyprland_unavailable(
+            "the wallpaper daemon did not restart after the conf write",
+        ));
+    }
+    if json {
+        println!("{}", encode_json(&report, "appearance wallpaper")?);
+    } else {
+        println!("{}", core_wallpaper::wallpaper_ok_line(&report));
+    }
+    Ok(())
+}
+
 /// Encodes one `--json` payload (single object per line, NDJSON-safe).
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
     serde_json::to_string(payload)
@@ -482,6 +555,92 @@ mod tests {
             writes.load(Ordering::SeqCst),
             0,
             "the abort path spawns no hyprctl write"
+        );
+    }
+
+    #[test]
+    fn wallpaper_preview_names_candidate_path() {
+        use archel_core::hyprland::wallpaper as core_wallpaper;
+        archel_core::i18n::set_language("fr");
+        let plan = core_wallpaper::WallpaperPlan {
+            path: std::path::PathBuf::from("/home/user/wall.png"),
+        };
+        let preview = render_label_table(
+            &core_wallpaper::wallpaper_preview_title(),
+            &core_wallpaper::wallpaper_preview_rows(&plan),
+        );
+        assert!(
+            preview.contains("/home/user/wall.png"),
+            "preview must show the candidate: {preview:?}"
+        );
+        let prompt = core_wallpaper::confirm_wallpaper_prompt(&plan);
+        assert!(
+            prompt.contains("/home/user/wall.png"),
+            "confirm names the candidate: {prompt:?}"
+        );
+    }
+
+    #[test]
+    fn wallpaper_report_json_schema_pins_apply_fields() {
+        use archel_core::hyprland::wallpaper::WallpaperReport;
+        let report = WallpaperReport {
+            path: "/home/user/wall.png".to_string(),
+            restarted: true,
+        };
+        let value: serde_json::Value =
+            serde_json::to_value(&report).expect("WallpaperReport serializes");
+        for field in ["path", "restarted"] {
+            assert!(value.get(field).is_some(), "report must carry `{field}`");
+        }
+        insta::assert_json_snapshot!("appearance_wallpaper", value);
+    }
+
+    #[test]
+    fn wallpaper_status_json_schema_pins_read_fields() {
+        use archel_core::hyprland::wallpaper::WallpaperStatus;
+        let status = WallpaperStatus {
+            path: Some("/home/user/wall.png".to_string()),
+        };
+        let value: serde_json::Value =
+            serde_json::to_value(&status).expect("WallpaperStatus serializes");
+        assert!(value.get("path").is_some(), "status must carry `path`");
+        insta::assert_json_snapshot!("appearance_wallpaper_status", value);
+    }
+
+    #[test]
+    fn wallpaper_confirm_abort_spawns_no_write() {
+        // Same gate as font: headless stdin refuses before the closure,
+        // so neither the slice write nor the daemon restart runs.
+        // Headless precondition asserted (WR-04).
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "abort-gate test requires headless stdin"
+        );
+        use archel_core::hyprland::wallpaper as core_wallpaper;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let writes = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::clone(&writes);
+        let plan = core_wallpaper::WallpaperPlan {
+            path: std::path::PathBuf::from("/home/user/wall.png"),
+        };
+        let err = run_wallpaper_plan_confirmed(&plan, false, move |_| {
+            probe.fetch_add(1, Ordering::SeqCst);
+            Ok(core_wallpaper::WallpaperReport {
+                path: "/home/user/wall.png".to_string(),
+                restarted: true,
+            })
+        })
+        .expect_err("headless confirm must refuse");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "abort path needs the typed refusal, never a write: {err:?}"
+        );
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            0,
+            "the abort path restarts no daemon"
         );
     }
 }

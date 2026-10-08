@@ -353,6 +353,11 @@ enum AppearanceAction {
         #[command(subcommand)]
         action: Option<FontAction>,
     },
+    /// Desktop wallpaper: read the managed path, or set it (APP-01)
+    Wallpaper {
+        #[command(subcommand)]
+        action: Option<WallpaperAction>,
+    },
 }
 
 /// One opacity operation under `archel appearance opacity` (APP-04).
@@ -380,6 +385,18 @@ enum FontAction {
     Set {
         /// Font spec: family plus optional size, e.g. 'Adwaita Sans 11'
         value: String,
+    },
+}
+
+/// One wallpaper operation under `archel appearance wallpaper`
+/// (APP-01). Bare `wallpaper` (no subcommand) reads the managed slice
+/// path; `set` rewrites the slice and restarts hyprpaper.
+#[derive(Debug, Subcommand)]
+enum WallpaperAction {
+    /// Set the desktop wallpaper: conf write plus daemon restart
+    Set {
+        /// Path to an existing image file (png, jpg, webp, bmp, gif)
+        path: String,
     },
 }
 #[derive(Debug, Subcommand)]
@@ -533,6 +550,12 @@ pub async fn run() -> Result<(), ArchelError> {
                     appearance_cmds::run_font_set(value, cli.json)
                 }
             },
+            AppearanceAction::Wallpaper { action } => match action {
+                None => appearance_cmds::run_wallpaper(cli.json),
+                Some(WallpaperAction::Set { path }) => {
+                    appearance_cmds::run_wallpaper_set(path, cli.json)
+                }
+            },
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -596,6 +619,7 @@ mod tests {
                 "blur",
                 "opacity",
                 "font",
+                "wallpaper",
                 "devices",
                 "status",
                 "dns",

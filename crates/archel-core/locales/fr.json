@@ -225,7 +225,14 @@
     "font_label_live": "Police (Hyprland)",
     "font_label_previous": "Police précédente",
     "confirm_font": "Passer la police du système en « %{value} » ? [o/N]",
-    "font_ok": "Police du système « %{value} »."
+    "font_ok": "Police du système « %{value} ».",
+    "wallpaper_title": "Apparence — fond d'écran",
+    "wallpaper_preview_title": "Apparence — appliquer le fond d'écran",
+    "wallpaper_report_title": "Apparence — fond d'écran appliqué",
+    "label_wallpaper": "Fond d'écran",
+    "wallpaper_empty": "Aucun fond d'écran géré par Archel.",
+    "confirm_wallpaper": "Appliquer le fond d'écran « %{path} » ? [o/N]",
+    "wallpaper_ok": "Fond d'écran « %{path} » appliqué."
   },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",

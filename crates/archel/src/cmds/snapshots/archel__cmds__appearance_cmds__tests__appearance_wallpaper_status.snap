@@ -1,0 +1,7 @@
+---
+source: crates/archel/src/cmds/appearance_cmds.rs
+expression: value
+---
+{
+  "path": "/home/user/wall.png"
+}
