@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 05 (Hyprland Desktop) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-10-08 — Phase 05 execution started
+Plan: 1 of 1 (planned so far)
+Status: Wave 1 complete (05-01-01 tracer: APP-03/APP-04); remaining scope (APP-01/02, DSP-01..04, INP-01..04) awaiting planning
+Last activity: 2026-10-08 — 05-01-01 executed, reviewed, post-merge suite green
 
 Progress: [███░░░░░░░] 33%
 
