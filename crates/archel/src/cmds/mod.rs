@@ -328,10 +328,13 @@ enum PowerAction {
         profile: String,
     },
 }
-/// One appearance query under `archel appearance` (APP-03/04). `blur`
-/// flips the live `decoration:blur:enabled` switch after confirmation;
-/// bare `opacity` reads both leaves, `opacity set` mutates them after
-/// confirmation (floats validated before any prompt or spawn).
+/// One appearance query under `archel appearance` (APP-02/03/04).
+/// `blur` flips the live `decoration:blur:enabled` switch after
+/// confirmation; bare `opacity` reads both leaves, `opacity set`
+/// mutates them after confirmation (floats validated before any
+/// prompt or spawn); bare `font` reads both stores (GTK gsettings
+/// plus live Hyprland leaf), `font set` mutates them after
+/// confirmation (spec validated before any prompt or spawn).
 #[derive(Debug, Subcommand)]
 enum AppearanceAction {
     /// Flip the window-blur switch live (confirm-gated)
@@ -344,6 +347,11 @@ enum AppearanceAction {
     Opacity {
         #[command(subcommand)]
         action: Option<OpacityAction>,
+    },
+    /// System font: read both stores, or set family plus size (APP-02)
+    Font {
+        #[command(subcommand)]
+        action: Option<FontAction>,
     },
 }
 
@@ -360,6 +368,18 @@ enum OpacityAction {
         /// Inactive-window opacity, 0.0 (transparent) to 1.0 (opaque)
         #[arg(long)]
         inactive: Option<String>,
+    },
+}
+
+/// One font operation under `archel appearance font` (APP-02).
+/// Bare `font` (no subcommand) reads both stores; `set` takes one
+/// `'<family> [size]'` spec (family allowlisted, size optional).
+#[derive(Debug, Subcommand)]
+enum FontAction {
+    /// Set the system font: GTK store plus Hyprland leaf (confirm-gated)
+    Set {
+        /// Font spec: family plus optional size, e.g. 'Adwaita Sans 11'
+        value: String,
     },
 }
 #[derive(Debug, Subcommand)]
@@ -507,6 +527,12 @@ pub async fn run() -> Result<(), ArchelError> {
                     appearance_cmds::run_opacity_set(active, inactive, cli.json)
                 }
             },
+            AppearanceAction::Font { action } => match action {
+                None => appearance_cmds::run_font(cli.json),
+                Some(FontAction::Set { value }) => {
+                    appearance_cmds::run_font_set(value, cli.json)
+                }
+            },
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -569,6 +595,7 @@ mod tests {
                 "appearance",
                 "blur",
                 "opacity",
+                "font",
                 "devices",
                 "status",
                 "dns",

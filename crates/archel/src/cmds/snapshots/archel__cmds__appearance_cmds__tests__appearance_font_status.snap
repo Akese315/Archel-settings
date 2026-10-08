@@ -1,0 +1,9 @@
+---
+source: crates/archel/src/cmds/appearance_cmds.rs
+expression: value
+---
+{
+  "gtk_family": "Adwaita Sans",
+  "gtk_size": 11.0,
+  "hyprland_family": "Adwaita Sans"
+}

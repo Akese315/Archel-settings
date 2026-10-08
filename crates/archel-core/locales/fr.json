@@ -214,7 +214,18 @@
     "confirm_blur": "Passer le flou des fenêtres en « %{state} » ? [o/N]",
     "confirm_opacity": "Appliquer la transparence (%{detail}) ? [o/N]",
     "blur_ok": "Flou des fenêtres « %{state} ».",
-    "opacity_ok": "Transparence appliquée (%{detail})."
+    "opacity_ok": "Transparence appliquée (%{detail}).",
+    "font_title": "Apparence — police du système",
+    "font_preview_title": "Apparence — appliquer la police",
+    "font_report_title": "Apparence — police appliquée",
+    "label_family": "Police",
+    "label_size": "Taille",
+    "font_label_gtk": "Police (GTK)",
+    "font_label_size": "Taille (GTK)",
+    "font_label_live": "Police (Hyprland)",
+    "font_label_previous": "Police précédente",
+    "confirm_font": "Passer la police du système en « %{value} » ? [o/N]",
+    "font_ok": "Police du système « %{value} »."
   },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",

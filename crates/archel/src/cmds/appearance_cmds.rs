@@ -124,6 +124,78 @@ fn run_opacity_plan_confirmed(
     Ok(())
 }
 
+/// Runs `archel appearance font` (bare): both stores (GTK gsettings
+/// plus live Hyprland leaf), no confirm, no write (read-only).
+pub fn run_font(json: bool) -> Result<(), ArchelError> {
+    use archel_core::hyprland::font as core_font;
+    let status = core_font::read_font()?;
+    if json {
+        println!("{}", encode_json(&status, "appearance font")?);
+    } else {
+        print!(
+            "{}",
+            render_label_table(&core_font::font_title(), &core_font::font_rows(&status))
+        );
+    }
+    Ok(())
+}
+
+/// Runs `archel appearance font set '<family> [size]'`: validated
+/// spec, preview, confirm, two-store apply with read-back (APP-02).
+pub fn run_font_set(value: String, json: bool) -> Result<(), ArchelError> {
+    use archel_core::hyprland::font as core_font;
+    // Read-only planning first: validation plus old-snippet read run
+    // before any prompt, so typos fail fast with no TTY need.
+    let plan = core_font::plan_font_set_at(
+        &archel_core::hyprland::hypr_dir(),
+        &value,
+    )?;
+    run_font_plan_confirmed(&plan, json, |plan| {
+        core_font::apply_font_with(
+            &archel_core::hyprland::hypr_dir(),
+            plan,
+            |lua| archel_core::hyprland::run_hyprctl_eval("hyprctl", lua),
+            core_font::read_live_family,
+            core_font::write_gtk_font,
+        )
+    })
+}
+
+/// Confirm-then-execute gate for font plans (mirrors the blur shape):
+/// preview, TTY + `[o/N]`, injectable apply for the headless abort
+/// test.
+fn run_font_plan_confirmed(
+    plan: &archel_core::hyprland::font::FontPlan,
+    json: bool,
+    apply: impl FnOnce(
+        &archel_core::hyprland::font::FontPlan,
+    ) -> Result<archel_core::hyprland::font::FontReport, ArchelError>,
+) -> Result<(), ArchelError> {
+    use archel_core::hyprland::font as core_font;
+    if !json {
+        print!(
+            "{}",
+            render_label_table(
+                &core_font::font_preview_title(),
+                &core_font::font_preview_rows(plan)
+            )
+        );
+    }
+    archel_core::packages::confirm_action(&core_font::confirm_font_prompt(plan))?;
+    let report = apply(plan)?;
+    if !report.read_back_ok {
+        return Err(ArchelError::hyprland_unavailable(
+            "live read-back disagrees with the applied font family",
+        ));
+    }
+    if json {
+        println!("{}", encode_json(&report, "appearance font")?);
+    } else {
+        println!("{}", core_font::font_ok_line(&report));
+    }
+    Ok(())
+}
+
 /// Encodes one `--json` payload (single object per line, NDJSON-safe).
 fn encode_json(payload: &impl serde::Serialize, what: &str) -> Result<String, ArchelError> {
     serde_json::to_string(payload)
@@ -205,11 +277,15 @@ mod tests {
     fn blur_confirm_abort_spawns_no_write() {
         // Same injectable-closure abort gate as DNS/proxy: headless
         // stdin is not a TTY, so the gate refuses before the closure —
-        // the abort path structurally spawns no `hyprctl eval`.
+        // the abort path structurally spawns no `hyprctl eval`. The
+        // headless precondition is asserted, never a silent return
+        // (WR-04): an interactive run fails loudly instead of passing
+        // without checking the safety gate.
         use std::io::IsTerminal;
-        if std::io::stdin().is_terminal() {
-            return;
-        }
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "abort-gate test requires headless stdin"
+        );
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
         let writes = Arc::new(AtomicUsize::new(0));
@@ -274,10 +350,12 @@ mod tests {
     #[test]
     fn opacity_confirm_abort_spawns_no_write() {
         // Same gate as blur: headless stdin refuses before the closure.
+        // Headless precondition asserted, never silently returned (WR-04).
         use std::io::IsTerminal;
-        if std::io::stdin().is_terminal() {
-            return;
-        }
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "abort-gate test requires headless stdin"
+        );
         use archel_core::hyprland::appearance as core_appearance;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
@@ -295,6 +373,103 @@ mod tests {
                 blur_enabled: true,
                 active_opacity: 0.9,
                 inactive_opacity: 1.0,
+                read_back_ok: true,
+            })
+        })
+        .expect_err("headless confirm must refuse");
+        assert!(
+            matches!(err, ArchelError::NeedsTty),
+            "abort path needs the typed refusal, never a write: {err:?}"
+        );
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            0,
+            "the abort path spawns no hyprctl write"
+        );
+    }
+
+    #[test]
+    fn font_preview_names_family_and_size() {
+        use archel_core::hyprland::font as core_font;
+        archel_core::i18n::set_language("fr");
+        let plan = core_font::FontPlan {
+            family: "Adwaita Sans".to_string(),
+            size: Some(11.0),
+            old_family: None,
+        };
+        let preview = render_label_table(
+            &core_font::font_preview_title(),
+            &core_font::font_preview_rows(&plan),
+        );
+        for needle in ["Adwaita Sans", "11"] {
+            assert!(preview.contains(needle), "preview must show `{needle}`");
+        }
+        let prompt = core_font::confirm_font_prompt(&plan);
+        assert!(
+            prompt.contains("Adwaita Sans 11"),
+            "confirm names the GTK value: {prompt:?}"
+        );
+    }
+
+    #[test]
+    fn font_report_json_schema_pins_apply_fields() {
+        use archel_core::hyprland::font::FontReport;
+        let report = FontReport {
+            family: "Adwaita Sans".to_string(),
+            size: Some(11.0),
+            gtk_value: "Adwaita Sans 11".to_string(),
+            read_back_ok: true,
+        };
+        let value: serde_json::Value =
+            serde_json::to_value(&report).expect("FontReport serializes");
+        for field in ["family", "size", "gtk_value", "read_back_ok"] {
+            assert!(value.get(field).is_some(), "report must carry `{field}`");
+        }
+        insta::assert_json_snapshot!("appearance_font", value);
+    }
+
+    #[test]
+    fn font_status_json_schema_pins_read_fields() {
+        use archel_core::hyprland::font::FontStatus;
+        let status = FontStatus {
+            gtk_family: "Adwaita Sans".to_string(),
+            gtk_size: Some(11.0),
+            hyprland_family: "Adwaita Sans".to_string(),
+        };
+        let value: serde_json::Value =
+            serde_json::to_value(&status).expect("FontStatus serializes");
+        for field in ["gtk_family", "gtk_size", "hyprland_family"] {
+            assert!(value.get(field).is_some(), "status must carry `{field}`");
+        }
+        insta::assert_json_snapshot!("appearance_font_status", value);
+    }
+
+    #[test]
+    fn font_confirm_abort_spawns_no_write() {
+        // Same gate as blur/opacity: headless stdin refuses before the
+        // closure, so neither the `hyprctl eval` nor the `gsettings set`
+        // leg runs. Headless precondition asserted (WR-04).
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "abort-gate test requires headless stdin"
+        );
+        use archel_core::hyprland::font as core_font;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let writes = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::clone(&writes);
+        let plan = core_font::FontPlan {
+            family: "Adwaita Sans".to_string(),
+            size: Some(11.0),
+            old_family: None,
+        };
+        let err = run_font_plan_confirmed(&plan, false, move |_| {
+            probe.fetch_add(1, Ordering::SeqCst);
+            Ok(core_font::FontReport {
+                family: "Adwaita Sans".to_string(),
+                size: Some(11.0),
+                gtk_value: "Adwaita Sans 11".to_string(),
                 read_back_ok: true,
             })
         })

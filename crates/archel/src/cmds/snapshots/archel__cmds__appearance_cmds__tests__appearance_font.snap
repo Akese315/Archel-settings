@@ -1,0 +1,10 @@
+---
+source: crates/archel/src/cmds/appearance_cmds.rs
+expression: value
+---
+{
+  "family": "Adwaita Sans",
+  "gtk_value": "Adwaita Sans 11",
+  "read_back_ok": true,
+  "size": 11.0
+}
