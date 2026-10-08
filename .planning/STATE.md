@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Hyprland Desktop
 status: executing
-stopped_at: Completed 05-02-01-PLAN.md
-last_updated: "2026-10-08T11:56:44.322Z"
+stopped_at: Completed 05-03-01-PLAN.md
+last_updated: "2026-10-08T12:07:51.119Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 05 execution started
-state_head: 7fb51eae83df522e0897282ab483e779f305450a
+state_head: cf8b02b8e8d1ec7fbfd5ba3f7d776d05affd952b
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 33
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 05 (Hyprland Desktop) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 05 execution started
 
@@ -58,6 +58,7 @@ Progress: [███░░░░░░░] 33%
 |------|----------|-------|-------|
 | Phase 05 P01-01 | 7min | 2 tasks | 12 files |
 | Phase 05 P02-01 | 13min | 3 tasks | 11 files |
+| Phase 05 P03-01 | 7min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Eval-then-read-back-first ordering for all Hyprland apply paths; snippet persists only on agreement (WR-01)
 - [Phase 05]: Wallpaper restart is pkill + setsid only, no hyprctl hyprpaper path; setsid verified present live
 - [Phase 05]: gsettings failures map to typed HyprlandUnavailable; trailing numeric font token always claims the size
+- [Phase 05]: Pre-confirm lives core-side in set_monitor; CLI renders preview then delegates (avoids double prompt)
+- [Phase 05]: Timeout and refusal both roll back yet exit distinctively (ConfirmTimeout vs ConfirmationAborted)
+- [Phase 05]: Layout projection reuses the plan resolved mode/scale/position so planned overlaps fail pre-prompt
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-08T11:56:44.282Z
-Stopped at: Completed 05-02-01-PLAN.md
+Last session: 2026-10-08T12:07:51.081Z
+Stopped at: Completed 05-03-01-PLAN.md
 Resume file: None

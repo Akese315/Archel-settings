@@ -53,10 +53,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Display
 
-- [ ] **DSP-01**: User can change monitor resolution (applied with confirm-and-rollback)
-- [ ] **DSP-02**: User can change monitor scaling per monitor
-- [ ] **DSP-03**: User can change monitor refresh rate
-- [ ] **DSP-04**: User can arrange monitor position/layout
+- [x] **DSP-01**: User can change monitor resolution (applied with confirm-and-rollback)
+- [x] **DSP-02**: User can change monitor scaling per monitor
+- [x] **DSP-03**: User can change monitor refresh rate
+- [x] **DSP-04**: User can arrange monitor position/layout
 
 ### Input
 
@@ -163,10 +163,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PKG-03 | Phase 3 | Pending |
 | PKG-04 | Phase 3 | Pending |
 | PKG-05 | Phase 3 | Pending |
-| DSP-01 | Phase 5 | Pending |
-| DSP-02 | Phase 5 | Pending |
-| DSP-03 | Phase 5 | Pending |
-| DSP-04 | Phase 5 | Pending |
+| DSP-01 | Phase 5 | Complete |
+| DSP-02 | Phase 5 | Complete |
+| DSP-03 | Phase 5 | Complete |
+| DSP-04 | Phase 5 | Complete |
 | INP-01 | Phase 5 | Pending |
 | INP-02 | Phase 5 | Pending |
 | INP-03 | Phase 5 | Pending |

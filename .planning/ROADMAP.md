@@ -111,7 +111,7 @@ Plans:
   3. User can view keyboard shortcuts and add, edit, or remove them, plus configure mouse sensitivity and scrolling
   4. User's main hyprland.conf is never rewritten — all persistence lands in the app-owned `source=` snippet with backup, and every action above works via `archel-cli`
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 **Wave 1**
 - [x] 05-01-01-PLAN.md — Blur + opacity tracer with snippet writer and typed errors (APP-03, APP-04)
 
@@ -119,7 +119,7 @@ Plans:
 - [x] 05-02-01-PLAN.md — Font (GTK + snippet) + wallpaper (hyprpaper slice + restart) with seam hardening (APP-01, APP-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-03-01-PLAN.md — Display monitors + set with 15 s confirm-and-rollback (DSP-01..04)
+- [x] 05-03-01-PLAN.md — Display monitors + set with 15 s confirm-and-rollback (DSP-01..04)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 05-04-01-PLAN.md — Keybind view/manage + mouse sensitivity/scrolling (INP-01..04)
@@ -150,5 +150,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. System Insight | 0/TBD | Not started | - |
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
-| 5. Hyprland Desktop | 2/4 | In Progress|  |
+| 5. Hyprland Desktop | 3/4 | In Progress|  |
 | 6. GUI Shell & Tabs | 0/TBD | Not started | - |
