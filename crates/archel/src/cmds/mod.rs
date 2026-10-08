@@ -15,6 +15,7 @@ mod sys_cmds;
 mod bt_cmds;
 mod audio_cmds;
 mod power_cmds;
+mod appearance_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -75,6 +76,11 @@ enum Command {
     Power {
         #[command(subcommand)]
         action: PowerAction,
+    },
+    /// Window blur live-apply with snippet durability (APP-03)
+    Appearance {
+        #[command(subcommand)]
+        action: AppearanceAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -322,6 +328,19 @@ enum PowerAction {
         profile: String,
     },
 }
+/// One appearance query under `archel appearance` (APP-03/04). `blur`
+/// flips the live `decoration:blur:enabled` switch after confirmation;
+/// `opacity` reads or sets both opacity leaves (APP-04 lands in the
+/// expansion task — the `set` arm below arrives there).
+#[derive(Debug, Subcommand)]
+enum AppearanceAction {
+    /// Flip the window-blur switch live (confirm-gated)
+    Blur {
+        /// Target switch state: on or off
+        #[arg(value_parser = ["on", "off"])]
+        state: String,
+    },
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -457,6 +476,11 @@ pub async fn run() -> Result<(), ArchelError> {
             PowerAction::Status => power_cmds::run_status(cli.json).await,
             PowerAction::Set { profile } => power_cmds::run_set(&profile, cli.json).await,
         },
+        Command::Appearance { action } => match action {
+            AppearanceAction::Blur { state } => {
+                appearance_cmds::run_blur(state == "on", cli.json)
+            }
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -515,6 +539,8 @@ mod tests {
                 "bt",
                 "audio",
                 "power",
+                "appearance",
+                "blur",
                 "devices",
                 "status",
                 "dns",

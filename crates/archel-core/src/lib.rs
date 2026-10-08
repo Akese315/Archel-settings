@@ -12,6 +12,7 @@ pub mod aur;
 pub mod audio;
 pub mod bluetooth;
 pub mod error;
+pub mod hyprland;
 pub mod i18n;
 pub mod landing;
 pub mod network;

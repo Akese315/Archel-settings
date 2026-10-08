@@ -199,6 +199,23 @@
     "confirm_set": "Passer le profil d'alimentation en « %{profile} » ? [o/N]",
     "set_ok": "Profil d'alimentation passé en « %{profile} »."
   },
+  "appearance": {
+    "blur_title": "Apparence — flou des fenêtres",
+    "blur_preview_title": "Apparence — appliquer le flou",
+    "blur_report_title": "Apparence — flou appliqué",
+    "opacity_title": "Apparence — transparence des fenêtres",
+    "opacity_preview_title": "Apparence — appliquer la transparence",
+    "opacity_report_title": "Apparence — transparence appliquée",
+    "label_blur": "Flou",
+    "label_active": "Opacité active",
+    "label_inactive": "Opacité inactive",
+    "value_on": "activé",
+    "value_off": "désactivé",
+    "confirm_blur": "Passer le flou des fenêtres en « %{state} » ? [o/N]",
+    "confirm_opacity": "Appliquer la transparence (%{detail}) ? [o/N]",
+    "blur_ok": "Flou des fenêtres « %{state} ».",
+    "opacity_ok": "Transparence appliquée (%{detail})."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",
@@ -227,6 +244,8 @@
     "invalid_package_name": "Nom de paquet invalide : « %{name} » — rien n'a été exécuté.",
     "partial_upgrade_refused": "Mise à jour partielle refusée pour « %{name} » : utilisez « archel pkg upgrade » (mise à jour complète -Syu) — les mises à jour partielles cassent Arch.",
     "pkgbuild_rejected": "PKGBUILD rejeté pour « %{name} » — rien n'a été compilé.",
+    "hyprland_unavailable": "Hyprland indisponible : hors session Hyprland (« hyprctl » introuvable ou signature de session absente) — rien n'a été modifié.",
+    "desktop_invalid": "Réglage du bureau invalide : %{detail} — rien n'a été modifié.",
     "internal": "Une erreur interne est survenue. Réessayez."
   }
 }

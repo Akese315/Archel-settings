@@ -163,6 +163,18 @@ pub enum ArchelError {
     /// `archel settings` invoked on a build without the `gui` feature.
     #[error("graphical interface not compiled into this build")]
     GuiNotCompiled,
+    /// No usable Hyprland session: `hyprctl` missing from PATH or
+    /// `$HYPRLAND_INSTANCE_SIGNATURE` unset (not running under the
+    /// compositor). Carries log-only detail; the user sees the catalog
+    /// hint, never this payload. Core never guesses, never hangs.
+    #[error("hyprland unavailable: {detail}")]
+    HyprlandUnavailable { detail: String },
+    /// A desktop setting failed client-side validation (out-of-range
+    /// opacity float, bad Lua string, empty value). Carries the
+    /// log-only detail naming the rejected value; nothing was spawned,
+    /// nothing was written, nothing was prompted.
+    #[error("invalid desktop setting: {detail}")]
+    DesktopInvalid { detail: String },
     /// Unclassified core failure. Carries log detail; the user only ever
     /// sees the curated catalog string, never this payload (T-1-02).
     #[error("internal error: {0}")]
@@ -241,6 +253,21 @@ impl ArchelError {
     pub fn pairing_timeout(device: impl Into<String>) -> Self {
         Self::PairingTimeout {
             device: device.into(),
+        }
+    }
+    /// Friendly constructor for an unreachable Hyprland session,
+    /// naming the log-only detail (missing binary, no signature).
+    pub fn hyprland_unavailable(detail: impl Into<String>) -> Self {
+        Self::HyprlandUnavailable {
+            detail: detail.into(),
+        }
+    }
+
+    /// Friendly constructor for a rejected desktop value, naming the
+    /// offending input (nothing spawned, nothing written).
+    pub fn desktop_invalid(detail: impl Into<String>) -> Self {
+        Self::DesktopInvalid {
+            detail: detail.into(),
         }
     }
     /// French user-facing rendering from the catalog — the ONLY string that
@@ -325,6 +352,12 @@ impl ArchelError {
                 rust_i18n::t!("errors.partial_upgrade_refused", name = name).to_string()
             }
             Self::GuiNotCompiled => rust_i18n::t!("errors.gui_not_compiled").to_string(),
+            Self::HyprlandUnavailable { .. } => {
+                rust_i18n::t!("errors.hyprland_unavailable").to_string()
+            }
+            Self::DesktopInvalid { detail } => {
+                rust_i18n::t!("errors.desktop_invalid", detail = detail).to_string()
+            }
             Self::Internal(_) => rust_i18n::t!("errors.internal").to_string(),
         }
     }
@@ -405,6 +438,12 @@ mod tests {
                 name: "firefox".to_string(),
             },
             ArchelError::GuiNotCompiled,
+            ArchelError::HyprlandUnavailable {
+                detail: "no signature".to_string(),
+            },
+            ArchelError::DesktopInvalid {
+                detail: "opacity 1.5 out of range".to_string(),
+            },
             ArchelError::Internal("boom".to_string()),
         ]
     }
