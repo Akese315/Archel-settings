@@ -330,8 +330,8 @@ enum PowerAction {
 }
 /// One appearance query under `archel appearance` (APP-03/04). `blur`
 /// flips the live `decoration:blur:enabled` switch after confirmation;
-/// `opacity` reads or sets both opacity leaves (APP-04 lands in the
-/// expansion task — the `set` arm below arrives there).
+/// bare `opacity` reads both leaves, `opacity set` mutates them after
+/// confirmation (floats validated before any prompt or spawn).
 #[derive(Debug, Subcommand)]
 enum AppearanceAction {
     /// Flip the window-blur switch live (confirm-gated)
@@ -339,6 +339,27 @@ enum AppearanceAction {
         /// Target switch state: on or off
         #[arg(value_parser = ["on", "off"])]
         state: String,
+    },
+    /// Window transparency: read both leaves, or set them (APP-04)
+    Opacity {
+        #[command(subcommand)]
+        action: Option<OpacityAction>,
+    },
+}
+
+/// One opacity operation under `archel appearance opacity` (APP-04).
+/// Bare `opacity` (no subcommand) reads both live leaves; `set`
+/// needs at least one of `--active` / `--inactive` (floats 0..1).
+#[derive(Debug, Subcommand)]
+enum OpacityAction {
+    /// Set active/inactive opacity (confirm-gated, at least one flag)
+    Set {
+        /// Active-window opacity, 0.0 (transparent) to 1.0 (opaque)
+        #[arg(long)]
+        active: Option<String>,
+        /// Inactive-window opacity, 0.0 (transparent) to 1.0 (opaque)
+        #[arg(long)]
+        inactive: Option<String>,
     },
 }
 #[derive(Debug, Subcommand)]
@@ -480,6 +501,12 @@ pub async fn run() -> Result<(), ArchelError> {
             AppearanceAction::Blur { state } => {
                 appearance_cmds::run_blur(state == "on", cli.json)
             }
+            AppearanceAction::Opacity { action } => match action {
+                None => appearance_cmds::run_opacity(cli.json),
+                Some(OpacityAction::Set { active, inactive }) => {
+                    appearance_cmds::run_opacity_set(active, inactive, cli.json)
+                }
+            },
         },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
@@ -541,6 +568,7 @@ mod tests {
                 "power",
                 "appearance",
                 "blur",
+                "opacity",
                 "devices",
                 "status",
                 "dns",

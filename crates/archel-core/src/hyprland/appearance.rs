@@ -16,6 +16,10 @@ use crate::error::ArchelError;
 
 /// Live option key for the blur switch (verified via getoption).
 pub const BLUR_KEY: &str = "decoration:blur:enabled";
+/// Live option keys for the opacity leaves (verified via getoption).
+pub const ACTIVE_OPACITY_KEY: &str = "decoration:active_opacity";
+/// Live option keys for the opacity leaves (verified via getoption).
+pub const INACTIVE_OPACITY_KEY: &str = "decoration:inactive_opacity";
 
 /// Every appearance leaf the app snippet manages. Later waves extend
 /// this struct (opacity, font); the renderer below composes all of
@@ -218,6 +222,232 @@ fn blur_word(enabled: bool) -> String {
     }
 }
 
+// --- Opacity (APP-04 expansion): active/inactive leaves with float
+// range validation before any prompt or spawn. ---
+
+/// Validates one opacity float from CLI text: non-empty, finite,
+/// within [0, 1]. Boundary 0.0/1.0 accepted; NaN/inf/out-of-range
+/// fail typed before anything spawns or writes.
+pub fn validate_opacity(raw: &str) -> Result<f64, ArchelError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ArchelError::desktop_invalid("empty opacity value"));
+    }
+    let value: f64 = trimmed.parse().map_err(|_| {
+        ArchelError::desktop_invalid(format!("rejected opacity value {trimmed:?}"))
+    })?;
+    if !value.is_finite() || value < 0.0 || value > 1.0 {
+        return Err(ArchelError::desktop_invalid(format!(
+            "opacity {trimmed:?} out of range (0.0-1.0 accepted)"
+        )));
+    }
+    Ok(value)
+}
+
+/// A validated opacity transition: at least one leaf set. Planned
+/// read-only before any prompt, so typos fail fast with no TTY need.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpacityPlan {
+    pub active: Option<f64>,
+    pub inactive: Option<f64>,
+    pub old_active: f64,
+    pub old_inactive: f64,
+}
+
+/// Plans an opacity transition from CLI text (both `None` = bare
+/// read, which never reaches here — the caller reads instead).
+/// Rejects the empty plan (no flag) before any prompt or spawn.
+pub fn plan_opacity_set(
+    active: Option<&str>,
+    inactive: Option<&str>,
+) -> Result<OpacityPlan, ArchelError> {
+    let old = current_snippet_state(&hypr_dir())?;
+    let plan = OpacityPlan {
+        active: active.map(validate_opacity).transpose()?,
+        inactive: inactive.map(validate_opacity).transpose()?,
+        old_active: old.active_opacity,
+        old_inactive: old.inactive_opacity,
+    };
+    if plan.active.is_none() && plan.inactive.is_none() {
+        return Err(ArchelError::desktop_invalid(
+            "opacity set needs --active and/or --inactive",
+        ));
+    }
+    Ok(plan)
+}
+
+/// Renders the exact `hl.config` Lua statement for an opacity plan.
+/// Pure (golden-testable without spawning): machine-rendered floats
+/// only, never interpolated user text.
+pub fn opacity_eval_statement(plan: &OpacityPlan) -> String {
+    let mut leaves = Vec::new();
+    if let Some(active) = plan.active {
+        leaves.push(format!("active_opacity = {}", super::appearance_float(active)));
+    }
+    if let Some(inactive) = plan.inactive {
+        leaves.push(format!(
+            "inactive_opacity = {}",
+            super::appearance_float(inactive)
+        ));
+    }
+    format!("hl.config({{ decoration = {{ {} }} }})", leaves.join(", "))
+}
+
+/// Parses a `getoption decoration:*_opacity -j` payload into the live
+/// float. Pure for headless coverage.
+pub fn parse_opacity_float(out: &str) -> Result<f64, ArchelError> {
+    match parse_getoption_json(out)? {
+        OptionValue::Float(value) => Ok(value),
+        other => Err(ArchelError::hyprland_unavailable(format!(
+            "unexpected opacity option shape: {other:?}"
+        ))),
+    }
+}
+
+/// Reads both live opacity leaves (honest read-back for bare `opacity`).
+pub fn read_opacity() -> Result<AppearanceState, ArchelError> {
+    let active = read_option(ACTIVE_OPACITY_KEY).and_then(|value| match value {
+        OptionValue::Float(f) => Ok(f),
+        other => Err(ArchelError::hyprland_unavailable(format!(
+            "unexpected opacity option shape: {other:?}"
+        ))),
+    })?;
+    let inactive = read_option(INACTIVE_OPACITY_KEY).and_then(|value| match value {
+        OptionValue::Float(f) => Ok(f),
+        other => Err(ArchelError::hyprland_unavailable(format!(
+            "unexpected opacity option shape: {other:?}"
+        ))),
+    })?;
+    let blur = read_option(BLUR_KEY).map(|value| matches!(value, OptionValue::Bool(true)))?;
+    Ok(AppearanceState {
+        blur_enabled: blur,
+        active_opacity: active,
+        inactive_opacity: inactive,
+    })
+}
+
+/// Applies an opacity plan: snippet upsert (both leaves alongside
+/// blur) + `eval` live leg + `getoption` read-back of both leaves.
+/// Injectable legs keep the orchestration unit-coverable headless.
+pub fn apply_opacity_with(
+    base: &std::path::Path,
+    plan: &OpacityPlan,
+    runner: impl FnOnce(&str) -> Result<(), ArchelError>,
+    reader: impl FnOnce() -> Result<(f64, f64), ArchelError>,
+) -> Result<AppearanceReport, ArchelError> {
+    let mut state = current_snippet_state(base)?;
+    if let Some(active) = plan.active {
+        state.active_opacity = active;
+    }
+    if let Some(inactive) = plan.inactive {
+        state.inactive_opacity = inactive;
+    }
+    write_snippet_at(base, &render_snippet(&state))?;
+    ensure_require_line_at(base)?;
+    runner(&opacity_eval_statement(plan))?;
+    let (live_active, live_inactive) = reader()?;
+    let want_active = plan.active.unwrap_or(state.active_opacity);
+    let want_inactive = plan.inactive.unwrap_or(state.inactive_opacity);
+    Ok(AppearanceReport {
+        blur_enabled: state.blur_enabled,
+        active_opacity: want_active,
+        inactive_opacity: want_inactive,
+        read_back_ok: (live_active - want_active).abs() < 1e-9
+            && (live_inactive - want_inactive).abs() < 1e-9,
+    })
+}
+
+/// Production leg: snippet under `~/.config/hypr/`, real hyprctl.
+pub fn apply_opacity_plan(plan: &OpacityPlan) -> Result<AppearanceReport, ArchelError> {
+    let base = hypr_dir();
+    apply_opacity_with(
+        &base,
+        plan,
+        |lua| run_hyprctl_eval("hyprctl", lua),
+        || {
+            let state = read_opacity()?;
+            Ok((state.active_opacity, state.inactive_opacity))
+        },
+    )
+}
+
+/// French title for the bare-opacity readout table.
+pub fn opacity_title() -> String {
+    rust_i18n::t!("appearance.opacity_title").to_string()
+}
+
+/// French rows for the bare-opacity readout table.
+pub fn opacity_rows(state: &AppearanceState) -> Vec<(String, String)> {
+    vec![
+        (
+            rust_i18n::t!("appearance.label_active").to_string(),
+            super::appearance_float(state.active_opacity),
+        ),
+        (
+            rust_i18n::t!("appearance.label_inactive").to_string(),
+            super::appearance_float(state.inactive_opacity),
+        ),
+    ]
+}
+
+/// French preview title (shown before `[o/N]`).
+pub fn opacity_preview_title(plan: &OpacityPlan) -> String {
+    let _ = plan;
+    rust_i18n::t!("appearance.opacity_preview_title").to_string()
+}
+
+/// French `(label, value)` preview rows: old → new per leaf.
+pub fn opacity_preview_rows(plan: &OpacityPlan) -> Vec<(String, String)> {
+    let na = || rust_i18n::t!("sys.unavailable").to_string();
+    vec![
+        (
+            rust_i18n::t!("appearance.label_active").to_string(),
+            plan.active
+                .map(super::appearance_float)
+                .unwrap_or_else(na),
+        ),
+        (
+            rust_i18n::t!("appearance.label_inactive").to_string(),
+            plan.inactive
+                .map(super::appearance_float)
+                .unwrap_or_else(na),
+        ),
+    ]
+}
+
+/// French confirmation prompt naming both target leaves.
+pub fn confirm_opacity_prompt(plan: &OpacityPlan) -> String {
+    let detail = format!(
+        "{}={}, {}={}",
+        rust_i18n::t!("appearance.label_active"),
+        plan.active.map(super::appearance_float).unwrap_or_else(|| "—".to_string()),
+        rust_i18n::t!("appearance.label_inactive"),
+        plan.inactive
+            .map(super::appearance_float)
+            .unwrap_or_else(|| "—".to_string()),
+    );
+    rust_i18n::t!("appearance.confirm_opacity", detail = detail).to_string()
+}
+
+/// French title for the post-apply report table.
+pub fn opacity_report_title() -> String {
+    rust_i18n::t!("appearance.opacity_report_title").to_string()
+}
+
+/// French rows for the post-apply report table.
+pub fn opacity_report_rows(report: &AppearanceReport) -> Vec<(String, String)> {
+    vec![
+        (
+            rust_i18n::t!("appearance.label_active").to_string(),
+            super::appearance_float(report.active_opacity),
+        ),
+        (
+            rust_i18n::t!("appearance.label_inactive").to_string(),
+            super::appearance_float(report.inactive_opacity),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +555,98 @@ mod tests {
         assert!(!confirm_blur_prompt(true).is_empty());
         assert!(!blur_ok_line(false).is_empty());
         assert!(!blur_report_title().is_empty());
+    }
+
+    #[test]
+    fn opacity_validators_reject_garbage_and_accept_boundaries() {
+        // Edge: empty and whitespace-only rejected; NaN/inf/out-of-range
+        // rejected; boundary 0.0/1.0 accepted.
+        for bad in ["", "   ", "NaN", "nan", "inf", "-inf", "-0.1", "1.000001", "1.5", "abc"] {
+            assert!(
+                validate_opacity(bad).is_err(),
+                "opacity `{bad:?}` must fail validation"
+            );
+        }
+        for (raw, want) in [("0", 0.0), ("0.0", 0.0), ("1", 1.0), ("1.0", 1.0), ("0.9", 0.9), (" 0.8 ", 0.8)] {
+            assert_eq!(
+                validate_opacity(raw).expect("boundary input validates"),
+                want,
+                "opacity `{raw:?}` must validate"
+            );
+        }
+        let err = validate_opacity("1.5").expect_err("out of range must fail");
+        assert!(matches!(err, ArchelError::DesktopInvalid { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn opacity_eval_golden_pins_exact_statements() {
+        let both = OpacityPlan {
+            active: Some(0.9),
+            inactive: Some(0.8),
+            old_active: 1.0,
+            old_inactive: 1.0,
+        };
+        assert_eq!(
+            opacity_eval_statement(&both),
+            "hl.config({ decoration = { active_opacity = 0.9, inactive_opacity = 0.8 } })"
+        );
+        let single = OpacityPlan {
+            active: Some(1.0),
+            inactive: None,
+            old_active: 1.0,
+            old_inactive: 1.0,
+        };
+        assert_eq!(
+            opacity_eval_statement(&single),
+            "hl.config({ decoration = { active_opacity = 1 } })"
+        );
+    }
+
+    #[test]
+    fn opacity_plan_requires_at_least_one_leaf() {
+        let err = plan_opacity_set(None, None).expect_err("empty plan must fail");
+        assert!(matches!(err, ArchelError::DesktopInvalid { .. }), "{err:?}");
+        assert!(plan_opacity_set(Some("0.9"), None).is_ok());
+        assert!(plan_opacity_set(None, Some("0.8")).is_ok());
+        assert!(plan_opacity_set(Some("2.0"), None).is_err());
+    }
+
+    #[test]
+    fn opacity_apply_upserts_leaves_alongside_blur() {
+        let base = std::env::temp_dir().join(format!(
+            "archel-opacity-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("scratch base must create");
+        let plan = OpacityPlan {
+            active: Some(0.9),
+            inactive: Some(0.8),
+            old_active: 1.0,
+            old_inactive: 1.0,
+        };
+        let report = apply_opacity_with(&base, &plan, |_| Ok(()), || Ok((0.9, 0.8)))
+            .expect("injected legs must carry the apply");
+        assert!(report.read_back_ok);
+        let snippet =
+            std::fs::read_to_string(snippet_path_at(&base)).expect("snippet reads");
+        for needle in ["active_opacity = 0.9", "inactive_opacity = 0.8", "blur = { enabled"] {
+            assert!(snippet.contains(needle), "snippet keeps `{needle}`: {snippet:?}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn opacity_labels_come_from_the_catalog() {
+        crate::i18n::set_language("fr");
+        let plan = OpacityPlan {
+            active: Some(0.9),
+            inactive: None,
+            old_active: 1.0,
+            old_inactive: 1.0,
+        };
+        assert!(!opacity_title().is_empty());
+        assert!(!confirm_opacity_prompt(&plan).is_empty());
+        assert!(!opacity_report_title().is_empty());
     }
 }

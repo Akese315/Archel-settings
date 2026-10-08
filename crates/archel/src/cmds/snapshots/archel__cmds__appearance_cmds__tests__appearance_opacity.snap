@@ -1,0 +1,10 @@
+---
+source: crates/archel/src/cmds/appearance_cmds.rs
+expression: value
+---
+{
+  "active_opacity": 0.9,
+  "blur_enabled": true,
+  "inactive_opacity": 0.8,
+  "read_back_ok": true
+}
