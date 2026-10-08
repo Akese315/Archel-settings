@@ -23,6 +23,7 @@
 
 pub mod appearance;
 pub mod binds;
+pub mod font;
 pub mod monitors;
 pub mod wallpaper;
 
@@ -94,8 +95,8 @@ pub fn run_hyprctl(tool: &str, args: &[&str]) -> Result<String, ArchelError> {
         Some(output) => output.clone(),
         None => {
             let _ = handle.kill();
-            return Err(ArchelError::Internal(format!(
-                "'{tool}' exceeded the query timeout"
+            return Err(ArchelError::hyprland_unavailable(format!(
+                "'{tool}' exceeded the query timeout (compositor unresponsive)"
             )));
         }
     };
@@ -199,19 +200,34 @@ fn entry_path_at(base: &Path) -> PathBuf {
     base.join(ENTRY_FILE)
 }
 
-/// Backs up `path` to `<path>.bak-<UTC seconds>` before a write.
-/// Missing source files need no backup (first touch). Keeps the
-/// newest [`BACKUP_ROTATION`] backups per file.
+/// Backs up `path` to `<file>.bak-<UTC millis>` before a write.
+/// Missing source files need no backup (first touch). Millis plus a
+/// loop suffix keep back-to-back writes from colliding on the same
+/// backup name (WR-05). Keeps the newest [`BACKUP_ROTATION`] backups
+/// per file. Generic over the file name so the hyprpaper slice (Task
+/// 3) reuses the same stamps.
 pub fn backup_before_write(path: &Path) -> Result<(), ArchelError> {
     if !path.exists() {
         return Ok(());
     }
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_millis())
         .unwrap_or(0);
-    let backup = path.with_extension(format!("lua.bak-{stamp}"));
-    std::fs::copy(path, &backup).map_err(|err| {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return Err(ArchelError::Internal(format!(
+            "cannot back up '{}': unrepresentable file name",
+            path.display()
+        )));
+    };
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut candidate = parent.join(format!("{name}.bak-{stamp}"));
+    let mut disambiguator = 0u32;
+    while candidate.exists() {
+        disambiguator += 1;
+        candidate = parent.join(format!("{name}.bak-{stamp}-{disambiguator}"));
+    }
+    std::fs::copy(path, &candidate).map_err(|err| {
         ArchelError::Internal(format!("cannot back up '{}': {err}", path.display()))
     })?;
     prune_backups(path)?;
@@ -271,11 +287,20 @@ pub fn write_snippet_at(base: &Path, body: &str) -> Result<PathBuf, ArchelError>
 
 /// Ensures the one-time guarded `require("modules.archel")` line in
 /// the Lua entry file (grep line equality before append — idempotent).
-/// Backs up the entry on first touch. Returns true when the line was
-/// appended, false when already present.
+/// Backs up the entry on first touch and publishes through tmp+rename
+/// like the snippet (WR-06: the user-owned entry deserves the same
+/// atomicity). Refuses with typed [`crate::ArchelError::HyprlandUnavailable`]
+/// when the entry file is absent instead of planting a stray entry the
+/// compositor never loads. Returns true when the line was appended,
+/// false when already present.
 pub fn ensure_require_line_at(base: &Path) -> Result<bool, ArchelError> {
     let entry = entry_path_at(base);
-    let current = std::fs::read_to_string(&entry).unwrap_or_default();
+    let current = std::fs::read_to_string(&entry).map_err(|err| {
+        ArchelError::hyprland_unavailable(format!(
+            "lua entry '{}' not present: {err}",
+            entry.display()
+        ))
+    })?;
     if current.lines().any(|line| line.trim() == REQUIRE_LINE) {
         return Ok(false);
     }
@@ -286,8 +311,12 @@ pub fn ensure_require_line_at(base: &Path) -> Result<bool, ArchelError> {
     }
     next.push_str(REQUIRE_LINE);
     next.push('\n');
-    std::fs::write(&entry, next).map_err(|err| {
-        ArchelError::Internal(format!("cannot write '{}': {err}", entry.display()))
+    let tmp = entry.with_extension("lua.tmp");
+    std::fs::write(&tmp, next).map_err(|err| {
+        ArchelError::Internal(format!("cannot write '{}': {err}", tmp.display()))
+    })?;
+    std::fs::rename(&tmp, &entry).map_err(|err| {
+        ArchelError::Internal(format!("cannot publish '{}': {err}", entry.display()))
     })?;
     Ok(true)
 }
@@ -297,33 +326,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_binary_maps_to_typed_unavailable() {
-        // Skip the HIS gate by pinning a fake signature: the which-gate
-        // is what this test covers (proxy.rs:751-758 precedent).
+    fn session_and_binary_gates_map_to_typed_unavailable() {
+        // WR-03: the two env-touching probes live in ONE test so the
+        // parallel harness can never interleave them (a which-gate
+        // probe observing a removed var, or vice versa). The headless
+        // precondition is asserted, never a silent return (WR-04).
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "session-gate test requires headless stdin"
+        );
         let key = "HYPRLAND_INSTANCE_SIGNATURE";
         let stash = std::env::var_os(key);
+        // Binary gate first: pin a fake signature so the which-gate is
+        // what this leg covers (proxy.rs:751-758 precedent).
         unsafe { std::env::set_var(key, "test-signature") };
         let err = read_option_with_tool("archel-no-such-tool", "decoration:blur:enabled")
             .expect_err("a missing hyprctl must fail typed");
-        match stash {
-            Some(value) => unsafe { std::env::set_var(key, value) },
-            None => unsafe { std::env::remove_var(key) },
-        }
         assert!(
             matches!(err, ArchelError::HyprlandUnavailable { .. }),
             "missing hyprctl is typed unavailable, never a panic: {err:?}"
         );
-    }
-
-    #[test]
-    fn unset_signature_maps_to_typed_unavailable_without_spawning() {
-        use std::io::IsTerminal;
-        if std::io::stdin().is_terminal() {
-            // Meaningful only headless: never disturb a live session.
-            return;
-        }
-        let key = "HYPRLAND_INSTANCE_SIGNATURE";
-        let stash = std::env::var_os(key);
+        // Session gate second: no signature means no spawn at all.
         unsafe { std::env::remove_var(key) };
         let err = run_hyprctl("hyprctl", &["getoption", "decoration:blur:enabled", "-j"])
             .expect_err("no session signature must fail typed");
@@ -430,15 +454,69 @@ mod tests {
     }
 
     #[test]
+    fn require_line_refuses_a_missing_entry_atomically() {
+        // WR-06: a missing entry is refused typed (never a stray file
+        // the compositor would not load) and no tmp survives.
+        let base = scratch_hypr_dir("require-missing");
+        let entry = base.join(ENTRY_FILE);
+        assert!(!entry.exists(), "scratch entry must start absent");
+        let err = ensure_require_line_at(&base).expect_err("missing entry must refuse");
+        assert!(
+            matches!(err, ArchelError::HyprlandUnavailable { .. }),
+            "missing entry refuses typed, never creates: {err:?}"
+        );
+        assert!(!entry.exists(), "refusal must not plant a stray entry");
+        assert!(
+            !entry.with_extension("lua.tmp").exists(),
+            "no tmp file may survive the refusal"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn back_to_back_writes_keep_distinct_backups() {
+        // WR-05: three writes inside one wall-clock window keep two
+        // distinct backups — millis plus loop-suffix never collide.
+        let base = scratch_hypr_dir("backups");
+        write_snippet_at(&base, "-- v1\n").expect("first write");
+        write_snippet_at(&base, "-- v2\n").expect("second write backs up v1");
+        write_snippet_at(&base, "-- v3\n").expect("third write backs up v2");
+        let mut backups: Vec<_> = std::fs::read_dir(base.join(SNIPPET_DIR))
+            .expect("modules lists")
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(".bak-"))
+            })
+            .collect();
+        backups.sort();
+        backups.dedup();
+        assert_eq!(backups.len(), 2, "two priors keep two backups: {backups:?}");
+        let bodies: Vec<String> = backups
+            .iter()
+            .map(|p| std::fs::read_to_string(p).expect("backup reads"))
+            .collect();
+        assert!(
+            bodies.contains(&"-- v1\n".to_string()) && bodies.contains(&"-- v2\n".to_string()),
+            "backups hold each prior body: {bodies:?}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn writer_touches_nothing_outside_the_hypr_dir() {
         // D-08 write-scope spy: a user tree (entry + unrelated module)
         // plus a sentinel outside the base; after snippet + require
-        // work, only app-owned paths may differ.
+        // work, only app-owned paths may differ. The entry is seeded
+        // because ensure_require_line_at refuses a missing entry
+        // (WR-06) instead of creating one from nothing.
         let base = scratch_hypr_dir("scope");
         let outside = base.with_extension("outside-sentinel");
         std::fs::write(&outside, "sentinel").expect("sentinel seeds");
         let user_module = base.join(SNIPPET_DIR).join("keybinds.lua");
         std::fs::write(&user_module, "-- user binds\n").expect("user module seeds");
+        std::fs::write(base.join(ENTRY_FILE), "-- entry\n").expect("entry seeds");
         let user_before = std::fs::read(&user_module).expect("user module reads");
         write_snippet_at(&base, "-- managed\n").expect("snippet writes");
         ensure_require_line_at(&base).expect("require ensures");

@@ -9,8 +9,8 @@
 use serde::Serialize;
 
 use super::{
-    ensure_require_line_at, hypr_dir, parse_getoption_json, read_option,
-    run_hyprctl, run_hyprctl_eval, snippet_path_at, write_snippet_at, OptionValue,
+    ensure_require_line_at, hypr_dir, parse_getoption_json, read_option, run_hyprctl,
+    run_hyprctl_eval, snippet_path_at, write_snippet_at, OptionValue,
 };
 use crate::error::ArchelError;
 
@@ -131,27 +131,35 @@ pub fn parse_blur_enabled(out: &str) -> Result<bool, ArchelError> {
     }
 }
 
-/// Applies a blur switch: snippet rewrite (durability) + `eval` live
-/// leg + `getoption` read-back. The injectable `runner`/`reader` keep
-/// the orchestration unit-coverable headless; production passes the
-/// real `run_hyprctl` legs.
+/// Applies a blur switch: `eval` live leg plus `getoption` read-back
+/// FIRST, snippet persist only on read-back agreement (WR-01). A
+/// refused eval or a disagreeing read-back returns `Err` with the
+/// prior snippet body untouched — durable config can never claim a
+/// value the compositor rejected. The injectable `runner`/`reader`
+/// keep the orchestration unit-coverable headless; production passes
+/// the real `run_hyprctl` legs.
 pub fn apply_blur_with(
     base: &std::path::Path,
     enabled: bool,
     runner: impl FnOnce(&str) -> Result<(), ArchelError>,
     reader: impl FnOnce() -> Result<bool, ArchelError>,
 ) -> Result<AppearanceReport, ArchelError> {
+    runner(&blur_eval_statement(enabled))?;
+    let live = reader()?;
+    if live != enabled {
+        return Err(ArchelError::hyprland_unavailable(format!(
+            "live read-back disagrees with the applied blur value"
+        )));
+    }
     let mut state = current_snippet_state(base)?;
     state.blur_enabled = enabled;
     write_snippet_at(base, &render_snippet(&state))?;
     ensure_require_line_at(base)?;
-    runner(&blur_eval_statement(enabled))?;
-    let live = reader()?;
     Ok(AppearanceReport {
         blur_enabled: enabled,
         active_opacity: state.active_opacity,
         inactive_opacity: state.inactive_opacity,
-        read_back_ok: live == enabled,
+        read_back_ok: true,
     })
 }
 
@@ -257,23 +265,37 @@ pub struct OpacityPlan {
 /// Plans an opacity transition from CLI text (both `None` = bare
 /// read, which never reaches here — the caller reads instead).
 /// Rejects the empty plan (no flag) before any prompt or spawn.
-pub fn plan_opacity_set(
+/// Validation runs before any read (WR-02): typos fail fast with no
+/// filesystem touch, and the injectable `base` keeps the planner
+/// hermetic in tests (never the live home dir).
+pub fn plan_opacity_set_at(
+    base: &std::path::Path,
     active: Option<&str>,
     inactive: Option<&str>,
 ) -> Result<OpacityPlan, ArchelError> {
-    let old = current_snippet_state(&hypr_dir())?;
-    let plan = OpacityPlan {
-        active: active.map(validate_opacity).transpose()?,
-        inactive: inactive.map(validate_opacity).transpose()?,
-        old_active: old.active_opacity,
-        old_inactive: old.inactive_opacity,
-    };
-    if plan.active.is_none() && plan.inactive.is_none() {
+    let validated_active = active.map(validate_opacity).transpose()?;
+    let validated_inactive = inactive.map(validate_opacity).transpose()?;
+    if validated_active.is_none() && validated_inactive.is_none() {
         return Err(ArchelError::desktop_invalid(
             "opacity set needs --active and/or --inactive",
         ));
     }
-    Ok(plan)
+    let old = current_snippet_state(base)?;
+    Ok(OpacityPlan {
+        active: validated_active,
+        inactive: validated_inactive,
+        old_active: old.active_opacity,
+        old_inactive: old.inactive_opacity,
+    })
+}
+
+/// Plans against the live config dir (production leg; the `_at`
+/// sibling above is the hermetic, test-covered shape).
+pub fn plan_opacity_set(
+    active: Option<&str>,
+    inactive: Option<&str>,
+) -> Result<OpacityPlan, ArchelError> {
+    plan_opacity_set_at(&hypr_dir(), active, inactive)
 }
 
 /// Renders the exact `hl.config` Lua statement for an opacity plan.
@@ -326,34 +348,45 @@ pub fn read_opacity() -> Result<AppearanceState, ArchelError> {
     })
 }
 
-/// Applies an opacity plan: snippet upsert (both leaves alongside
-/// blur) + `eval` live leg + `getoption` read-back of both leaves.
-/// Injectable legs keep the orchestration unit-coverable headless.
+/// Applies an opacity plan: `eval` live leg plus `getoption`
+/// read-back of both leaves FIRST, snippet upsert (both leaves
+/// alongside blur) only on read-back agreement (WR-01). A refused
+/// eval or a disagreeing read-back returns `Err` with the prior
+/// snippet untouched. Injectable legs keep the orchestration
+/// unit-coverable headless.
 pub fn apply_opacity_with(
     base: &std::path::Path,
     plan: &OpacityPlan,
     runner: impl FnOnce(&str) -> Result<(), ArchelError>,
     reader: impl FnOnce() -> Result<(f64, f64), ArchelError>,
 ) -> Result<AppearanceReport, ArchelError> {
-    let mut state = current_snippet_state(base)?;
-    if let Some(active) = plan.active {
-        state.active_opacity = active;
+    if plan.active.is_none() && plan.inactive.is_none() {
+        return Err(ArchelError::desktop_invalid(
+            "opacity set needs --active and/or --inactive",
+        ));
     }
-    if let Some(inactive) = plan.inactive {
-        state.inactive_opacity = inactive;
-    }
-    write_snippet_at(base, &render_snippet(&state))?;
-    ensure_require_line_at(base)?;
     runner(&opacity_eval_statement(plan))?;
     let (live_active, live_inactive) = reader()?;
-    let want_active = plan.active.unwrap_or(state.active_opacity);
-    let want_inactive = plan.inactive.unwrap_or(state.inactive_opacity);
+    let prior = current_snippet_state(base)?;
+    let want_active = plan.active.unwrap_or(prior.active_opacity);
+    let want_inactive = plan.inactive.unwrap_or(prior.inactive_opacity);
+    if (live_active - want_active).abs() >= 1e-9
+        || (live_inactive - want_inactive).abs() >= 1e-9
+    {
+        return Err(ArchelError::hyprland_unavailable(
+            "live read-back disagrees with the applied opacity values",
+        ));
+    }
+    let mut state = prior;
+    state.active_opacity = want_active;
+    state.inactive_opacity = want_inactive;
+    write_snippet_at(base, &render_snippet(&state))?;
+    ensure_require_line_at(base)?;
     Ok(AppearanceReport {
         blur_enabled: state.blur_enabled,
         active_opacity: want_active,
         inactive_opacity: want_inactive,
-        read_back_ok: (live_active - want_active).abs() < 1e-9
-            && (live_inactive - want_inactive).abs() < 1e-9,
+        read_back_ok: true,
     })
 }
 
@@ -451,6 +484,7 @@ pub fn opacity_report_rows(report: &AppearanceReport) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::ENTRY_FILE;
 
     #[test]
     fn eval_statement_is_leaf_scoped_golden() {
@@ -494,8 +528,15 @@ mod tests {
         assert!(body.contains("-- archel managed block"));
     }
 
+    /// Seeds the Lua entry file in a scratch base: apply legs
+    /// refuse a missing entry (WR-06), so every orchestration test
+    /// starts from a present-but-untouched entry.
+    fn seed_entry(base: &std::path::Path) {
+        std::fs::write(base.join(ENTRY_FILE), "-- entry\n").expect("entry seeds");
+    }
+
     #[test]
-    fn apply_orchestration_writes_snippet_then_evals_then_reads_back() {
+    fn apply_evals_first_and_persists_only_on_agreement() {
         use std::cell::RefCell;
         use std::rc::Rc;
         let base = std::env::temp_dir().join(format!(
@@ -504,6 +545,7 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).expect("scratch base must create");
+        seed_entry(&base);
         let ran = Rc::new(RefCell::new(String::new()));
         let probe = Rc::clone(&ran);
         let report = apply_blur_with(
@@ -523,9 +565,18 @@ mod tests {
         );
         let snippet = std::fs::read_to_string(snippet_path_at(&base)).expect("snippet reads");
         assert!(snippet.contains("enabled = false"), "snippet persists the leaf");
-        let mismatch = apply_blur_with(&base, true, |_| Ok(()), || Ok(false))
-            .expect("read-back still reports");
-        assert!(!mismatch.read_back_ok, "divergent read-back is honest, never ok");
+        let before = snippet.clone();
+        let err = apply_blur_with(&base, true, |_| Ok(()), || Ok(false))
+            .expect_err("divergent read-back must fail, never silent-ok");
+        assert!(
+            matches!(err, ArchelError::HyprlandUnavailable { .. }),
+            "disagreement refuses typed: {err:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(snippet_path_at(&base)).expect("snippet re-reads"),
+            before,
+            "a refused read-back leaves the prior snippet untouched"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -537,6 +588,15 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).expect("scratch base must create");
+        seed_entry(&base);
+        // Seed a prior snippet claiming blur off: the failed apply of
+        // `on` must leave that body byte-for-byte alone (WR-01).
+        let prior = render_snippet(&AppearanceState {
+            blur_enabled: false,
+            active_opacity: 1.0,
+            inactive_opacity: 1.0,
+        });
+        write_snippet_at(&base, &prior).expect("prior snippet seeds");
         let err = apply_blur_with(
             &base,
             true,
@@ -545,6 +605,11 @@ mod tests {
         )
         .expect_err("eval refusal must fail the apply");
         assert!(matches!(err, ArchelError::HyprlandUnavailable { .. }));
+        assert_eq!(
+            std::fs::read_to_string(snippet_path_at(&base)).expect("snippet re-reads"),
+            prior,
+            "a refused eval must not leave the snippet claiming the refused value"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -604,11 +669,25 @@ mod tests {
 
     #[test]
     fn opacity_plan_requires_at_least_one_leaf() {
-        let err = plan_opacity_set(None, None).expect_err("empty plan must fail");
+        // Hermetic: the injectable base keeps the planner off the live
+        // home dir (WR-02) — old leaves come from the scratch snippet.
+        let base = std::env::temp_dir().join(format!(
+            "archel-opacity-plan-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("scratch base must create");
+        let err =
+            plan_opacity_set_at(&base, None, None).expect_err("empty plan must fail");
         assert!(matches!(err, ArchelError::DesktopInvalid { .. }), "{err:?}");
-        assert!(plan_opacity_set(Some("0.9"), None).is_ok());
-        assert!(plan_opacity_set(None, Some("0.8")).is_ok());
-        assert!(plan_opacity_set(Some("2.0"), None).is_err());
+        assert!(plan_opacity_set_at(&base, Some("0.9"), None).is_ok());
+        assert!(plan_opacity_set_at(&base, None, Some("0.8")).is_ok());
+        assert!(plan_opacity_set_at(&base, Some("2.0"), None).is_err());
+        // Validation runs before any read: garbage fails even when the
+        // base is missing entirely (no filesystem touch before reject).
+        let missing = base.join("no-such-dir");
+        assert!(plan_opacity_set_at(&missing, Some("abc"), None).is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -619,6 +698,7 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).expect("scratch base must create");
+        seed_entry(&base);
         let plan = OpacityPlan {
             active: Some(0.9),
             inactive: Some(0.8),
