@@ -24,6 +24,7 @@
 pub mod appearance;
 pub mod binds;
 pub mod font;
+pub mod input;
 pub mod monitors;
 pub mod wallpaper;
 
