@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: System Insight** - Landing dashboard data, live stats sampler, system facts
 - [x] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
 - [x] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control (completed 2026-10-07)
-- [ ] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes
+- [x] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes (completed 2026-10-08)
 - [ ] **Phase 6: GUI Shell & Tabs** - archel-settings vertical-tab GUI over the proven API
 
 ## Phase Details
@@ -150,5 +150,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. System Insight | 0/TBD | Not started | - |
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
-| 5. Hyprland Desktop | 4/4 | In Progress|  |
+| 5. Hyprland Desktop | 4/4 | Complete ✓ | 2026-10-08 |
 | 6. GUI Shell & Tabs | 0/TBD | Not started | - |
