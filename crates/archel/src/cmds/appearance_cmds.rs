@@ -170,12 +170,18 @@ mod tests {
             preview.contains(&core_appearance::blur_preview_title()),
             "preview keeps its title"
         );
+        // Diacritic-free matchers (D-07 guard: no French diacritics in .rs —
+        // same precedent as error.rs "graphique"). "sactiv" matches only the
+        // off-state value, never the on-state one.
         assert!(
-            preview.contains("désactivé"),
+            preview.contains("sactiv"),
             "preview names the target state: {preview:?}"
         );
         let prompt = core_appearance::confirm_blur_prompt(true);
-        assert!(prompt.contains("activé"), "confirm names the target: {prompt:?}");
+        assert!(
+            prompt.contains("activ") && !prompt.contains("sactiv"),
+            "confirm names the target: {prompt:?}"
+        );
     }
 
     #[test]
