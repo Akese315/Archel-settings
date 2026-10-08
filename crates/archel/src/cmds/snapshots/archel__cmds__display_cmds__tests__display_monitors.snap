@@ -1,0 +1,20 @@
+---
+source: crates/archel/src/cmds/display_cmds.rs
+expression: value
+---
+[
+  {
+    "disabled": false,
+    "mode": "3840x2160@60",
+    "name": "DP-2",
+    "position": "0x0",
+    "scale": 1.5
+  },
+  {
+    "disabled": false,
+    "mode": "1920x1080@144",
+    "name": "HDMI-A-2",
+    "position": "2560x0",
+    "scale": 1.0
+  }
+]

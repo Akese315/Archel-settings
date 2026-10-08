@@ -16,6 +16,7 @@ mod bt_cmds;
 mod audio_cmds;
 mod power_cmds;
 mod appearance_cmds;
+mod display_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -81,6 +82,12 @@ enum Command {
     Appearance {
         #[command(subcommand)]
         action: AppearanceAction,
+    },
+    /// Per-monitor resolution, scale, refresh, and layout with 15 s
+    /// keep-or-rollback (DSP-01..04, D-04/D-05)
+    Display {
+        #[command(subcommand)]
+        action: DisplayAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -399,6 +406,35 @@ enum WallpaperAction {
         path: String,
     },
 }
+/// One display query under `archel display` (DSP-01..04). `monitors`
+/// is the read-only inventory; `set` changes one output after
+/// confirmation, then holds a 15 s keep-or-rollback re-confirm: on
+/// reject or timeout the previous config re-applies automatically
+/// (D-04). Note: answer within the window — a locked screen during
+/// the 15 s rolls the change back by design.
+#[derive(Debug, Subcommand)]
+enum DisplayAction {
+    /// Connected monitors with mode, scale, refresh, position (read-only)
+    Monitors,
+    /// Change one monitor (confirm-gated, 15 s keep-or-rollback)
+    Set {
+        /// Output to change (see `display monitors`)
+        #[arg(long)]
+        output: String,
+        /// Mode with refresh, e.g. 1920x1080@144 (must be advertised)
+        #[arg(long)]
+        mode: Option<String>,
+        /// Scale factor, e.g. 1.5 (must divide the resolution cleanly)
+        #[arg(long)]
+        scale: Option<String>,
+        /// Position in scaled coordinates, e.g. 2560x0, or auto...
+        #[arg(long)]
+        position: Option<String>,
+        /// Remove the output from the layout instead of changing it
+        #[arg(long)]
+        disable: bool,
+    },
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -557,6 +593,16 @@ pub async fn run() -> Result<(), ArchelError> {
                 }
             },
         },
+        Command::Display { action } => match action {
+            DisplayAction::Monitors => display_cmds::run_monitors(cli.json),
+            DisplayAction::Set {
+                output,
+                mode,
+                scale,
+                position,
+                disable,
+            } => display_cmds::run_display_set(output, mode, scale, position, disable, cli.json),
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -620,6 +666,8 @@ mod tests {
                 "opacity",
                 "font",
                 "wallpaper",
+                "display",
+                "monitors",
                 "devices",
                 "status",
                 "dns",

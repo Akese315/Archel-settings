@@ -1,0 +1,12 @@
+---
+source: crates/archel/src/cmds/display_cmds.rs
+expression: value
+---
+{
+  "kept": true,
+  "mode": "1280x720@59 scale 1 at 2560x0",
+  "output": "HDMI-A-2",
+  "position": "2560x0",
+  "read_back_ok": true,
+  "scale": 1.0
+}
