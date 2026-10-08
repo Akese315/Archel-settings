@@ -41,7 +41,10 @@ created: "2026-10-09"
 
 > What the project's design system actually provides.
 
-Enumerated by `ls /usr/lib/qt6/qml/QtQuick/Controls/Fusion/*.qml | xargs -n1 basename | sed 's/\.qml//' | sort` — 55 components — qt6-declarative@6.11.2-2 — 2026-10-09. (QtQuick.Dialogs `FileDialog` also present via `/usr/lib/qt6/qml/QtQuick/Dialogs/qmldir` and `Qt/labs/platform`; availability without xdg-desktop-portal on bare Hyprland = 06-RESEARCH assumption A2 — degrade to typed path field, which D-20 already permits.)
+Enumerated by `ls /usr/lib/qt6/qml/QtQuick/Controls/Fusion/*.qml | xargs -n1 basename | sed 's/\.qml//' | sort` — 55 components — qt6-declarative@6.11.2-2 — 2026-10-09. (Version is that of the package
+actually shipping the enumerated `QtQuick/Controls` module, re-confirmed via `pacman -Q` on
+2026-10-09; 06-RESEARCH's 6.11.2-3 cites `qt6-base`, a different package — no conflict.
+QtQuick.Dialogs `FileDialog` also present via `/usr/lib/qt6/qml/QtQuick/Dialogs/qmldir` and `Qt/labs/platform`; availability without xdg-desktop-portal on bare Hyprland = 06-RESEARCH assumption A2 — degrade to typed path field, which D-20 already permits.)
 
 This table is a **non-exhaustive** list of known-good components and never a closed allowlist —
 the executor may use anything the module exports, and `gsd-ui-checker` Dimension 7 reports the
@@ -80,20 +83,23 @@ of 60 samples), `StatField` (value-or-N/A label pair), `PollBanner` (dismissible
 
 ## Spacing Scale
 
-Declared values (all multiples of 4; continues the spike's 12px grid):
+Declared values — exactly the standard 8-point set: 4, 8, 16, 24, 32, 48, 64.
 
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon–label gap in rail, inline paddings, rail Column spacing (as in Spike.qml) |
-| sm | 8px | Field label–input gap, chip/legend gaps |
-| md | 12px | Default window/row margins (matches spike's 12), form row spacing |
-| lg | 16px | Card/group padding, tab page padding |
-| xl | 24px | Section separation inside tabs, modal content padding |
-| 2xl | 32px | Major section breaks, empty-state vertical centering block |
-| 3xl | 48px | Landing hero block / empty-state top gap |
+| sm | 8px | Field label–input gap, chip/legend gaps, compact form-row spacing |
+| md | 16px | Default window/row margins, card/group padding, tab page padding |
+| lg | 24px | Section separation inside tabs, modal content padding |
+| xl | 32px | Major section breaks, empty-state vertical centering block |
+| 2xl | 48px | Landing hero block / empty-state top gap |
+| 3xl | 64px | Page-level spacing (Landing overview top) |
 
-Exceptions: rail item height is 32px (multiple of 4, not in the table's usage list); graph stroke
-width 2px and Fusion-drawn 1px hairline borders are style-rendered, not authored spacing.
+The spike's ad-hoc 12px margins (a preference, not a locked decision) are folded up to `md`
+(16px); the spike's verified 4px rail spacing is preserved verbatim.
+
+Exceptions: none beyond style rendering — graph stroke width 2px and Fusion-drawn 1px hairline
+borders are style-rendered, not authored spacing. Rail item height 32px is a set member.
 
 ---
 
@@ -176,7 +182,7 @@ upstream are marked with their decision ID.
 | Window | Default 900×620 (D-23 spike size), minimum 720×480; geometry (x, y, w, h, maximized) restored from `~/.config/archel/window-geometry.json`, clamped/centered if off-screen (Pitfall 4); saved on close |
 | Rail | Fixed width 200px; Column of 10 TabButtons, icon (16×16) beside French label, `spacing: 4`, item height 32px, checked item = Accent pill (proven pattern from Spike.qml, extended) |
 | Content area | StackLayout fills remaining width; one file per tab in `qml/tabs/`; hidden tabs not rendered (D-03) but timers keep polling in the models |
-| Tab page | Heading (tab name) + content Column/GridView, padding `lg` (16px); Landing = GNOME-Settings-like overview: update-count cards + system snapshot (D-22) |
+| Tab page | Heading (tab name) + content Column/GridView, padding `md` (16px); Landing = GNOME-Settings-like overview: update-count cards + system snapshot (D-22) |
 | Sparkline | Canvas 100% width × 60px, rolling 60×1Hz samples (D-09), 2px polyline, CPU = accent, RAM = ✱ green, right-aligned current value label (CPU also shows clock speed, D-10); per-core expander reveals N 40%-alpha lines |
 | Modal | `Dialog` with `modal: true`, `standardButtons` none (explicit buttons per copy contract), width 420px (StreamModal 560px, log height 240px) |
 | Global modals | PairingModal lives at ApplicationWindow level — pops above any tab (D-21); ErrorModal likewise global (one error voice, D-17) |
