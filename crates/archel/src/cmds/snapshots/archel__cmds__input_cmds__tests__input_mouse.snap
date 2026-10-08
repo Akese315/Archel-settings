@@ -1,0 +1,9 @@
+---
+source: crates/archel/src/cmds/input_cmds.rs
+expression: value
+---
+{
+  "natural_scroll": true,
+  "scroll_factor": 1.0,
+  "sensitivity": 0.5
+}

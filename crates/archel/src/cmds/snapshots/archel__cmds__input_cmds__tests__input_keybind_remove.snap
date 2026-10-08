@@ -1,0 +1,15 @@
+---
+source: crates/archel/src/cmds/input_cmds.rs
+assertion_line: 505
+expression: report
+---
+{
+  "action": "keybind-remove",
+  "bind": "SUPER + T -> exec \"kitty\"",
+  "managed": true,
+  "note": null,
+  "ok": true,
+  "transcript": [
+    "Combinaison « SUPER + T -> exec \"kitty\" » supprimée."
+  ]
+}

@@ -17,6 +17,7 @@ mod audio_cmds;
 mod power_cmds;
 mod appearance_cmds;
 mod display_cmds;
+mod input_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
@@ -88,6 +89,13 @@ enum Command {
     Display {
         #[command(subcommand)]
         action: DisplayAction,
+    },
+    /// Keyboard shortcuts plus mouse behavior (INP-01..04, D-06/D-07:
+    /// binds managed in the app snippet only, input leaves live via
+    /// eval with read-back)
+    Input {
+        #[command(subcommand)]
+        action: InputAction,
     },
     /// Print shell completions for bash, zsh or fish (D-09, D-10: the
     /// full tree including every pkg action, generated never hand-written)
@@ -435,6 +443,106 @@ enum DisplayAction {
         disable: bool,
     },
 }
+/// One input query under `archel input` (INP-01..04). `keybinds`
+/// manages snippet-owned binds (view/add/edit/remove after
+/// confirmation); bare `mouse` reads all three live leaves, `mouse
+/// set` mutates them after confirmation (D-06/D-07).
+#[derive(Debug, Subcommand)]
+enum InputAction {
+    /// View, add, edit, or remove keyboard shortcuts (read-only list)
+    Keybinds {
+        #[command(subcommand)]
+        action: KeybindAction,
+    },
+    /// Mouse sensitivity plus scrolling: read all leaves, or set them
+    Mouse {
+        #[command(subcommand)]
+        action: Option<MouseAction>,
+    },
+}
+
+/// One keybind operation under `archel input keybinds` (INP-01/02).
+/// Adds/edits/removes address binds by exact (mods, key, dispatcher)
+/// match over app-snippet lines only (D-06) — user bind blocks are
+/// never touched.
+#[derive(Debug, Subcommand)]
+enum KeybindAction {
+    /// Managed plus compositor binds with decoded mods (read-only)
+    List,
+    /// Add one bind: preview, confirm, eval live-apply, snippet merge
+    Add {
+        /// Modifier words, e.g. "SUPER + SHIFT" (empty = modeless)
+        #[arg(long, default_value = "")]
+        mods: String,
+        /// Key token, e.g. T, Return, F12
+        #[arg(long)]
+        key: String,
+        /// Dispatcher name, e.g. exec, killactive, workspace
+        #[arg(long = "action")]
+        dispatcher: String,
+        /// Opaque arg: the exec command, workspace number, ...
+        #[arg(long)]
+        arg: Option<String>,
+    },
+    /// Edit one bind addressed by its current combo (confirm-gated)
+    Edit {
+        /// Current modifier words of the bind to change
+        #[arg(long, default_value = "")]
+        mods: String,
+        /// Current key of the bind to change
+        #[arg(long)]
+        key: String,
+        /// Current dispatcher of the bind to change
+        #[arg(long = "action")]
+        dispatcher: String,
+        /// Replacement modifier words (keeps current when absent)
+        #[arg(long)]
+        new_mods: Option<String>,
+        /// Replacement key (keeps current when absent)
+        #[arg(long)]
+        new_key: Option<String>,
+        /// Replacement dispatcher (keeps current when absent)
+        #[arg(long)]
+        new_action: Option<String>,
+        /// Replacement opaque arg (keeps current when absent, unless
+        /// the dispatcher itself changes)
+        #[arg(long)]
+        new_arg: Option<String>,
+    },
+    /// Remove one bind addressed by its current combo (confirm-gated,
+    /// takes effect at the next reload — no unbind verb exists)
+    Remove {
+        /// Modifier words of the bind to remove
+        #[arg(long, default_value = "")]
+        mods: String,
+        /// Key of the bind to remove
+        #[arg(long)]
+        key: String,
+        /// Dispatcher of the bind to remove
+        #[arg(long = "action")]
+        dispatcher: String,
+    },
+}
+
+/// One mouse operation under `archel input mouse` (INP-03/04).
+/// Bare `mouse` (no subcommand) reads all three live leaves; `set`
+/// needs at least one leaf flag (floats validated before any prompt
+/// or spawn).
+#[derive(Debug, Subcommand)]
+enum MouseAction {
+    /// Set sensitivity and/or scrolling (confirm-gated, read-back checked)
+    Set {
+        /// Pointer sensitivity, -1.0 (slow) to 1.0 (fast)
+        #[arg(long)]
+        sensitivity: Option<String>,
+        /// Touchpad natural scroll: on or off
+        #[arg(long)]
+        natural_scroll: Option<String>,
+        /// Touchpad scroll speed factor, 0.1 to 10.0
+        #[arg(long)]
+        scroll_factor: Option<String>,
+    },
+}
 #[derive(Debug, Subcommand)]
 enum DnsAction {
     /// Configured profile DNS plus effective DNS (read-only)
@@ -603,6 +711,48 @@ pub async fn run() -> Result<(), ArchelError> {
                 disable,
             } => display_cmds::run_display_set(output, mode, scale, position, disable, cli.json),
         },
+        Command::Input { action } => match action {
+            InputAction::Keybinds { action } => match action {
+                KeybindAction::List => input_cmds::run_keybinds_list(cli.json),
+                KeybindAction::Add {
+                    mods,
+                    key,
+                    dispatcher,
+                    arg,
+                } => input_cmds::run_keybind_add(mods, key, dispatcher, arg, cli.json),
+                KeybindAction::Edit {
+                    mods,
+                    key,
+                    dispatcher,
+                    new_mods,
+                    new_key,
+                    new_action,
+                    new_arg,
+                } => input_cmds::run_keybind_edit(
+                    mods,
+                    key,
+                    dispatcher,
+                    new_mods,
+                    new_key,
+                    new_action,
+                    new_arg,
+                    cli.json,
+                ),
+                KeybindAction::Remove {
+                    mods,
+                    key,
+                    dispatcher,
+                } => input_cmds::run_keybind_remove(mods, key, dispatcher, cli.json),
+            },
+            InputAction::Mouse { action } => match action {
+                None => input_cmds::run_mouse(cli.json),
+                Some(MouseAction::Set {
+                    sensitivity,
+                    natural_scroll,
+                    scroll_factor,
+                }) => input_cmds::run_mouse_set(sensitivity, natural_scroll, scroll_factor, cli.json),
+            },
+        },
         Command::Completions { shell } => {
             // Generated from the single clap definition via the `aot`
             // path (never the deprecated root re-exports): stdout only,
@@ -668,6 +818,12 @@ mod tests {
                 "wallpaper",
                 "display",
                 "monitors",
+                "input",
+                "keybinds",
+                "mouse",
+                "add",
+                "edit",
+                "remove",
                 "devices",
                 "status",
                 "dns",

@@ -1,0 +1,15 @@
+---
+source: crates/archel/src/cmds/input_cmds.rs
+expression: mouse_report_value(&report)
+---
+{
+  "action": "mouse-set",
+  "natural_scroll": true,
+  "note": null,
+  "ok": true,
+  "scroll_factor": 1.5,
+  "sensitivity": 0.75,
+  "transcript": [
+    "Souris appliquée (sensibilité 0.75, défilement 1.5)."
+  ]
+}

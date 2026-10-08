@@ -1,0 +1,14 @@
+---
+source: crates/archel/src/cmds/input_cmds.rs
+expression: report
+---
+{
+  "action": "keybind-add",
+  "bind": "SUPER + T -> exec \"kitty\"",
+  "managed": true,
+  "note": null,
+  "ok": true,
+  "transcript": [
+    "Combinaison « SUPER + T -> exec \"kitty\" » appliquée."
+  ]
+}

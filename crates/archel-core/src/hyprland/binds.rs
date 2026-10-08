@@ -45,11 +45,19 @@ const MOD_WORDS: [(&str, u32); 4] = [
     ("SHIFT", MOD_SHIFT),
 ];
 
-/// Dispatcher names the app can manage. `exec` carries an opaque
-/// user command (lua-quoted at render); the rest carry an optional
-/// plain argument (workspace numbers, …). Unknown-but-plausible
-/// names validate through as [`BindDispatcher::Other`] so the
-/// documented Hyprland set stays usable without a release.
+/// Dispatcher names the app can manage, CLI-facing words. Each
+/// variant maps to its live-verified `hl.dsp.*` path
+/// ([`BindDispatcher::dsp_path`]): `exec` runs
+/// `hl.dsp.exec_cmd(<quoted string>)` (verified `ok` live),
+/// `killactive` runs `hl.dsp.window.close()` (the exact call the
+/// user's own config uses, verified present), `workspace` and
+/// `fullscreen` map to their verified `hl.dsp` paths. The remaining
+/// words have no verified dsp path on Hyprland 0.56.2 — they still
+/// parse (plan vocabulary) but the compositor is the final arbiter:
+/// a refused `eval` fails typed with the snippet untouched.
+/// `Other` carries any dotted dsp path (`window.move`, `focus`, …)
+/// for the documented set; table-arg dispatchers are out of v1 scope
+/// (their lines never parse, so they are never touched).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindDispatcher {
     Exec,
@@ -62,22 +70,10 @@ pub enum BindDispatcher {
     Other(String),
 }
 
-/// Documented dispatchers the app names directly (D-06 exact-match
-/// vocabulary; `exec` included — its arg stays opaque).
-const KNOWN_DISPATCHERS: [&str; 7] = [
-    "exec",
-    "killactive",
-    "togglefloating",
-    "workspace",
-    "movetoworkspace",
-    "fullscreen",
-    "togglesplit",
-];
-
 impl BindDispatcher {
-    /// Parses one dispatcher name: known names map to variants,
-    /// anything else must be a plausible Hyprland dispatcher word
-    /// (`[a-z0-9_]+`, lowercase-folded) or the plan fails typed
+    /// Parses one CLI-facing dispatcher word: the seven plan names
+    /// map to variants, anything else must be a plausible dsp path
+    /// (`[a-z0-9_.]+`, lowercase-folded) or the plan fails typed
     /// BEFORE any prompt, spawn, or write.
     pub fn parse(raw: &str) -> Result<Self, ArchelError> {
         let trimmed = raw.trim().to_lowercase();
@@ -93,7 +89,10 @@ impl BindDispatcher {
             "fullscreen" => Ok(Self::Fullscreen),
             "togglesplit" => Ok(Self::ToggleSplit),
             other => {
-                if other.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                if !other.is_empty()
+                    && other.chars().all(|c| {
+                        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.'
+                    })
                 {
                     Ok(Self::Other(other.to_string()))
                 } else {
@@ -105,7 +104,24 @@ impl BindDispatcher {
         }
     }
 
-    /// Canonical dispatcher word (renders into `hl.dsp.<name>`).
+    /// Maps one rendered `hl.dsp.*` path back to its variant, so
+    /// snippet parse round-trips the CLI-facing address (D-06
+    /// exact-match). Returns `None` for shapes the app never
+    /// renders (table args fail earlier at `unquote`).
+    fn from_dsp_path(path: &str) -> Option<Self> {
+        match path.trim() {
+            "exec_cmd" => Some(Self::Exec),
+            "window.close" => Some(Self::KillActive),
+            "togglefloating" => Some(Self::ToggleFloating),
+            "workspace" => Some(Self::Workspace),
+            "movetoworkspace" => Some(Self::MoveToWorkspace),
+            "window.fullscreen" => Some(Self::Fullscreen),
+            "togglesplit" => Some(Self::ToggleSplit),
+            other => Self::parse(other).ok(),
+        }
+    }
+
+    /// Canonical dispatcher word (exact-match address + display).
     pub fn name(&self) -> &str {
         match self {
             Self::Exec => "exec",
@@ -114,6 +130,25 @@ impl BindDispatcher {
             Self::Workspace => "workspace",
             Self::MoveToWorkspace => "movetoworkspace",
             Self::Fullscreen => "fullscreen",
+            Self::ToggleSplit => "togglesplit",
+            Self::Other(name) => name,
+        }
+    }
+
+    /// Live `hl.dsp.*` path rendered into `hl.bind(...)` and `eval`
+    /// text. Verified live on Hyprland 0.56.2 via
+    /// `assert(hl.dsp.<path>)` probes: exec_cmd, window.close,
+    /// workspace, window.fullscreen exist; the remaining bare words
+    /// have no verified path and render as-is (compositor refusal
+    /// stays honest — eval fails typed, snippet untouched).
+    pub fn dsp_path(&self) -> &str {
+        match self {
+            Self::Exec => "exec_cmd",
+            Self::KillActive => "window.close",
+            Self::ToggleFloating => "togglefloating",
+            Self::Workspace => "workspace",
+            Self::MoveToWorkspace => "movetoworkspace",
+            Self::Fullscreen => "window.fullscreen",
             Self::ToggleSplit => "togglesplit",
             Self::Other(name) => name,
         }
@@ -332,8 +367,8 @@ pub fn render_bind_line(spec: &BindSpec) -> Result<String, ArchelError> {
         format!("{} + {}", spec.mods, spec.key)
     };
     let call = match spec.arg.as_deref() {
-        Some(arg) => format!("hl.dsp.{}({})", spec.dispatcher.name(), lua_quote(arg)?),
-        None => format!("hl.dsp.{}()", spec.dispatcher.name()),
+        Some(arg) => format!("hl.dsp.{}({})", spec.dispatcher.dsp_path(), lua_quote(arg)?),
+        None => format!("hl.dsp.{}()", spec.dispatcher.dsp_path()),
     };
     Ok(format!("hl.bind({}, {})", lua_quote(&combo)?, call))
 }
@@ -350,8 +385,8 @@ pub fn parse_bind_line(line: &str) -> Option<BindSpec> {
     let combo = unquote(combo_raw.trim())?;
     let (mods, key) = split_combo(&combo)?;
     let call = call_raw.trim().strip_prefix("hl.dsp.")?;
-    let (name, arg_raw) = call.split_once('(')?;
-    let dispatcher = BindDispatcher::parse(name.trim()).ok()?;
+    let (path, arg_raw) = call.split_once('(')?;
+    let dispatcher = BindDispatcher::from_dsp_path(path)?;
     let arg = {
         let inner = arg_raw.trim().strip_suffix(')')?.trim();
         if inner.is_empty() {
@@ -507,25 +542,36 @@ pub fn parse_snippet_binds(body: &str) -> Vec<BindSpec> {
 }
 
 /// Collision hint: when `spec`'s (mods, key) already exists in the
-/// `binds -j` vocabulary, name it so the preview warns about the
-/// duplicate. `None` means no collision. Display-only — user binds
-/// are never edited (D-06).
+/// `binds -j` vocabulary, render the French warning line so the
+/// preview names the duplicate. `None` means no collision.
+/// Display-only — user binds are never edited (D-06).
 pub fn collision_hint(binds: &[UserBind], spec: &BindSpec) -> Option<String> {
     let mask = parse_mods(&spec.mods).unwrap_or(0);
     binds
         .iter()
         .find(|bind| bind.modmask == mask && bind.key == spec.key)
         .map(|bind| {
-            let mods = render_mods(bind.modmask);
-            if mods.is_empty() {
-                format!("key {:?} is already bound (compositor inventory)", bind.key)
+            let combo = if bind.modmask == 0 {
+                bind.key.clone()
             } else {
-                format!(
-                    "combo {} + {} is already bound (compositor inventory)",
-                    mods, bind.key
-                )
-            }
+                format!("{} + {}", render_mods(bind.modmask), bind.key)
+            };
+            rust_i18n::t!("input.collision_hint", combo = combo).to_string()
         })
+}
+
+/// Renders the exact `hl.unbind(...)` statement removing one bind
+/// live (verified `ok` live: the F13 probe bind unbound cleanly).
+/// Pure (golden-testable without spawning): the combo is validated
+/// upstream, so quoting cannot fail — the `Result` only carries the
+/// [`super::lua_quote`] gate for uniformity.
+pub fn unbind_eval_statement(spec: &BindSpec) -> Result<String, ArchelError> {
+    let combo = if spec.mods.is_empty() {
+        spec.key.clone()
+    } else {
+        format!("{} + {}", spec.mods, spec.key)
+    };
+    Ok(format!("hl.unbind({})", lua_quote(&combo)?))
 }
 
 /// French preview title (shown before `[o/N]`).
@@ -559,9 +605,34 @@ pub fn confirm_bind_prompt(spec: &BindSpec) -> String {
     rust_i18n::t!("input.confirm_bind", change = summarize_bind(spec)).to_string()
 }
 
+/// French confirmation prompt naming the bind to remove.
+pub fn confirm_bind_remove_prompt(spec: &BindSpec) -> String {
+    rust_i18n::t!("input.confirm_bind_remove", change = summarize_bind(spec)).to_string()
+}
+
 /// French ok line naming the applied bind.
 pub fn bind_ok_line(spec: &BindSpec) -> String {
     rust_i18n::t!("input.bind_ok", change = summarize_bind(spec)).to_string()
+}
+
+/// French ok line for a removal: names the bind (the compositor
+/// unbind runs live, so no reload note is needed).
+pub fn bind_removed_line(spec: &BindSpec) -> String {
+    rust_i18n::t!("input.bind_removed", change = summarize_bind(spec)).to_string()
+}
+
+/// French old-arrow-new rows for the edit preview.
+pub fn edit_preview_rows(old: &BindSpec, new: &BindSpec) -> Vec<(String, String)> {
+    vec![
+        (
+            rust_i18n::t!("input.label_before").to_string(),
+            summarize_bind(old),
+        ),
+        (
+            rust_i18n::t!("input.label_after").to_string(),
+            summarize_bind(new),
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -624,13 +695,13 @@ mod tests {
     fn bind_line_renders_and_parses_back() {
         let spec = plan_bind("SUPER", "T", "exec", Some("kitty")).expect("plans");
         let line = render_bind_line(&spec).expect("renders");
-        assert_eq!(line, r#"hl.bind("SUPER + T", hl.dsp.exec("kitty"))"#);
+        assert_eq!(line, r#"hl.bind("SUPER + T", hl.dsp.exec_cmd("kitty"))"#);
         let back = parse_bind_line(&line).expect("parses back");
         assert_eq!(back, spec, "render/parse round-trips");
         // Modeless binds render bare-keyed.
         let bare = plan_bind("", "F1", "killactive", None).expect("modeless plans");
         let bare_line = render_bind_line(&bare).expect("renders");
-        assert_eq!(bare_line, r#"hl.bind("F1", hl.dsp.killactive())"#);
+        assert_eq!(bare_line, r#"hl.bind("F1", hl.dsp.window.close())"#);
         assert_eq!(parse_bind_line(&bare_line).expect("parses"), bare);
         // Foreign lines never parse: comments, other hl calls,
         // malformed binds, user-shaped lines without hl.dsp.
@@ -738,6 +809,20 @@ mod tests {
     }
 
     #[test]
+    fn unbind_statement_names_the_combo_golden() {
+        let spec = plan_bind("SUPER + SHIFT", "F13", "exec", Some("true")).expect("plans");
+        assert_eq!(
+            unbind_eval_statement(&spec).expect("renders"),
+            r#"hl.unbind("SUPER + SHIFT + F13")"#
+        );
+        let bare = plan_bind("", "F1", "killactive", None).expect("plans");
+        assert_eq!(
+            unbind_eval_statement(&bare).expect("renders"),
+            r#"hl.unbind("F1")"#
+        );
+    }
+
+    #[test]
     fn user_block_sentinel_lines_never_match() {
         // A body mixing app lines with foreign user-shaped content:
         // only the app line is addressable, the rest pass through.
@@ -763,6 +848,7 @@ mod tests {
 
     #[test]
     fn collision_hint_names_binds_j_vocabulary() {
+        crate::i18n::set_language("fr");
         let binds = parse_binds_json(BINDS_FIXTURE);
         // SUPER+Return collides with the fixture inventory.
         let taken = plan_bind("SUPER", "Return", "exec", Some("kitty")).expect("plans");
@@ -777,20 +863,28 @@ mod tests {
     }
 
     #[test]
-    fn dispatcher_vocabulary_accepts_the_documented_set() {
-        for known in [
-            "exec",
-            "killactive",
-            "togglefloating",
-            "workspace",
-            "movetoworkspace",
-            "fullscreen",
-            "togglesplit",
+    fn dispatcher_vocabulary_maps_cli_words_to_live_dsp_paths() {
+        // Plan vocabulary parses; dsp paths round-trip back to the
+        // same variant so snippet exact-match holds (D-06).
+        for (word, path) in [
+            ("exec", "exec_cmd"),
+            ("killactive", "window.close"),
+            ("workspace", "workspace"),
+            ("fullscreen", "window.fullscreen"),
         ] {
-            assert!(BindDispatcher::parse(known).is_ok(), "{known:?} parses");
+            let dispatcher = BindDispatcher::parse(word).expect("word parses");
+            assert_eq!(dispatcher.dsp_path(), path, "{word:?} maps live");
+            assert_eq!(
+                BindDispatcher::from_dsp_path(path).expect("path maps back"),
+                dispatcher,
+                "{path:?} round-trips"
+            );
         }
-        // Pass-through for plausible Hyprland words, typed reject
-        // for shell-shaped names.
+        // Dotted pass-through for the documented dsp set.
+        assert!(matches!(
+            BindDispatcher::parse("window.move"),
+            Ok(BindDispatcher::Other(_))
+        ));
         assert!(matches!(
             BindDispatcher::parse("cyclenext"),
             Ok(BindDispatcher::Other(_))
@@ -801,7 +895,6 @@ mod tests {
                 "dispatcher {bad:?} must fail"
             );
         }
-        assert!(KNOWN_DISPATCHERS.contains(&"exec"));
     }
 
     #[test]
@@ -820,7 +913,10 @@ mod tests {
         assert!(!keybinds_title().is_empty());
         let spec = plan_bind("SUPER", "T", "exec", Some("kitty")).expect("plans");
         assert!(!confirm_bind_prompt(&spec).is_empty());
+        assert!(!confirm_bind_remove_prompt(&spec).is_empty());
         assert!(!bind_ok_line(&spec).is_empty());
+        assert!(!bind_removed_line(&spec).is_empty());
+        assert_eq!(edit_preview_rows(&spec, &spec).len(), 2);
         let statuses: Vec<BindStatus> =
             parse_binds_json(BINDS_FIXTURE).iter().map(BindStatus::from).collect();
         assert_eq!(keybind_rows(&statuses).len(), 3);

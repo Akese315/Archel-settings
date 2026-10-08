@@ -245,6 +245,27 @@
     "set_ok": "%{output} : « %{change} » appliqué.",
     "set_rolled_back": "%{output} : configuration précédente restaurée."
   },
+  "input": {
+    "keybinds_title": "Entrée — raccourcis clavier",
+    "managed_marker": "géré par Archel",
+    "label_before": "Avant",
+    "label_after": "Après",
+    "confirm_bind": "Appliquer la combinaison « %{change} » ? [o/N]",
+    "confirm_bind_remove": "Supprimer la combinaison « %{change} » ? [o/N]",
+    "bind_ok": "Combinaison « %{change} » appliquée.",
+    "bind_removed": "Combinaison « %{change} » supprimée.",
+    "collision_hint": "Attention : la combinaison %{combo} existe déjà (inventaire du compositeur).",
+    "mouse_title": "Entrée — souris",
+    "mouse_preview_title": "Entrée — appliquer la souris",
+    "mouse_report_title": "Entrée — souris appliquée",
+    "label_sensitivity": "Sensibilité",
+    "label_natural_scroll": "Défilement naturel",
+    "label_scroll_factor": "Vitesse de défilement",
+    "value_on": "activé",
+    "value_off": "désactivé",
+    "confirm_mouse": "Appliquer la souris (%{detail}) ? [o/N]",
+    "mouse_ok": "Souris appliquée (sensibilité %{sensitivity}, défilement %{scroll_factor})."
+  },
   "errors": {
     "auth_cancelled": "Authentification annulée — « %{action} » n'a pas été exécutée.",
     "auth_denied": "Authentification refusée — « %{action} » n'a pas été autorisée.",

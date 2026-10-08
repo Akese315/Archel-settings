@@ -1,0 +1,34 @@
+---
+source: crates/archel/src/cmds/input_cmds.rs
+expression: value
+---
+[
+  {
+    "dispatcher": "exec",
+    "key": "T",
+    "managed": true,
+    "mods": [
+      "SUPER"
+    ],
+    "submap": ""
+  },
+  {
+    "dispatcher": "__lua",
+    "key": "V",
+    "managed": false,
+    "mods": [
+      "SUPER",
+      "SHIFT"
+    ],
+    "submap": ""
+  },
+  {
+    "dispatcher": "__lua",
+    "key": "Return",
+    "managed": false,
+    "mods": [
+      "SUPER"
+    ],
+    "submap": ""
+  }
+]
