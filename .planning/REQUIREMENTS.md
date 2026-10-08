@@ -33,8 +33,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Appearance
 
-- [ ] **APP-01**: User can set the desktop wallpaper (Hyprland backend: hyprpaper/swww, decided in stack spike)
-- [ ] **APP-02**: User can change the system font
+- [x] **APP-01**: User can set the desktop wallpaper (Hyprland backend: hyprpaper/swww, decided in stack spike)
+- [x] **APP-02**: User can change the system font
 - [x] **APP-03**: User can configure window blur (Hyprland decoration settings)
 - [x] **APP-04**: User can configure window transparency/opacity (Hyprland rules)
 
@@ -152,8 +152,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PWR-01 | Phase 4 | Complete |
 | BT-01 | Phase 4 | Complete |
 | BT-02 | Phase 4 | Complete |
-| APP-01 | Phase 5 | Pending |
-| APP-02 | Phase 5 | Pending |
+| APP-01 | Phase 5 | Complete |
+| APP-02 | Phase 5 | Complete |
 | APP-03 | Phase 5 | Complete |
 | APP-04 | Phase 5 | Complete |
 | SND-01 | Phase 4 | Complete |

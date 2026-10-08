@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Hyprland Desktop
-status: verifying
-stopped_at: Completed 05-01-01-PLAN.md
-last_updated: "2026-10-08T11:42:48.332Z"
+status: executing
+stopped_at: Completed 05-02-01-PLAN.md
+last_updated: "2026-10-08T11:56:44.322Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 05 execution started
-state_head: e1147b780900c1cc4e8968243f346f56b95f71a6
+state_head: 7fb51eae83df522e0897282ab483e779f305450a
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 16
-  percent: 17
+  completed_plans: 17
+  percent: 33
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 
 ## Current Position
 
-Phase: 05 (Hyprland Desktop) — READY TO EXECUTE
-Plan: 1 of 1 (planned so far)
-Status: Wave 1 complete (05-01-01 tracer: APP-03/APP-04); remaining scope (APP-01/02, DSP-01..04, INP-01..04) awaiting planning
-Last activity: 2026-10-08 — 05-01-01 executed, reviewed, post-merge suite green
+Phase: 05 (Hyprland Desktop) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-10-08 — Phase 05 execution started
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [██░░░░░░░░] 17%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 05 P01-01 | 7min | 2 tasks | 12 files |
+| Phase 05 P02-01 | 13min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - [Roadmap]: pkexec one-shot helper for pacman only; yay always unprivileged; NM writes via its own D-Bus polkit
 - [Phase 05]: Live-apply via hyprctl eval hl.config (keyword dead on Hyprland 0.56.2) — keyword errors with use-eval yet exits 0; eval leaf-merge verified live
 - [Phase 05]: Snippet at ~/.config/hypr/modules/archel.lua with backup+atomic+require-line — D-08: user config never rewritten; rotation N=5; idempotent require
+- [Phase 05]: Eval-then-read-back-first ordering for all Hyprland apply paths; snippet persists only on agreement (WR-01)
+- [Phase 05]: Wallpaper restart is pkill + setsid only, no hyprctl hyprpaper path; setsid verified present live
+- [Phase 05]: gsettings failures map to typed HyprlandUnavailable; trailing numeric font token always claims the size
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-08T11:26:40.902Z
-Stopped at: Completed 05-01-01-PLAN.md
+Last session: 2026-10-08T11:56:44.282Z
+Stopped at: Completed 05-02-01-PLAN.md
 Resume file: None
