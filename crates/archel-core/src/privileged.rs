@@ -10,6 +10,7 @@
 //! the user only sees the French catalog string (T-1-02).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Deserialize;
 
@@ -253,6 +254,223 @@ pub fn run_privileged_streaming(
     })?;
     parse_helper_stdout(verb, envelope)?;
     Ok(transcript)
+}
+
+/// Outcome of a cancellable streaming transaction (D-14: the caller
+/// reports HOW it ended — a user-requested stop is data, not an error).
+///
+/// `exit_code` is `None` when the child died from the SIGINT itself
+/// (killed by signal) rather than by exiting; pair it with `cancelled`
+/// to render the modal end state (D-14: how the transaction ended).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancellableStreaming {
+    /// Every stdout line the child produced before EOF. Partial on
+    /// cancel — the transcript is still returned, never discarded.
+    pub transcript: String,
+    /// True when the cancel handle was observed mid-stream and the
+    /// child was asked to stop via SIGINT (exactly once).
+    pub cancelled: bool,
+    /// The reaped exit code (`None` on signal death).
+    pub exit_code: Option<i32>,
+}
+
+/// One-shot SIGINT sender for a known child pid (D-14/Pitfall 6: the
+/// child is only ever asked politely via SIGINT — never SIGKILL, so
+/// pacman finalizes/aborts its transaction and releases its lock).
+///
+/// The `kill` utility is resolved eagerly (no libc/nix dependency);
+/// signalling itself is fire-and-forget — a child that already exited
+/// simply yields a failed `kill`, and the drain below still reaps the
+/// true end state. Interior mutability (`&self` polling) lets the
+/// drain loop and a 50 ms watcher thread share one sentry, so the
+/// stop also lands while a silent child produces no output lines.
+pub(crate) struct CancelSentry {
+    pid: u32,
+    kill: PathBuf,
+    signalled: AtomicBool,
+}
+
+impl CancelSentry {
+    /// Binds a sentry to a live child pid. `None` when no `kill`
+    /// utility exists — the caller turns that into its domain error
+    /// instead of degrading to an unsignalled wait.
+    pub(crate) fn for_child(pid: u32) -> Option<Self> {
+        let kill = which::which("kill").ok().or_else(|| {
+            let fallback = PathBuf::from("/bin/kill");
+            fallback.is_file().then_some(fallback)
+        })?;
+        Some(Self {
+            pid,
+            kill,
+            signalled: AtomicBool::new(false),
+        })
+    }
+
+    /// Sends SIGINT at most once: the first call observing a set
+    /// `cancel` signals the child and latches; later calls (and calls
+    /// after natural EOF) are no-ops. The latch is claim-once across
+    /// threads, so the drain loop and the watcher thread together
+    /// still signal exactly once.
+    pub(crate) fn poll(&self, cancel: &AtomicBool) {
+        if cancel.load(Ordering::SeqCst) && !self.signalled.swap(true, Ordering::SeqCst) {
+            let _ = std::process::Command::new(&self.kill)
+                .arg("-INT")
+                .arg(self.pid.to_string())
+                .status();
+        }
+    }
+
+    pub(crate) fn was_signalled(&self) -> bool {
+        self.signalled.load(Ordering::SeqCst)
+    }
+}
+
+/// Cancellable line drain: every line reaches `on_line` live AND
+/// accumulates into the transcript (same contract as
+/// [`collect_streaming`]), except the cancel handle is polled before
+/// every read — a set flag SIGINTs the child once via `sentry`, and
+/// the loop still reads to EOF so no output is lost and no pipe
+/// blocks the reap. Returns the transcript plus whether a stop was
+/// requested mid-stream.
+pub(crate) fn collect_streaming_cancellable<R: std::io::BufRead>(
+    reader: R,
+    on_line: &mut dyn FnMut(&str),
+    cancel: &AtomicBool,
+    sentry: &CancelSentry,
+) -> (String, bool) {
+    let mut transcript = String::new();
+    let mut lines = reader.lines();
+    loop {
+        sentry.poll(cancel);
+        match lines.next() {
+            Some(Ok(line)) => {
+                on_line(&line);
+                transcript.push_str(&line);
+                transcript.push('\n');
+            }
+            _ => break,
+        }
+    }
+    (transcript, sentry.was_signalled())
+}
+
+/// Reaped end state of a cancellable child: stdout drained to EOF
+/// (stderr drained on a side thread into `stderr`, so a verbose child
+/// cannot deadlock the reap), then waited. The single implementation
+/// of the cancel mechanics shared by the pkexec and yay paths.
+pub(crate) struct DrainedChild {
+    pub(crate) transcript: String,
+    pub(crate) cancelled: bool,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) stderr: Vec<u8>,
+}
+
+pub(crate) fn drain_cancellable_child(
+    mut child: std::process::Child,
+    on_line: &mut dyn FnMut(&str),
+    cancel: &AtomicBool,
+) -> Result<DrainedChild, String> {
+    let pid = child.id();
+    let sentry = CancelSentry::for_child(pid)
+        .ok_or_else(|| "kill utility not available for graceful cancel".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "child stdout unavailable".to_string())?;
+    let err_thread = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+            buf
+        })
+    });
+    // The drain loop polls before every read (immediate stop on chatty
+    // output); a watcher thread polls every 50 ms so the stop also
+    // lands while a silent child blocks the read. `thread::scope`
+    // keeps both borrows on this stack — no 'static outbound needed.
+    let finished = AtomicBool::new(false);
+    let (transcript, cancelled) = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !finished.load(Ordering::SeqCst) {
+                sentry.poll(cancel);
+                if finished.load(Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        });
+        let drained = collect_streaming_cancellable(
+            std::io::BufReader::new(stdout),
+            on_line,
+            cancel,
+            &sentry,
+        );
+        finished.store(true, Ordering::SeqCst);
+        drained
+    });
+    let status = child
+        .wait()
+        .map_err(|err| format!("cannot wait on child: {err}"))?;
+    let stderr = err_thread.map(|h| h.join().unwrap_or_default()).unwrap_or_default();
+    Ok(DrainedChild {
+        transcript,
+        cancelled,
+        exit_code: status.code(),
+        stderr,
+    })
+}
+
+/// Runs one mutation verb through pkexec with live streaming AND a
+/// stop channel (D-13): the GUI's StreamModal Annuler button sets
+/// `cancel`, the pkexec child gets exactly one SIGINT, stdout still
+/// drains to EOF, and the returned [`CancellableStreaming`] reports
+/// how the transaction ended (D-14).
+///
+/// Same spawn shape as [`run_privileged_streaming`] (`which` pkexec
+/// probe, helper argv via [`pkg_helper_argv`], `LC_ALL=C`), except the
+/// child is spawned via `std::process::Command` so its pid is known
+/// to the [`CancelSentry`]. A user-cancelled stop returns `Ok` with
+/// `cancelled == true` (never collapsed into an error); the
+/// non-cancelled path keeps the exact `map_pkexec_exit` + envelope
+/// semantics of [`run_privileged_streaming`], which stays untouched.
+pub fn run_privileged_streaming_cancellable(
+    verb: &str,
+    packages: &[String],
+    action_label: &str,
+    on_line: &mut dyn FnMut(&str),
+    cancel: &AtomicBool,
+) -> Result<CancellableStreaming, ArchelError> {
+    let pkexec = which::which("pkexec").map_err(|err| {
+        ArchelError::HelperProtocol(format!("pkexec not available: {err}"))
+    })?;
+    let helper = locate_helper()?;
+    let mut argv: Vec<PathBuf> = vec![helper];
+    argv.extend(pkg_helper_argv(verb, packages).iter().map(PathBuf::from));
+    let child = std::process::Command::new(&pkexec)
+        .args(&argv)
+        .env("LC_ALL", "C")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|err| {
+            ArchelError::HelperProtocol(format!("cannot spawn pkexec for '{verb}': {err}"))
+        })?;
+    let drained = drain_cancellable_child(child, on_line, cancel).map_err(|detail| {
+        ArchelError::HelperProtocol(format!("cancellable streaming for '{verb}': {detail}"))
+    })?;
+    let _stderr_for_logs = String::from_utf8_lossy(&drained.stderr);
+    if !drained.cancelled {
+        map_pkexec_exit(action_label, drained.exit_code)?;
+        let envelope = stream_envelope_line(&drained.transcript).ok_or_else(|| {
+            ArchelError::HelperProtocol(format!("helper produced no output for '{verb}'"))
+        })?;
+        parse_helper_stdout(verb, envelope)?;
+    }
+    Ok(CancellableStreaming {
+        transcript: drained.transcript,
+        cancelled: drained.cancelled,
+        exit_code: drained.exit_code,
+    })
 }
 
 /// Installs packages through the helper with live output streaming.
@@ -525,5 +743,125 @@ mod tests {
             .expect_err("127")
             .message();
         assert_ne!(cancelled, denied, "cancelled vs denied stay distinct per action");
+    }
+
+    /// Spawns `sh -c <script>` as a fake streaming child (no pkexec, no
+    /// polkit): the script sees `$ARCHEL_SENTINEL` for its SIGINT trap.
+    fn fake_child(script: &str, sentinel: &std::path::Path) -> std::process::Child {
+        std::process::Command::new("sh")
+            .args(["-c", script])
+            .env("ARCHEL_SENTINEL", sentinel)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("sh must spawn on this machine")
+    }
+
+    fn cancel_sentinel(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "archel-cancel-test-{}-{name}.sentinel",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn cancellable_drain_without_cancel_returns_full_transcript() {
+        let child = fake_child("echo one; echo two; echo three", &cancel_sentinel("a"));
+        let cancel = AtomicBool::new(false);
+        let mut seen = Vec::new();
+        let drained = drain_cancellable_child(child, &mut |line: &str| {
+            seen.push(line.to_string());
+        }, &cancel)
+        .expect("clean child must drain");
+        assert_eq!(seen, vec!["one", "two", "three"]);
+        assert_eq!(drained.transcript, "one\ntwo\nthree\n");
+        assert!(!drained.cancelled, "unset flag must not report a stop");
+        assert_eq!(drained.exit_code, Some(0));
+    }
+
+    #[test]
+    fn cancel_mid_stream_sigints_once_drains_to_eof_and_reports() {
+        let sentinel = cancel_sentinel("b");
+        let _ = std::fs::remove_file(&sentinel);
+        // Trap appends one marker per SIGINT then exits 130; the tick
+        // loop keeps the child alive for ~4 s so the stop lands mid-stream.
+        let child = fake_child(
+            "trap 'echo INT >> \"$ARCHEL_SENTINEL\"; exit 130' INT; \
+             echo alpha; echo beta; \
+             i=0; while [ \"$i\" -lt 200 ]; do echo \"tick $i\"; sleep 0.02; i=$((i+1)); done",
+            &sentinel,
+        );
+        let cancel = AtomicBool::new(false);
+        let mut seen = Vec::new();
+        let drained = drain_cancellable_child(child, &mut |line: &str| {
+            // Request the stop synchronously once beta is delivered:
+            // every later loop iteration observes the set flag.
+            if line == "beta" {
+                cancel.store(true, Ordering::SeqCst);
+            }
+            seen.push(line.to_string());
+        }, &cancel)
+        .expect("cancelled child must still drain");
+        assert!(drained.cancelled, "mid-stream stop must be reported");
+        assert!(
+            seen.iter().any(|l| l == "alpha") && seen.iter().any(|l| l == "beta"),
+            "pre-stop lines must still reach the caller: {seen:?}"
+        );
+        let marks = std::fs::read_to_string(&sentinel)
+            .expect("trap must have recorded the SIGINT");
+        assert_eq!(marks, "INT\n", "exactly one SIGINT per stop request");
+        assert_eq!(drained.exit_code, Some(130), "trap exit code must surface");
+        let _ = std::fs::remove_file(&sentinel);
+    }
+
+    #[test]
+    fn cancel_after_natural_end_sends_no_signal() {
+        let sentinel = cancel_sentinel("c");
+        let _ = std::fs::remove_file(&sentinel);
+        let child = fake_child(
+            "trap 'echo INT >> \"$ARCHEL_SENTINEL\"; exit 130' INT; echo done",
+            &sentinel,
+        );
+        let cancel = AtomicBool::new(false);
+        let drained =
+            drain_cancellable_child(child, &mut |_: &str| {}, &cancel).expect("clean drain");
+        assert!(!drained.cancelled);
+        assert_eq!(drained.exit_code, Some(0));
+        // The stop arrives only after the child is already reaped:
+        // no signal may have been (or will be) sent.
+        cancel.store(true, Ordering::SeqCst);
+        assert!(
+            !sentinel.exists(),
+            "no SIGINT may fire for a stop requested after the natural end"
+        );
+    }
+
+    /// Manual A4 confirmation on the Archel box: drives a real
+    /// long-lived child (`sleep 30`) through the cancellable drain,
+    /// requests the stop after 1 s, and proves the child is reaped
+    /// (no zombie) with the stop reported.
+    #[test]
+    #[ignore = "manual A4 confirmation: sleeps 1 s, cancels sleep 30, needs a live machine"]
+    fn live_sleep_cancel_reaps_the_child() {
+        let child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("sleep must spawn on this machine");
+        let cancel = AtomicBool::new(false);
+        let mut seen = Vec::new();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                cancel.store(true, Ordering::SeqCst);
+            });
+            let drained = drain_cancellable_child(child, &mut |line: &str| {
+                seen.push(line.to_string());
+            }, &cancel)
+            .expect("cancelled sleep must drain");
+            assert!(drained.cancelled, "the 1 s stop must be reported");
+            assert!(drained.transcript.is_empty() && seen.is_empty());
+        });
     }
 }
