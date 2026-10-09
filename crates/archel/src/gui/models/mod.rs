@@ -4,8 +4,11 @@
 //! here; registration on the QML side is automatic through
 //! `#[qml_element]` plus the build.rs `.files()` list.
 
+pub mod appearance;
 pub mod audio;
 pub mod bt;
+pub mod display;
+pub mod input;
 pub mod landing;
 pub mod net;
 pub mod power;
