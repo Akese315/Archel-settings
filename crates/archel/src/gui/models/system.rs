@@ -2,7 +2,7 @@
 //! representative temps (D-09/D-10/D-11).
 //!
 //! Pattern (copied by every later tab plan): `tick()` is a QML-called
-//! invokable that only spawns — the blocking core reads run on the gui
+//! invokable that only spawns - the blocking core reads run on the gui
 //! runtime's blocking pool, and the finished payload returns exclusively
 //! through `CxxQtThread.queue`, whose closure is the only code allowed to
 //! set properties (RESEARCH Pattern 1). The 1 s CPU window therefore
@@ -49,7 +49,7 @@ pub(crate) struct SystemTick {
 }
 
 /// A tick either carries a full payload or reports the core snapshot
-/// unavailable (kernel unreadable — the only hard failure, mirroring
+/// unavailable (kernel unreadable - the only hard failure, mirroring
 /// `landing::snapshot`). Partial sensor gaps stay inside the payload as
 /// `None` fields rendered N/A.
 pub(crate) enum TickOutcome {
@@ -234,7 +234,7 @@ impl SystemModelRust {
     /// Applies a finished worker outcome on the Qt thread: rolls the
     /// series, runs the banner policy, and returns owned strings. The
     /// caller (the `queue()` closure) pushes each string through its
-    /// generated property setter — direct field writes would skip NOTIFY.
+    /// generated property setter - direct field writes would skip NOTIFY.
     fn apply_outcome(&mut self, outcome: TickOutcome) -> AppliedTick {
         match outcome {
             TickOutcome::Ready(tick) => {

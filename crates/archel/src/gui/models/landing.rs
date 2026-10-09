@@ -1,7 +1,7 @@
 //! Landing view-model: cached update counts plus version/kernel
 //! snapshot (D-07).
 //!
-//! Same proven shape as `models::system`: `tick()` only spawns — the
+//! Same proven shape as `models::system`: `tick()` only spawns - the
 //! cache-backed `landing::snapshot(false)` runs on the gui runtime's
 //! blocking pool (it may shell out to checkers on a cold cache) and the
 //! finished snapshot returns exclusively through `CxxQtThread.queue`.
@@ -52,7 +52,7 @@ impl Default for LandingModelRust {
 
 impl LandingModelRust {
     /// Applies a finished worker snapshot on the Qt thread. `Err` (kernel
-    /// unreadable — the only hard failure) reads N/A everywhere plus the
+    /// unreadable - the only hard failure) reads N/A everywhere plus the
     /// once-per-episode banner; update halves degrade inside core and
     /// never fail this path.
     fn apply_outcome(
