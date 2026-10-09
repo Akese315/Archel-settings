@@ -305,10 +305,62 @@ ApplicationWindow {
             BtTab {}
             AppearanceTab {}
             AudioTab {}
-            PkgTab {}
+            PkgTab { id: pkgTab }
             DisplayTab {}
             InputTab {}
             SystemTab {}
         }
+    }
+
+    // ── Global modal layer (06-06) ───────────────────────────────────
+    // Visibility is driven solely by the session kind mirrored onto
+    // ShellModel by the sync timer below — the modals never set their own
+    // visibility, and each closes through an explicit ShellModel invokable
+    // so the session and the view stay in lockstep (D-14/D-15).
+
+    ConfirmModal {
+        question: shell.modal_question
+        visible: shell.modal_kind === "confirm"
+        onAccepted: shell.confirmAccepted()
+        onDeclined: shell.confirmDeclined()
+        z: 100
+    }
+
+    ErrorModal {
+        errorText: shell.modal_error
+        visible: shell.modal_kind === "error"
+        onClosed: shell.closeModal()
+        z: 101
+    }
+
+    StreamModal {
+        lines: shell.modal_lines
+        done: shell.modal_done
+        result: shell.modal_result
+        trustNeeded: shell.modal_trust_needed
+        trustSummary: shell.modal_trust_summary
+        pkgbuild: shell.modal_pkgbuild
+        pkgbuildSeen: shell.modal_pkgbuild_seen
+        trustConfirmed: shell.modal_trust_confirmed
+        visible: shell.modal_kind === "stream"
+        // During an AUR trust review the stream already ended: Annuler must
+        // dismiss the review (close), not signal a worker cancellation (D-19).
+        onCancelRequested: shell.modal_trust_needed
+            ? shell.closeModal()
+            : shell.cancelStream()
+        onClosed: shell.closeModal()
+        onPkgbuildSeenRequested: shell.notePkgbuildSeen()
+        onTrustToggled: shell.confirmTrust(checked)
+        z: 102
+    }
+
+    // Mirror ModalSession onto ShellModel's modal properties. 120 ms sits
+    // well under the flicker threshold and coalesces a streaming flood into
+    // at most one property write per tick.
+    Timer {
+        interval: 120
+        repeat: true
+        running: true
+        onTriggered: shell.syncSession()
     }
 }

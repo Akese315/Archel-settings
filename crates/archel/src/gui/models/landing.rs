@@ -135,7 +135,7 @@ impl crate::gui::bridge_landing::qobject::LandingModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use archel_core::updates::{UnavailableReason, UpdateCount};
+    use archel_core::updates::UpdateCount;
 
     fn ready_snapshot() -> archel_core::landing::LandingSnapshot {
         archel_core::landing::LandingSnapshot {

@@ -24,6 +24,17 @@ pub mod qobject {
         #[qproperty(i32, launch_width)]
         #[qproperty(i32, launch_height)]
         #[qproperty(bool, launch_maximized)]
+        #[qproperty(QString, modal_kind)]
+        #[qproperty(QString, modal_question)]
+        #[qproperty(QString, modal_lines)]
+        #[qproperty(QString, modal_error)]
+        #[qproperty(bool, modal_done)]
+        #[qproperty(QString, modal_result)]
+        #[qproperty(bool, modal_trust_needed)]
+        #[qproperty(QString, modal_trust_summary)]
+        #[qproperty(QString, modal_pkgbuild)]
+        #[qproperty(bool, modal_pkgbuild_seen)]
+        #[qproperty(bool, modal_trust_confirmed)]
         #[namespace = "archel_settings"]
         type ShellModel = super::ShellModelRust;
 
@@ -41,12 +52,95 @@ pub mod qobject {
             height: i32,
             maximized: bool,
         );
+
+        // -- Modal session surface (plan 06-06) --
+        //
+        // Workers never touch this QObject: they mutate only the shared
+        // modal::ModalSession (Mutexes), and the QML Timer polls it
+        // through syncSession on the owning thread (RESEARCH Pattern 1).
+        // The command invokables below likewise only write the session;
+        // visibility follows on the next poll.
+
+        #[qinvokable]
+        #[cxx_name = "syncSession"]
+        fn sync_session(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "openConfirm"]
+        fn open_confirm(self: Pin<&mut Self>, question: QString);
+
+        #[qinvokable]
+        #[cxx_name = "openError"]
+        fn open_error(self: Pin<&mut Self>, message: QString);
+
+        #[qinvokable]
+        #[cxx_name = "closeModal"]
+        fn close_modal(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "cancelStream"]
+        fn cancel_stream(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "confirmAccepted"]
+        fn confirm_accepted(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "confirmDeclined"]
+        fn confirm_declined(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "notePkgbuildSeen"]
+        fn note_pkgbuild_seen(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "confirmTrust"]
+        fn confirm_trust(self: Pin<&mut Self>, confirmed: bool);
     }
 }
 
 use cxx_qt_lib::QString;
 
 use super::geometry;
+use super::modal::{self, ModalSession};
+
+/// Last snapshot published to the modal QML properties. `sync_session`
+/// polls the shared session, compares against this mirror, and writes a
+/// full property set only when something actually changed - the same
+/// set-only-on-change discipline as the 06-03 PollGuard path, so idle
+/// polls emit zero change signals.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ModalSnapshot {
+    kind: String,
+    question: String,
+    lines: String,
+    error: String,
+    done: bool,
+    result: String,
+    trust_needed: bool,
+    trust_summary: String,
+    pkgbuild: String,
+    pkgbuild_seen: bool,
+    trust_confirmed: bool,
+}
+
+impl ModalSnapshot {
+    fn from_session(session: &ModalSession) -> Self {
+        Self {
+            kind: session.snapshot_kind().as_str().to_string(),
+            question: session.snapshot_question(),
+            lines: session.snapshot_lines_joined(),
+            error: session.snapshot_error(),
+            done: session.snapshot_done(),
+            result: session.snapshot_result().as_key().to_string(),
+            trust_needed: session.snapshot_trust_needed(),
+            trust_summary: session.snapshot_trust_summary(),
+            pkgbuild: session.snapshot_pkgbuild(),
+            pkgbuild_seen: session.snapshot_pkgbuild_seen(),
+            trust_confirmed: session.snapshot_trust_confirmed(),
+        }
+    }
+}
 
 /// Backing state: the validated frame Main.qml launches with. The defaults
 /// match the QML defaults so the window is correct even if
@@ -57,6 +151,20 @@ pub struct ShellModelRust {
     launch_width: i32,
     launch_height: i32,
     launch_maximized: bool,
+    // Modal property fields (names must match the qproperty declarations).
+    modal_kind: QString,
+    modal_question: QString,
+    modal_lines: QString,
+    modal_error: QString,
+    modal_done: bool,
+    modal_result: QString,
+    modal_trust_needed: bool,
+    modal_trust_summary: QString,
+    modal_pkgbuild: QString,
+    modal_pkgbuild_seen: bool,
+    modal_trust_confirmed: bool,
+    /// Change-detector for `sync_session` (never read from QML).
+    mirror: ModalSnapshot,
 }
 
 impl Default for ShellModelRust {
@@ -67,6 +175,18 @@ impl Default for ShellModelRust {
             launch_width: geometry::DEFAULT_WIDTH,
             launch_height: geometry::DEFAULT_HEIGHT,
             launch_maximized: false,
+            modal_kind: QString::from(""),
+            modal_question: QString::from(""),
+            modal_lines: QString::from(""),
+            modal_error: QString::from(""),
+            modal_done: false,
+            modal_result: QString::from(""),
+            modal_trust_needed: false,
+            modal_trust_summary: QString::from(""),
+            modal_pkgbuild: QString::from(""),
+            modal_pkgbuild_seen: false,
+            modal_trust_confirmed: false,
+            mirror: ModalSnapshot::default(),
         }
     }
 }
@@ -108,5 +228,99 @@ impl qobject::ShellModel {
                 maximized,
             },
         );
+    }
+
+    /// Polls the shared modal session and republishes its snapshot to the
+    /// QML properties (Main.qml drives this from a 120 ms Timer). This is
+    /// the only producer of the modal properties and it always runs on the
+    /// owning Qt thread; worker lines arrive via Mutex, never via queued
+    /// property writes (RESEARCH Pattern 1).
+    pub fn sync_session(mut self: core::pin::Pin<&mut Self>) {
+        use cxx_qt::CxxQtType;
+        let next = ModalSnapshot::from_session(modal::session());
+        let changed = {
+            let mut mirror = self.as_mut().rust_mut();
+            if mirror.mirror == next {
+                false
+            } else {
+                mirror.mirror = next.clone();
+                true
+            }
+        };
+        if !changed {
+            return;
+        }
+        self.as_mut().set_modal_kind(QString::from(&next.kind));
+        self.as_mut()
+            .set_modal_question(QString::from(&next.question));
+        self.as_mut()
+            .set_modal_lines(QString::from(&next.lines));
+        self.as_mut()
+            .set_modal_error(QString::from(&next.error));
+        self.as_mut().set_modal_done(next.done);
+        self.as_mut()
+            .set_modal_result(QString::from(&next.result));
+        self.as_mut()
+            .set_modal_trust_needed(next.trust_needed);
+        self.as_mut()
+            .set_modal_trust_summary(QString::from(&next.trust_summary));
+        self.as_mut()
+            .set_modal_pkgbuild(QString::from(&next.pkgbuild));
+        self.as_mut()
+            .set_modal_pkgbuild_seen(next.pkgbuild_seen);
+        self.as_mut()
+            .set_modal_trust_confirmed(next.trust_confirmed);
+    }
+
+    // -- Command invokables: session writers only --
+    //
+    // Each mutates the shared session and returns; the visible property
+    // state follows on the next syncSession poll, which keeps every
+    // property write on the owning thread and every command idempotent
+    // against a concurrent worker.
+
+    /// Fire-and-forget confirm for QML-driven flows. Worker-driven
+    /// confirms go through `ModalSession::request_confirm` directly.
+    pub fn open_confirm(self: core::pin::Pin<&mut Self>, question: QString) {
+        modal::session().open_confirm(&question.to_string());
+    }
+
+    /// Publishes a core-produced readable error (`ArchelError::message()`,
+    /// never raw stderr) in the error modal.
+    pub fn open_error(self: core::pin::Pin<&mut Self>, message: QString) {
+        modal::session().open_error(&message.to_string());
+    }
+
+    /// Fermer on any open modal.
+    pub fn close_modal(self: core::pin::Pin<&mut Self>) {
+        modal::session().close();
+    }
+
+    /// Annuler: sets the flag the core read loop observes (D-14). The
+    /// GUI never signals a child process itself.
+    pub fn cancel_stream(self: core::pin::Pin<&mut Self>) {
+        modal::session().request_cancel();
+    }
+
+    /// Confirmer: releases a waiting worker with `true`.
+    pub fn confirm_accepted(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_confirm(true);
+    }
+
+    /// Fermer on the confirm modal: releases a waiting worker with
+    /// `false` (decline is a first-class answer, not an error).
+    pub fn confirm_declined(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_confirm(false);
+    }
+
+    /// One-way D-19 latch: called when the PKGBUILD expander is first
+    /// opened; collapsing it never un-notes the viewing.
+    pub fn note_pkgbuild_seen(self: core::pin::Pin<&mut Self>) {
+        modal::session().note_pkgbuild_seen();
+    }
+
+    /// Trust checkbox state for the AUR review block.
+    pub fn confirm_trust(self: core::pin::Pin<&mut Self>, confirmed: bool) {
+        modal::session().set_trust_confirmed(confirmed);
     }
 }
