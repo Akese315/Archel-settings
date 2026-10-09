@@ -345,12 +345,13 @@ ApplicationWindow {
         visible: shell.modal_kind === "stream"
         // During an AUR trust review the stream already ended: Annuler must
         // dismiss the review (close), not signal a worker cancellation (D-19).
-        onCancelRequested: shell.modal_trust_needed
-            ? shell.closeModal()
-            : shell.cancelStream()
+        onCancelRequested: shell.cancelStream()
         onClosed: shell.closeModal()
         onPkgbuildSeenRequested: shell.notePkgbuildSeen()
         onTrustToggled: shell.confirmTrust(checked)
+        // D-19: Valider is the only path to the build; the
+        // authoritative gate re-checks both flags Rust-side.
+        onAurValidated: pkg.aurBuildStart()
         z: 102
     }
 

@@ -296,10 +296,11 @@ impl qobject::ShellModel {
         modal::session().close();
     }
 
-    /// Annuler: sets the flag the core read loop observes (D-14). The
-    /// GUI never signals a child process itself.
+    /// Annuler: dismisses an AUR review (clearing its trust, D-19
+    /// fail-safe) or, for a live stream, sets the flag the core read
+    /// loop observes (D-14). The GUI never signals a child itself.
     pub fn cancel_stream(self: core::pin::Pin<&mut Self>) {
-        modal::session().request_cancel();
+        modal::session().dismiss_or_cancel();
     }
 
     /// Confirmer: releases a waiting worker with `true`.

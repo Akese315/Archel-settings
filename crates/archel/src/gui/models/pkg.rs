@@ -78,6 +78,36 @@ pub(crate) const PROD_WRITE_OPS: PkgWriteOps = PkgWriteOps {
     run_streaming: archel_core::privileged::run_privileged_streaming_cancellable,
 };
 
+/// Injection seam for the AUR path: the exact core entry points the
+/// review/build workers call, same fn-pointer shape as
+/// [`PkgWriteOps`]. Production wires the CLI-proven aur module
+/// ([`PROD_AUR_OPS`]); unit tests pass fakes so the D-19 gate is
+/// proven without any network fetch or yay child.
+#[derive(Clone, Copy)]
+#[allow(clippy::type_complexity)]
+pub(crate) struct PkgAurOps {
+    pub validate_names: fn(&[String]) -> Result<(), archel_core::ArchelError>,
+    pub review: fn(&str) -> Result<archel_core::aur::AurReview, archel_core::ArchelError>,
+    pub validate_source:
+        fn(&str, &str) -> Result<Vec<String>, archel_core::ArchelError>,
+    pub build: fn(
+        &str,
+        &mut dyn FnMut(&str),
+        &AtomicBool,
+    ) -> Result<archel_core::privileged::CancellableStreaming, archel_core::ArchelError>,
+}
+
+/// Production AUR wiring: every field is the CLI-proven core function
+/// (thin-view contract; PLAT-03). The GUI never fetches, validates or
+/// spawns anything itself - yay is reached only through
+/// `yay_build_cancellable`, the 06-02 cancellable variant.
+pub(crate) const PROD_AUR_OPS: PkgAurOps = PkgAurOps {
+    validate_names: archel_core::packages::validate_package_names,
+    review: archel_core::aur::review_package,
+    validate_source: archel_core::aur::validate_pkgbuild_source,
+    build: archel_core::aur::yay_build_cancellable,
+};
+
 /// Builds the confirmation question: the core's own `confirm_*` prompt
 /// verbatim, with the preview section appended under the core's own
 /// label (no GUI-invented French, no reconstructed prompt).
@@ -222,6 +252,94 @@ pub(crate) fn upgrade_worker(ops: &PkgWriteOps, sess: &ModalSession) {
         &[],
         &archel_core::privileged::pkg_upgrade_action_label(),
     );
+}
+
+/// AUR review worker (blocking pool): the strict name gate first
+/// (nothing fetches for an invalid name), then the core's complete
+/// review - card, PKGBUILD fetch, `bash -n` validation, trust signals
+/// and warnings all happen core-side, exactly as the CLI twin does.
+/// A repo-sourced name is redirected with core's own hint (builds
+/// nothing); yay absence surfaces as the typed YayMissing error, so
+/// the flow is inert without yay (UI-SPEC error-aur-copy backstop).
+/// Only a successful review opens the trust block.
+pub(crate) fn aur_review_worker(name: &str, ops: &PkgAurOps, sess: &ModalSession) {
+    if let Err(err) = (ops.validate_names)(&[name.to_string()]) {
+        sess.open_error(&err.message());
+        return;
+    }
+    let review = match (ops.review)(name) {
+        Ok(review) => review,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return;
+        }
+    };
+    if !archel_core::aur::is_aur_card(&review.card) {
+        sess.open_error(&archel_core::aur::not_aur_hint(name));
+        return;
+    }
+    sess.begin_aur_review(name, &aur_summary_json(name, &review), &review.pkgbuild);
+}
+
+/// AUR build worker: the D-19 / T-06-29 gate lives HERE, never in a
+/// QML binding - both flags are snapshotted before `open_stream`
+/// (whose reset deliberately preserves the one-way `pkgbuild_seen`
+/// latch but clears `trust_confirmed`). `validate_pkgbuild_source`
+/// re-checks the exact text that was shown before anything runs, and
+/// only then does the cancellable yay build stream through the same
+/// session machinery as the repo writes (Annuler always available).
+pub(crate) fn aur_build_worker(sess: &ModalSession, ops: &PkgAurOps) {
+    let name = sess.snapshot_aur_name();
+    if name.is_empty() {
+        return;
+    }
+    let seen = sess.snapshot_pkgbuild_seen();
+    let trusted = sess.snapshot_trust_confirmed();
+    if !modal::aur_gate_allows(seen, trusted) {
+        return;
+    }
+    if let Err(err) = (ops.validate_source)(&name, &sess.snapshot_pkgbuild()) {
+        sess.open_error(&err.message());
+        return;
+    }
+    sess.open_stream();
+    let outcome = (ops.build)(&name, &mut |line| sess.push_line(line), sess.cancel_handle());
+    match outcome {
+        Ok(streamed) => {
+            if !streamed.cancelled {
+                sess.push_line(&archel_core::aur::aur_ok_line(&name));
+            }
+            sess.finish_stream(streamed.cancelled, streamed.exit_code);
+        }
+        Err(err) => sess.open_error(&err.message()),
+    }
+}
+
+/// Summary payload for the StreamModal trust block: the D-04 card
+/// fields, the four trust signals (honest nulls, never zero-filled)
+/// with their core catalog labels, and the dependency/warning lists
+/// with theirs. French comes from the core catalog at runtime - this
+/// file stays plain ASCII (D-07); QML only renders fields.
+pub(crate) fn aur_summary_json(name: &str, review: &archel_core::aur::AurReview) -> String {
+    let labels = archel_core::aur::trust_labels();
+    serde_json::json!({
+        "name": name,
+        "version": review.card.candidate_version,
+        "source": review.card.source,
+        "maintainerLabel": labels.maintainer,
+        "votesLabel": labels.votes,
+        "popularityLabel": labels.popularity,
+        "outdatedLabel": labels.out_of_date,
+        "dependenciesLabel": archel_core::aur::aur_dependencies_label(),
+        "warningsLabel": archel_core::aur::warnings_title(),
+        "maintainer": review.trust.maintainer,
+        "votes": review.trust.votes,
+        "popularity": review.trust.popularity,
+        "outOfDate": review.trust.out_of_date,
+        "dependencies": review.dependencies,
+        "warnings": review.warnings,
+    })
+    .to_string()
 }
 
 /// Parses the batch-selection payload QML sends (`JSON.stringify` of
@@ -593,6 +711,58 @@ impl crate::gui::bridge_pkg::qobject::PkgModel {
         });
     }
 
+    /// Starts the AUR review for one selected name (D-19): the core
+    /// fetches, validates and assembles the review off the Qt thread,
+    /// then the StreamModal trust block opens from the session. With
+    /// yay absent the review fails as the typed YayMissing error -
+    /// the whole AUR flow stays inert, stated honestly.
+    pub fn aur_review_start(mut self: core::pin::Pin<&mut Self>, name: QString) {
+        let name = name.to_string().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        if !self.as_mut().begin_write_operation("aur") {
+            return;
+        }
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            aur_review_worker(&name, &PROD_AUR_OPS, modal::session());
+            let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
+                obj.as_mut().finish_write_operation();
+            });
+        });
+    }
+
+    /// Second stage of the AUR flow, reached only from the modal's
+    /// Valider button. No pre-check here on purpose: the authoritative
+    /// D-19 gate is the snapshot inside `aur_build_worker`, so no
+    /// caller - QML binding bug included - reaches yay without both
+    /// flags. Shares the single-operation slot with the repo writes.
+    pub fn aur_build_start(mut self: core::pin::Pin<&mut Self>) {
+        if !self.as_mut().begin_write_operation("aur-build") {
+            return;
+        }
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            aur_build_worker(modal::session(), &PROD_AUR_OPS);
+            let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
+                obj.as_mut().finish_write_operation();
+            });
+        });
+    }
+
     /// Claims the single-operation slot (one write session at a time;
     /// the second click of a double-click loses here) and mirrors the
     /// claim onto the QML-visible flags so the toolbar can disable
@@ -662,8 +832,10 @@ mod tests {
 
     #[test]
     fn stale_search_hits_are_dropped_never_applied() {
-        let mut model = PkgModelRust::default();
-        model.search_seq = 2;
+        let mut model = PkgModelRust {
+            search_seq: 2,
+            ..Default::default()
+        };
         let stale = model.apply_search(1, false, search_fixture());
         assert!(stale.is_none(), "an overtaken tag must not apply");
         let fresh = model
@@ -679,8 +851,10 @@ mod tests {
 
     #[test]
     fn zero_hit_arms_the_refinement_copy_key() {
-        let mut model = PkgModelRust::default();
-        model.search_seq = 1;
+        let mut model = PkgModelRust {
+            search_seq: 1,
+            ..Default::default()
+        };
         let applied = model
             .apply_search(1, false, Vec::new())
             .expect("newest tag applies");
@@ -695,8 +869,10 @@ mod tests {
 
     #[test]
     fn card_error_reads_na_never_zero_filled() {
-        let mut model = PkgModelRust::default();
-        model.card_seq = 1;
+        let mut model = PkgModelRust {
+            card_seq: 1,
+            ..Default::default()
+        };
         let err: Result<PackageCard, archel_core::ArchelError> =
             Err(archel_core::ArchelError::PackageNotFound {
                 name: "nope".to_string(),
@@ -1182,5 +1358,261 @@ mod tests {
         assert!(parse_names_json("[]").is_empty());
         assert!(parse_names_json(r#""a string""#).is_empty());
         assert!(parse_names_json("[1, 2]").is_empty(), "non-string arrays are refused");
+    }
+
+    // -- AUR trust gate (D-19 / T-06-29) -------------------------------
+
+    fn aur_review_fixture(name: &str, source: &str) -> archel_core::aur::AurReview {
+        archel_core::aur::AurReview {
+            card: PackageCard {
+                name: name.to_string(),
+                candidate_version: "1.2-3".to_string(),
+                installed_version: None,
+                source: source.to_string(),
+                download_size: None,
+                installed_size: None,
+            },
+            pkgbuild: format!("pkgname={name}\npkgver=1.2\n"),
+            trust: archel_core::aur::TrustSignals {
+                maintainer: Some("A Trusted Person".to_string()),
+                votes: Some("42".to_string()),
+                popularity: Some("1.37".to_string()),
+                out_of_date: None,
+            },
+            dependencies: names(&["glibc", "openssl"]),
+            warnings: names(&["flagged out of date"]),
+        }
+    }
+
+    fn ok_review(name: &str) -> Result<archel_core::aur::AurReview, archel_core::ArchelError> {
+        Ok(aur_review_fixture(name, "aur"))
+    }
+
+    fn ok_source(_name: &str, _text: &str) -> Result<Vec<String>, archel_core::ArchelError> {
+        Ok(Vec::new())
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn aur_ops(
+        validate_names: fn(&[String]) -> Result<(), archel_core::ArchelError>,
+        review: fn(&str) -> Result<archel_core::aur::AurReview, archel_core::ArchelError>,
+        validate_source: fn(
+            &str,
+            &str,
+        ) -> Result<Vec<String>, archel_core::ArchelError>,
+        build: fn(
+            &str,
+            &mut dyn FnMut(&str),
+            &AtomicBool,
+        ) -> Result<CancellableStreaming, archel_core::ArchelError>,
+    ) -> PkgAurOps {
+        PkgAurOps {
+            validate_names,
+            review,
+            validate_source,
+            build,
+        }
+    }
+
+    fn session_in_review(name: &str) -> ModalSession {
+        let sess = ModalSession::default();
+        sess.begin_aur_review(name, "{}", &format!("pkgname={name}\npkgver=1.2\n"));
+        sess
+    }
+
+    #[test]
+    fn aur_gate_blocks_the_build_when_trust_is_checked_but_pkgbuild_unviewed() {
+        static BUILD_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn sneaky_build(
+            _name: &str,
+            _on_line: &mut dyn FnMut(&str),
+            _cancel: &AtomicBool,
+        ) -> Result<CancellableStreaming, archel_core::ArchelError> {
+            BUILD_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(CancellableStreaming {
+                transcript: String::new(),
+                cancelled: false,
+                exit_code: Some(0),
+            })
+        }
+        let ops = aur_ops(|_| Ok(()), ok_review, ok_source, sneaky_build);
+        let sess = session_in_review("cool-aur-thing");
+        sess.set_trust_confirmed(true); // checkbox ticked without ever opening the PKGBUILD
+        aur_build_worker(&sess, &ops);
+        assert_eq!(BUILD_CALLS.load(AtomicOrdering::SeqCst), 0, "seen=false must block");
+        assert!(!sess.snapshot_done());
+    }
+
+    #[test]
+    fn aur_gate_blocks_the_build_when_pkgbuild_was_viewed_without_trust() {
+        static BUILD_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn sneaky_build(
+            _name: &str,
+            _on_line: &mut dyn FnMut(&str),
+            _cancel: &AtomicBool,
+        ) -> Result<CancellableStreaming, archel_core::ArchelError> {
+            BUILD_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(CancellableStreaming {
+                transcript: String::new(),
+                cancelled: false,
+                exit_code: Some(0),
+            })
+        }
+        let ops = aur_ops(|_| Ok(()), ok_review, ok_source, sneaky_build);
+        let sess = session_in_review("cool-aur-thing");
+        sess.note_pkgbuild_seen(); // expander opened, trust checkbox left off
+        aur_build_worker(&sess, &ops);
+        assert_eq!(BUILD_CALLS.load(AtomicOrdering::SeqCst), 0, "trusted=false must block");
+        assert!(!sess.snapshot_done());
+    }
+
+    #[test]
+    fn aur_gate_opens_when_both_flags_are_set_before_the_run() {
+        static BUILD_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn real_build(
+            _name: &str,
+            on_line: &mut dyn FnMut(&str),
+            _cancel: &AtomicBool,
+        ) -> Result<CancellableStreaming, archel_core::ArchelError> {
+            BUILD_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            on_line("==> Making package: cool-aur-thing 1.2-3");
+            Ok(CancellableStreaming {
+                transcript: "==> Making package: cool-aur-thing 1.2-3".to_string(),
+                cancelled: false,
+                exit_code: Some(0),
+            })
+        }
+        let ops = aur_ops(|_| Ok(()), ok_review, ok_source, real_build);
+        let sess = session_in_review("cool-aur-thing");
+        sess.note_pkgbuild_seen();
+        sess.set_trust_confirmed(true);
+        // Both flags are armed BEFORE the worker runs: `open_stream`
+        // inside it clears trust_confirmed, so a worker that read the
+        // flag after the reset would block here. Passing proves the
+        // snapshot-before-reset read that D-19 requires.
+        aur_build_worker(&sess, &ops);
+        assert_eq!(BUILD_CALLS.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Stream);
+        assert!(sess.snapshot_done());
+        assert_eq!(sess.snapshot_result(), EndState::Completed);
+        let lines = sess.snapshot_lines_joined();
+        assert!(lines.contains("Making package: cool-aur-thing"));
+        assert!(
+            lines.contains(&archel_core::aur::aur_ok_line("cool-aur-thing")),
+            "success appends core's ok line"
+        );
+    }
+
+    #[test]
+    fn aur_build_revalidates_the_shown_pkgbuild_before_running() {
+        static BUILD_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn sneaky_build(
+            _name: &str,
+            _on_line: &mut dyn FnMut(&str),
+            _cancel: &AtomicBool,
+        ) -> Result<CancellableStreaming, archel_core::ArchelError> {
+            BUILD_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(CancellableStreaming {
+                transcript: String::new(),
+                cancelled: false,
+                exit_code: Some(0),
+            })
+        }
+        fn broken_source(
+            _name: &str,
+            _text: &str,
+        ) -> Result<Vec<String>, archel_core::ArchelError> {
+            Err(archel_core::ArchelError::Internal(
+                "PKGBUILD rejected by bash -n".to_string(),
+            ))
+        }
+        let ops = aur_ops(|_| Ok(()), ok_review, broken_source, sneaky_build);
+        let sess = session_in_review("cool-aur-thing");
+        sess.note_pkgbuild_seen();
+        sess.set_trust_confirmed(true);
+        aur_build_worker(&sess, &ops);
+        assert_eq!(BUILD_CALLS.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(
+            sess.snapshot_error(),
+            archel_core::ArchelError::Internal("PKGBUILD rejected by bash -n".to_string())
+                .message()
+        );
+    }
+
+    #[test]
+    fn aur_review_publishes_summary_pkgbuild_and_trust_state() {
+        let ops = aur_ops(|_| Ok(()), ok_review, ok_source, |_, _, _| {
+            Err(archel_core::ArchelError::Internal(
+                "must not build during review".to_string(),
+            ))
+        });
+        let sess = ModalSession::default();
+        aur_review_worker("cool-aur-thing", &ops, &sess);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Stream);
+        assert!(sess.snapshot_trust_needed());
+        assert_eq!(sess.snapshot_aur_name(), "cool-aur-thing");
+        assert!(
+            !sess.snapshot_pkgbuild_seen(),
+            "the expander starts unopened: both latch flags are false at review time"
+        );
+        assert!(!sess.snapshot_trust_confirmed());
+        assert!(sess.snapshot_pkgbuild().contains("pkgname=cool-aur-thing"));
+        let summary = sess.snapshot_trust_summary();
+        let labels = archel_core::aur::trust_labels();
+        assert!(summary.contains("cool-aur-thing"));
+        assert!(summary.contains("1.2-3"));
+        assert!(summary.contains(&labels.maintainer));
+        assert!(summary.contains(&labels.votes));
+        assert!(summary.contains("A Trusted Person"));
+        assert!(summary.contains("42"));
+    }
+
+    #[test]
+    fn aur_review_redirects_repo_cards_with_core_hint() {
+        fn repo_review(
+            name: &str,
+        ) -> Result<archel_core::aur::AurReview, archel_core::ArchelError> {
+            Ok(aur_review_fixture(name, "extra"))
+        }
+        let ops = aur_ops(|_| Ok(()), repo_review, ok_source, |_, _, _| {
+            Err(archel_core::ArchelError::Internal(
+                "must not build for a repo card".to_string(),
+            ))
+        });
+        let sess = ModalSession::default();
+        aur_review_worker("firefox", &ops, &sess);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(
+            sess.snapshot_error(),
+            archel_core::aur::not_aur_hint("firefox"),
+            "core's own hint is reused verbatim, no trust block opens"
+        );
+        assert!(!sess.snapshot_trust_needed());
+    }
+
+    #[test]
+    fn aur_review_refuses_invalid_names_before_fetching() {
+        static REVIEW_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn review_must_not_run(
+            name: &str,
+        ) -> Result<archel_core::aur::AurReview, archel_core::ArchelError> {
+            REVIEW_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(aur_review_fixture(name, "aur"))
+        }
+        fn validate_rejects(names: &[String]) -> Result<(), archel_core::ArchelError> {
+            Err(archel_core::ArchelError::PackageNotFound {
+                name: names[0].clone(),
+            })
+        }
+        let ops = aur_ops(validate_rejects, review_must_not_run, ok_source, |_, _, _| {
+            Err(archel_core::ArchelError::Internal(
+                "must not build".to_string(),
+            ))
+        });
+        let sess = ModalSession::default();
+        aur_review_worker("nope!", &ops, &sess);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(REVIEW_CALLS.load(AtomicOrdering::SeqCst), 0, "nothing fetched");
     }
 }

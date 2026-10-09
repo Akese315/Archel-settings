@@ -263,6 +263,22 @@ impl ModalSession {
         *self.trust_confirmed.lock().expect("trust lock") = confirmed;
     }
 
+    /// Annuler on the StreamModal routes here. During the AUR review
+    /// stage (trust block showing, no child running) the true "cancel"
+    /// is dismissing the review - and the trust checkbox is cleared as
+    /// a D-19 fail-safe, so a discarded review can never leave both
+    /// gate flags set for a later stray build call. During a live
+    /// stream it is only the flag the core read loop observes (D-14):
+    /// the GUI never signals a child itself.
+    pub fn dismiss_or_cancel(&self) {
+        if self.snapshot_trust_needed() && !self.snapshot_done() {
+            self.set_trust_confirmed(false);
+            self.close();
+        } else {
+            self.request_cancel();
+        }
+    }
+
     /// Shared cancel handle for the core cancellable helpers.
     pub fn cancel_handle(&self) -> &AtomicBool {
         &self.cancel
@@ -463,5 +479,36 @@ mod tests {
             session.snapshot_pkgbuild_seen(),
             session.snapshot_trust_confirmed()
         ));
+    }
+
+    #[test]
+    fn annuler_during_the_review_dismisses_and_clears_trust() {
+        let session = fresh();
+        session.begin_aur_review("foo", "{}", "pkgname=foo");
+        session.note_pkgbuild_seen();
+        session.set_trust_confirmed(true);
+        session.dismiss_or_cancel();
+        assert_eq!(session.snapshot_kind(), ModalKind::None);
+        assert!(
+            !session.snapshot_trust_confirmed(),
+            "a discarded review must not leave the trust flag armed (D-19 fail-safe)"
+        );
+        // The one-way viewing latch survives the dismissal: a stray
+        // build call still needs the trust that was just cleared.
+        assert!(session.snapshot_pkgbuild_seen());
+        assert!(!session.is_cancelled());
+    }
+
+    #[test]
+    fn annuler_during_a_live_stream_only_sets_the_flag() {
+        let session = fresh();
+        session.open_stream();
+        session.dismiss_or_cancel();
+        assert!(session.is_cancelled());
+        assert_eq!(
+            session.snapshot_kind(),
+            ModalKind::Stream,
+            "the running stream stays open until the worker reports the end state"
+        );
     }
 }

@@ -192,6 +192,20 @@ Item {
                         root.clearSelection();
                     }
                 }
+                // AUR is a reviewed single-package path (D-19): one
+                // checked row, core review, trust block, then the
+                // cancellable yay build. Repository rows stay on the
+                // Installer button (the review redirects them with
+                // core's own hint).
+                Button {
+                    text: "Installer depuis AUR"
+                    Layout.minimumWidth: 170
+                    enabled: !pkg.operation_busy && root.selectedNames.length === 1
+                    onClicked: {
+                        pkg.aurReviewStart(root.selectedNames[0]);
+                        root.clearSelection();
+                    }
+                }
                 Item { Layout.fillWidth: true }
                 BusyIndicator {
                     running: pkg.operation_busy
@@ -203,6 +217,8 @@ Item {
                     text: pkg.operation_kind === "install" ? "Installation en cours…"
                           : pkg.operation_kind === "remove" ? "Suppression en cours…"
                           : pkg.operation_kind === "upgrade" ? "Mise à jour en cours…"
+                          : pkg.operation_kind === "aur" ? "Revue AUR en cours…"
+                          : pkg.operation_kind === "aur-build" ? "Compilation AUR en cours…"
                           : "Opération en cours…"
                 }
             }

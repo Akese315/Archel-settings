@@ -53,6 +53,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "removeStart"]
         fn remove_start(self: Pin<&mut Self>, names_json: QString);
+
+        #[qinvokable]
+        #[cxx_name = "aurReviewStart"]
+        fn aur_review_start(self: Pin<&mut Self>, name: QString);
+
+        #[qinvokable]
+        #[cxx_name = "aurBuildStart"]
+        fn aur_build_start(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for PkgModel {}
