@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (GUI Shell & Tabs) — EXECUTING
-Plan: 1 of 9 complete (06-02 done inline; 06-01 pending)
-Status: Executing Phase 06 — Wave 1 partial (06-02 complete, 06-01 blocked)
-Last activity: 2026-10-09 — 06-02 executed inline (2 commits + SUMMARY); worker dispatch failed (binding + backend outage)
+Plan: 2 of 9 complete (06-01 + 06-02; wave 1 done, wave 2 ready)
+Status: Wave 1 complete — 06-03 ready to dispatch
+Last activity: 2026-10-09 — 06-01 merged (1193ef2) with SUMMARY; post-merge gates green
 
 Progress: [███████░░░] 68%
 
@@ -104,6 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-10-09
-Stopped at: 06-02 complete (inline, SUMMARY committed); 06-01 still pending — needs backend recovery + worktree binding fix
-Resume file: .planning/phases/06-gui-shell-tabs/06-01-shell-window-PLAN.md
-Wave 1 status: PARTIAL — 06-02 done (commits 5eb1eb0 + b139b64, SUMMARY present). 06-01 BLOCKED: (1) spawned `opencode run` workers bind tool-cwd to main checkout instead of their worktrees (both service and --standalone modes; /tmp worktree probes bind correctly — suspected project-registry-by-git-identity); killed before any writes, p01 worktree branch pristine at dba1ba5 and kept for reuse. (2) local model backend (thor.sealix.eu) returning Transport socket-closed on every call since ~10:55 UTC. Worker records reconciled (worker-complete). p02 worktree+branch removed (plan done inline). Next: verify backend recovery, run clone-vs-worktree binding test, then dispatch 06-01 or execute inline per user call.
+Stopped at: Wave 1 COMPLETE (06-01 merged 1193ef2 + SUMMARY; 06-02 done earlier). Wave 2 (06-03) ready.
+Resume file: .planning/phases/06-gui-shell-tabs/06-03-polling-system-landing-PLAN.md
+Wave 1 report: 06-01 tasks 1-2 by worker (21c955b, 7d4aeca), task 3 finished inline (3741ef6) after worker death + continuation binding breach (main reverted clean). Key learning for future spawns: use full-clone checkouts (linked worktrees inherit the registered project's git identity and mis-bind tool-cwd — proven via opencode sqlite project table + probes); verify binding from the first tool call. Backend thor.sealix.eu flapped all session (~1/3 probe success). Worker records all reconciled. Next: dispatch 06-03 (needs 06-01 SUMMARY only — ready).

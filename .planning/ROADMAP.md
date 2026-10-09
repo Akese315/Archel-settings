@@ -136,8 +136,8 @@ Plans:
   3. User can perform every write action (network, packages with progress + cancel, appearance, display with confirm dialog, input) from the GUI with spinner/disabled states and readable error messages
   4. User can do nothing in the GUI that isn't already CLI-proven — each tab is a thin view over the proven core
 
-**Plans**: 1/9 plans executed
-- [ ] 06-01-shell-window-PLAN.md
+**Plans**: 2/9 plans executed
+- [x] 06-01-shell-window-PLAN.md
 - [x] 06-02-core-cancel-stream-PLAN.md
 - [ ] 06-03-polling-system-landing-PLAN.md
 - [ ] 06-04-read-net-power-audio-bt-PLAN.md
@@ -184,4 +184,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
 | 5. Hyprland Desktop | 4/4 | Complete ✓ | 2026-10-08 |
-| 6. GUI Shell & Tabs | 1/9 | In Progress|  |
+| 6. GUI Shell & Tabs | 2/9 | In Progress|  |
