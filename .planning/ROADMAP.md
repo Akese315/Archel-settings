@@ -136,10 +136,11 @@ Plans:
   3. User can perform every write action (network, packages with progress + cancel, appearance, display with confirm dialog, input) from the GUI with spinner/disabled states and readable error messages
   4. User can do nothing in the GUI that isn't already CLI-proven — each tab is a thin view over the proven core
 
-**Plans**: 2/9 plans executed
+**Plans**: 4/9 plans executed
 - [x] 06-01-shell-window-PLAN.md
 - [x] 06-02-core-cancel-stream-PLAN.md
-- [ ] 06-03-polling-system-landing-PLAN.md
+- [x] 06-03-polling-system-landing-PLAN.md
+- [x] 06-04-read-net-power-audio-bt-PLAN.md
 - [ ] 06-04-read-net-power-audio-bt-PLAN.md
 - [ ] 06-05-read-hyprland-pkg-PLAN.md
 - [ ] 06-06-modal-infra-pkg-write-PLAN.md
