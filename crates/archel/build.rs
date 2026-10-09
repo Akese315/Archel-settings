@@ -64,7 +64,11 @@ fn main() {
             "src/gui/qml/components/VpnImportPopup.qml",
         ]),
     )
-    .files(["src/gui/bridge.rs", "src/gui/shell.rs"])
+    .files([
+        "src/gui/shell.rs",
+        "src/gui/bridge_system.rs",
+        "src/gui/bridge_landing.rs",
+    ])
     .qrc_resources(resources)
     .build();
 }

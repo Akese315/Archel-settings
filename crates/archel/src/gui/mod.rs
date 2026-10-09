@@ -4,8 +4,11 @@
 //! feature (Pitfall 2): headless builds compile neither this module nor
 //! any Qt dependency.
 
-mod bridge;
+mod bridge_landing;
+mod bridge_system;
 mod geometry;
+mod models;
+mod poll;
 mod shell;
 mod single_instance;
 
