@@ -9,6 +9,7 @@ mod bridge_audio;
 mod bridge_bt;
 mod bridge_display;
 mod bridge_input;
+mod bridge_pkg;
 mod bridge_landing;
 mod bridge_net;
 mod bridge_power;

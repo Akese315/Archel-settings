@@ -9,6 +9,7 @@ pub mod audio;
 pub mod bt;
 pub mod display;
 pub mod input;
+pub mod pkg;
 pub mod landing;
 pub mod net;
 pub mod power;
