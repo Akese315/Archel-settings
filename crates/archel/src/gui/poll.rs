@@ -94,6 +94,13 @@ impl BannerPolicy {
         self.ever_shown = false;
         self.dismissed = false;
     }
+
+    /// Whether the banner should currently be visible: shown once and
+    /// not dismissed since. Consecutive failures keep it on screen;
+    /// only a dismiss or a success hides it.
+    pub fn wants_visible(&self) -> bool {
+        self.ever_shown && !self.dismissed
+    }
 }
 
 #[cfg(test)]
@@ -146,8 +153,26 @@ mod tests {
     }
 
     #[test]
-    fn banner_dismiss_stays_silent_until_success() {
+    fn banner_visibility_sticks_until_dismiss_or_success() {
         let mut policy = BannerPolicy::new();
+        assert!(!policy.wants_visible(), "nothing shown initially");
+        policy.on_failure();
+        assert!(policy.wants_visible(), "first failure shows");
+        policy.on_failure();
+        assert!(
+            policy.wants_visible(),
+            "consecutive failures keep it on screen"
+        );
+        policy.dismiss();
+        assert!(!policy.wants_visible(), "dismiss hides it");
+        policy.on_failure();
+        assert!(!policy.wants_visible(), "dismissed stays silent");
+        policy.on_success();
+        assert!(!policy.wants_visible(), "success hides it");
+    }
+
+    #[test]
+    fn banner_dismiss_stays_silent_until_success() {        let mut policy = BannerPolicy::new();
         assert!(policy.on_failure());
         policy.dismiss();
         assert!(
