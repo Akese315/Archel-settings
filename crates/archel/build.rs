@@ -9,12 +9,35 @@
 #[cfg(feature = "gui")]
 fn main() {
     use cxx_qt_build::{CxxQtBuilder, QmlModule};
+    use qt_build_utils::{QResource, QResourceFile, QResources};
+
+    // Rail icons ship beside Main.qml inside the same qrc. They go through
+    // an explicit qrc resource (not qml_files): qmlcachegen compiles every
+    // qml_files entry and would choke on .svg. Aliases keep the names
+    // QML's relative "images/<name>.svg" sources resolve to.
+    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo"));
+    let images = ["home", "network", "power", "bluetooth", "appearance", "sound", "apps",
+                  "display", "input", "system"]
+        .into_iter()
+        .fold(
+            QResource::new().prefix("/qt/qml/org/archel/settings/src/gui/qml/images"),
+            |res, name| {
+                res.file(
+                    QResourceFile::new(manifest.join(format!("src/gui/qml/images/{name}.svg")))
+                        .alias(format!("{name}.svg")),
+                )
+            },
+        );
 
     // Every .qml on disk must be registered here in the same commit it
     // appears (Pitfall 2): an unregistered file compiles fine and fails
     // only at runtime with a qrc load error. All 10 tab pages and all 9
     // shared components are pre-registered as placeholders now, so later
     // GUI plans fill content without ever touching this file.
+    //
+    // The SVG resource rides the same qrc through qrc_resources (not a
+    // .qrc file on disk): at runtime the icons resolve beside Main.qml.
+    let resources = QResources::new().resource(images);
     CxxQtBuilder::new_qml_module(
         QmlModule::new("org.archel.settings").qml_files([
             "src/gui/qml/Main.qml",
@@ -41,7 +64,8 @@ fn main() {
             "src/gui/qml/components/VpnImportPopup.qml",
         ]),
     )
-    .files(["src/gui/bridge.rs"])
+    .files(["src/gui/bridge.rs", "src/gui/shell.rs"])
+    .qrc_resources(resources)
     .build();
 }
 

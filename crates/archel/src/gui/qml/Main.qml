@@ -6,19 +6,49 @@
 // driving a StackLayout currentIndex. The Column lives in its own
 // Flickable so ten buttons taller than the window scroll instead of
 // clipping (UI-SPEC rail overflow row). Tab labels are French in the
-// locked order (D-25); geometry persistence arrives with the ShellModel.
+// locked order (D-25); 16x16 vendored Material-style icons (MIT) sit
+// beside each label (D-25). The frame restores from ShellModel
+// (geometry.rs, D-23), validated against the live screens at
+// Component.onCompleted and saved on onClosing.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
+import org.archel.settings
 
 ApplicationWindow {
     id: window
     visible: true
-    width: 900
-    height: 620
+    x: shell.launch_x
+    y: shell.launch_y
+    width: shell.launch_width
+    height: shell.launch_height
     minimumWidth: 720
     minimumHeight: 480
     title: "Archel Réglages"
+    visibility: shell.launch_maximized ? Window.Maximized : Window.Auto
+
+    // Geometry bridge (bridge.rs). Defaults mirror the retired QML
+    // literals, so the window is correct even before validation runs.
+    ShellModel {
+        id: shell
+    }
+
+    // Validate the saved frame against the real screens as soon as the
+    // window exists (screens marshalled as JSON; no QScreen in the bridge).
+    Component.onCompleted: {
+        var rects = []
+        for (var i = 0; i < Qt.application.screens.length; i++) {
+            var s = Qt.application.screens[i]
+            rects.push({ x: s.virtualX, y: s.virtualY, width: s.width, height: s.height })
+        }
+        shell.validateStartup(JSON.stringify(rects))
+    }
+
+    // Persist the frame on close (failures swallowed Rust-side, D-23).
+    onClosing: shell.saveGeometry(
+        window.x, window.y, window.width, window.height,
+        window.visibility === Window.Maximized)
 
     RowLayout {
         anchors.fill: parent
@@ -51,7 +81,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/home.svg"
                         }
                         Label {
                             text: "Accueil"
@@ -73,7 +103,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/network.svg"
                         }
                         Label {
                             text: "Réseau"
@@ -95,7 +125,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/power.svg"
                         }
                         Label {
                             text: "Alimentation"
@@ -117,7 +147,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/bluetooth.svg"
                         }
                         Label {
                             text: "Bluetooth"
@@ -139,7 +169,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/appearance.svg"
                         }
                         Label {
                             text: "Apparence"
@@ -161,7 +191,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/sound.svg"
                         }
                         Label {
                             text: "Son"
@@ -183,7 +213,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/apps.svg"
                         }
                         Label {
                             text: "Applications"
@@ -205,7 +235,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/display.svg"
                         }
                         Label {
                             text: "Affichage"
@@ -227,7 +257,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/input.svg"
                         }
                         Label {
                             text: "Périphériques"
@@ -249,7 +279,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 16
                             sourceSize.width: 16
                             sourceSize.height: 16
-                            source: ""
+                            source: "images/system.svg"
                         }
                         Label {
                             text: "Système"

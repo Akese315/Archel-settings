@@ -11,13 +11,17 @@ path = "src/main.rs"
 
 [features]
 default = ["gui"]
-gui = ["dep:cxx", "dep:cxx-qt", "dep:cxx-qt-lib", "dep:cxx-qt-build"]
+gui = ["dep:cxx", "dep:cxx-qt", "dep:cxx-qt-lib", "dep:cxx-qt-build", "dep:qt-build-utils"]
 
 [dependencies]
 archel-core = { path = "../archel-core" }
 clap = { version = "4.6", features = ["derive"] }
-serde = { version = "1.0" }
+# `derive`: Geometry/ScreenRect serde structs (06-01, D-23).
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# XDG config dir for window-geometry.json (06-01), same ProjectDirs call
+# as archel-core's updates cache.
+directories = "6"
 # Phase 4 (NET-01): single async runtime for the binary — core exposes
 # `async fn`s (zbus D-Bus paths), the binary owns the only runtime.
 # `net`: abstract-namespace UnixListener for the single-instance claim
@@ -36,3 +40,6 @@ insta = { version = "1.48", features = ["json"] }
 
 [build-dependencies]
 cxx-qt-build = { version = "=0.10.0", optional = true, features = ["link_qt_object_files"] }
+# Direct access to QResourceFile for vendored SVG registration (cxx-qt-build
+# only re-exports QResource/QResources). Pin matches cxx-qt-build's own dep.
+qt-build-utils = { version = "=0.10.0", optional = true }
