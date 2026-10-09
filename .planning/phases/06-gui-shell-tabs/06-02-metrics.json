@@ -1,0 +1,1 @@
+{"started_ts": 1791545745, "completed_ts": 1791545989, "tasks_total": 2, "tasks_completed": 2, "files_modified": 6, "planner_model": "gsd-planner", "executor_model": "Qwen3.8-Flash-Next", "total_tokens": 0, "duration_ms": 244000, "phase_count": 6}
