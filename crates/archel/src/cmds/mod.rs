@@ -21,12 +21,20 @@ mod input_cmds;
 
 #[derive(Debug, Parser)]
 #[command(name = "archel", version, about = "Archel system settings")]
-struct Cli {
+pub(crate) struct Cli {
     /// Machine-readable JSON output instead of French tables (D-12)
     #[arg(long, global = true)]
     json: bool,
     #[command(subcommand)]
     command: Command,
+}
+
+/// True when the parsed CLI asks for the graphical shell. `main` checks this
+/// BEFORE constructing any tokio runtime so `gui::run_settings()` can own the
+/// process's only `Runtime` (per RESEARCH Pattern 2).
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
+pub(crate) fn wants_settings(cli: &Cli) -> bool {
+    matches!(cli.command, Command::Settings)
 }
 
 #[derive(Debug, Subcommand)]
@@ -574,14 +582,15 @@ enum DnsAction {
 /// a silent ok); `main` renders the French catalog message with a non-zero
 /// exit.
 ///
-/// Async (single `#[tokio::main]` at the binary): core exposes `async fn`s
-/// for the D-Bus paths while subprocess helpers stay sync and run off the
-/// executor via `spawn_blocking` — never `block_on` inside core.
-pub async fn run() -> Result<(), ArchelError> {
+/// Async: core exposes `async fn`s for the D-Bus paths while subprocess
+/// helpers stay sync and run off the executor via `spawn_blocking` — never
+/// `block_on` inside core. The CLI-only runtime is constructed in `main`,
+/// after the `settings` branch has been taken (per RESEARCH Pattern 2); the
+/// GUI path never reaches this function.
+pub async fn run(cli: Cli) -> Result<(), ArchelError> {
     // The catalog backend defaults to the fallback locale; pin French so
     // every rendering below is deterministic (D-05/D-07).
     archel_core::i18n::set_language("fr");
-    let cli = Cli::parse();
     match cli.command {
         Command::Version => {
             println!("{}", archel_core::version_line());
