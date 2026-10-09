@@ -5,4 +5,6 @@
 //! `#[qml_element]` plus the build.rs `.files()` list.
 
 pub mod landing;
+pub mod net;
+pub mod power;
 pub mod system;

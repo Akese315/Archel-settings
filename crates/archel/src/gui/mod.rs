@@ -5,6 +5,8 @@
 //! any Qt dependency.
 
 mod bridge_landing;
+mod bridge_net;
+mod bridge_power;
 mod bridge_system;
 mod geometry;
 mod models;

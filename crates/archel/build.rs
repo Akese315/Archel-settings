@@ -68,6 +68,8 @@ fn main() {
         "src/gui/shell.rs",
         "src/gui/bridge_system.rs",
         "src/gui/bridge_landing.rs",
+        "src/gui/bridge_net.rs",
+        "src/gui/bridge_power.rs",
     ])
     .qrc_resources(resources)
     .build();
