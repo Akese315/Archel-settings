@@ -12,8 +12,8 @@ progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 28
-  completed_plans: 21
-  percent: 75
+  completed_plans: 22
+  percent: 79
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (GUI Shell & Tabs) — EXECUTING
-Plan: 4 of 9 complete (06-01..06-04; wave 3 done, wave 4 ready)
-Status: Wave 3 complete — 06-05 ready to dispatch
-Last activity: 2026-10-09 — 06-04 done (15f20e5, a6f7d5f) with SUMMARY; post-merge gates green
+Plan: 5 of 9 complete (06-01..06-05; wave 4 done, wave 5 ready)
+Status: Wave 4 complete — 06-06 ready to dispatch
+Last activity: 2026-10-09 — 06-05 done (a7a53d0, 2a4ee3b) with SUMMARY; post-merge gates green
 
 Progress: [███████░░░] 68%
 
