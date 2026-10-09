@@ -70,6 +70,8 @@ fn main() {
         "src/gui/bridge_landing.rs",
         "src/gui/bridge_net.rs",
         "src/gui/bridge_power.rs",
+        "src/gui/bridge_audio.rs",
+        "src/gui/bridge_bt.rs",
     ])
     .qrc_resources(resources)
     .build();

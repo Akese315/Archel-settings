@@ -4,6 +4,8 @@
 //! feature (Pitfall 2): headless builds compile neither this module nor
 //! any Qt dependency.
 
+mod bridge_audio;
+mod bridge_bt;
 mod bridge_landing;
 mod bridge_net;
 mod bridge_power;
