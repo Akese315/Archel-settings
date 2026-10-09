@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 6
+current_phase: 06
 current_phase_name: GUI Shell & Tabs
-status: standby
+status: executing
 stopped_at: Phase 06 UI-SPEC approved
-last_updated: "2026-10-09T10:19:15.752Z"
-last_activity: 2026-10-08
-last_activity_desc: Phase 06 discuss-phase complete (06-CONTEXT.md written, 26 decisions); entering plan-phase
-state_head: dd38c191af2c86015e780144476272b8a3fc4c37
+last_updated: "2026-10-09T10:33:05.670Z"
+last_activity: 2026-10-09
+last_activity_desc: Phase 06 execution resumed (wave continue)
+state_head: dba1ba52d0a480afad903ffa6acbe5d658bcc2e1
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 28
   completed_plans: 19
-  percent: 17
+  percent: 68
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-30)
 
 **Core value:** One reliable API through which every system setting can be read and changed on Arch + Hyprland — proven via the CLI before the GUI ever draws it.
-**Current focus:** Phase 06 — GUI Shell & Tabs (planned next; strategic GUI-direction question open)
+**Current focus:** Phase 06 — GUI Shell & Tabs
 
 ## Current Position
 
-Phase: 6 (GUI Shell & Tabs) — READY TO EXECUTE
-Plan: —
-Status: Phase 06 discuss-phase done; plan-phase in progress
-Last activity: 2026-10-08 — Phase 06 context gathered (26 decisions across 4 areas)
+Phase: 06 (GUI Shell & Tabs) — EXECUTING
+Plan: 1 of 9 complete (06-02 done inline; 06-01 pending)
+Status: Executing Phase 06 — Wave 1 partial (06-02 complete, 06-01 blocked)
+Last activity: 2026-10-09 — 06-02 executed inline (2 commits + SUMMARY); worker dispatch failed (binding + backend outage)
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███████░░░] 68%
 
 ## Performance Metrics
 
@@ -104,5 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-10-09
-Stopped at: Session resumed — Phase 06 planned (06-01 + 06-02, both wave 1), awaiting execution go-ahead
+Stopped at: 06-02 complete (inline, SUMMARY committed); 06-01 still pending — needs backend recovery + worktree binding fix
 Resume file: .planning/phases/06-gui-shell-tabs/06-01-shell-window-PLAN.md
+Wave 1 status: PARTIAL — 06-02 done (commits 5eb1eb0 + b139b64, SUMMARY present). 06-01 BLOCKED: (1) spawned `opencode run` workers bind tool-cwd to main checkout instead of their worktrees (both service and --standalone modes; /tmp worktree probes bind correctly — suspected project-registry-by-git-identity); killed before any writes, p01 worktree branch pristine at dba1ba5 and kept for reuse. (2) local model backend (thor.sealix.eu) returning Transport socket-closed on every call since ~10:55 UTC. Worker records reconciled (worker-complete). p02 worktree+branch removed (plan done inline). Next: verify backend recovery, run clone-vs-worktree binding test, then dispatch 06-01 or execute inline per user call.
