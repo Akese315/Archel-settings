@@ -15,6 +15,13 @@ pub fn language() -> String {
     rust_i18n::locale().to_string()
 }
 
+/// Refusal line printed by a second `archel settings` launch (D-26). Lives
+/// here so the French sentence stays in the catalog (D-07): the GUI binary
+/// only ever prints what this returns.
+pub fn settings_already_running() -> String {
+    rust_i18n::t!("settings.already_running").to_string()
+}
+
 #[cfg(test)]
 mod tests {
     /// French diacritic ranges (Pitfall 6): Latin-1 accented block plus the

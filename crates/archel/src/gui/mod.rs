@@ -5,6 +5,7 @@
 //! any Qt dependency.
 
 mod bridge;
+mod single_instance;
 
 use std::sync::OnceLock;
 
@@ -30,15 +31,28 @@ pub fn run_settings() -> Result<(), ArchelError> {
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|err| ArchelError::Internal(format!("async runtime unavailable: {err}")))?;
     let _ = RUNTIME.set(runtime);
+    // Entering the context lets the synchronous bind below (and later the
+    // bridge invokables' spawns) register with the runtime that owns I/O.
+    let _runtime_guard = RUNTIME.get().expect("runtime set above").enter();
 
-    // Step 2: style (D-24, A3). With a platform theme present Qt resolves
+    // Step 2: language + single-instance refusal (D-26), both BEFORE any Qt
+    // object exists — the refused launch prints the catalog line and exits
+    // 0 without ever loading QML. The listener is owned here for the whole
+    // exec() scope; dropping it is what frees the abstract name.
+    archel_core::i18n::set_language("fr");
+    let Some(_instance) = single_instance::acquire()? else {
+        println!("{}", archel_core::i18n::settings_already_running());
+        return Ok(());
+    };
+
+    // Step 3: style (D-24, A3). With a platform theme present Qt resolves
     // the style from it; otherwise fall back to Fusion. Must run before
     // any QML importing QtQuick.Controls is loaded.
     if std::env::var_os("QT_QPA_PLATFORMTHEME").is_none() {
         QQuickStyle::set_style(&QString::from("Fusion"));
     }
 
-    // Step 3: Qt shell. The Option-guard stays (spike-proven): a refused
+    // Step 4: Qt shell. The Option-guard stays (spike-proven): a refused
     // Qt start (no display, missing platform plugin) yields None rather
     // than a crash, and exec() is simply skipped.
     let mut app = QGuiApplication::new();
