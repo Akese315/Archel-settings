@@ -19,7 +19,7 @@ estimate:
 
 must_haves:
   truths:
-    - "`just gui-check` runs the full GUI verification in one command: QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui, a qmllint sweep over every crates/archel/qml/**/*.qml with zero errors, and the offscreen smoke (QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings, expecting rc=124 because the app should stay alive until the timeout kills it)"
+    - "`just gui-check` runs the full GUI verification in one command: QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui, a qmllint sweep over every crates/archel/src/gui/qml/**/*.qml with zero errors, and the offscreen smoke (QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings, expecting rc=124 because the app should stay alive until the timeout kills it)"
     - "The thin-view audit test proves each of the 10 tabs exposes the same capabilities as its CLI twin: every user-facing entry point in crates/archel/src/cmds/*_cmds.rs maps to an invokable on the tab's model (curated 1:1 map in the test), and no tab implements a system mutation that isn't backed by an archel-core call"
     - "The audit runs in plain CI with no Qt runtime (#[cfg] free — pure source-deparsing/metadata assertions), so it gates the phase-goal criterion 'each tab a thin view over CLI-proven core'"
   artifacts:
@@ -28,6 +28,11 @@ must_haves:
   key_links:
     - "justfile gui-check -> cargo build -p archel --features gui (binary the smoke launches) -> qmllint-qt6 (or qt6-declarative's qmllint via which-detection) -> target/debug/archel"
     - "gui_thin_view.rs -> parses crates/archel/src/cmds/*.rs invokable-equivalent fn names vs crates/archel/src/gui/models/*.rs invokable names via the curated map"
+  prohibitions:
+    - "crates/archel/src/gui/** must contain no subprocess or IPC primitives (std::process, duct, hyprland IPC, zbus) — the thin-view audit enforces this and must not whitelist exceptions"
+    - "The thin-view audit must not rubber-stamp: every cmds command is annotated // gui: <model> or // cli-only: <reason> and the test fails on unannotated commands"
+    - "justfile recipes must be fixed literal command lines — no argument interpolation, no network fetch"
+    - "This plan must not modify build.rs or the 06-01 QmlModule registration list"
 ---
 
 <objective>
@@ -58,7 +63,7 @@ Output: justfile + gui_thin_view.rs.
     Create justfile (none exists at repo root — verify first). Recipes:
     test (cargo test -p archel-core --no-default-features && cargo test -p archel
     --no-default-features), gui-build (QMAKE=/usr/bin/qmake6 cargo build -p
-    archel --features gui), lint-qml (loop crates/archel/qml/**/*.qml through
+    archel --features gui), lint-qml (loop crates/archel/src/gui/qml/**/*.qml through
     the qmllint found via `which qmllint-qt6 || which qmllint`; fail on errors,
     ignore unused-import warnings with -I flag hygiene), smoke (build then
     QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings; accept
@@ -69,7 +74,7 @@ Output: justfile + gui_thin_view.rs.
     as plain shell lines (executor checks with `command -v just`).
   </action>
   <verify>
-    <automated>command -v just >/dev/null && just gui-check || bash -c 'QMAKE=/usr/bin/qmake6 cargo build -p archel --features gui && QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings; [ $? -eq 124 ]'</automated>
+    <automated>if command -v just >/dev/null 2>&1; then just gui-check; else QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui && QMAKE=/usr/bin/qmake6 cargo build -p archel --features gui && for f in $(find crates/archel/src/gui/qml -name '*.qml'); do qmllint-qt6 "$f" >/dev/null 2>&1 || qmllint "$f" >/dev/null || exit 1; done && { QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings; [ "$?" -eq 124 ]; }; fi</automated>
     <fails_when>any recipe step fails on the live box (compile error, qmllint error, or smoke exiting != 124 — an early crash means a tab regressed)</fails_when>
   </verify>
   <acceptance_criteria>

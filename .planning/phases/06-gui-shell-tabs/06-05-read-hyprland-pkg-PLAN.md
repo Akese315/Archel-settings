@@ -28,7 +28,7 @@ must_haves:
     - "Display tab lists Hyprland monitors via the same path as archel display run_monitors; Input tab lists input settings via hyprland::input::read_input and custom binds via the binds parse helpers — the same rows input_cmds keybinds_list renders"
     - "Packages tab lists installed packages, live search results, and a package card through packages::list_installed/search/package_card (the run_list/run_search/run_info twins)"
     - "Package search shows the exact 'Aucun paquet trouve' refinement copy and the keybind list its 'Aucun raccourci personnalise' + Ajouter affordance copy (UI-SPEC empty rows; Ajouter wired in plan 08)"
-    - "All four tabs use the 06-03 poll path with hidden-tab Timer stopped (D-03) and ellipsis-until-first-tick loading"
+    - "All four tabs use the 06-03 poll path with timers ticking regardless of visibility (D-03/D-06 — only rendering is visibility-gated) and ellipsis-until-first-tick loading"
   artifacts:
     - crates/archel/src/gui/models/appearance.rs
     - crates/archel/src/gui/models/display.rs

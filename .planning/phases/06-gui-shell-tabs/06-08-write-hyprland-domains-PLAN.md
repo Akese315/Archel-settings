@@ -8,10 +8,10 @@ files_modified:
   - crates/archel/src/gui/models/appearance.rs
   - crates/archel/src/gui/models/input.rs
   - crates/archel/src/gui/models/display.rs
-  - crates/archel/qml/tabs/AppearanceTab.qml
-  - crates/archel/qml/tabs/InputTab.qml
-  - crates/archel/qml/tabs/DisplayTab.qml
-  - crates/archel/qml/components/CountdownModal.qml
+  - crates/archel/src/gui/qml/tabs/AppearanceTab.qml
+  - crates/archel/src/gui/qml/tabs/InputTab.qml
+  - crates/archel/src/gui/qml/tabs/DisplayTab.qml
+  - crates/archel/src/gui/qml/components/CountdownModal.qml
 autonomous: true
 requirements: [PLAT-03]
 tags: [write, hyprland, appearance, input, display, countdown]
@@ -26,16 +26,20 @@ must_haves:
   truths:
     - "Appearance writes apply blur, opacity, wallpaper and font through the core apply_*_with seams (validate -> Hyprland IPC -> line-preserving conf write), each behind the CLI-proven question in ConfirmModal, with per-control spinner while in flight (D-15)"
     - "Input writes apply sensitivity/accelerate via apply_input_with and add/remove keybinds via plan_bind/add_bind_line/remove_bind_line; removal is destructive-toned (red) and always confirmed with the core confirm_bind_remove_prompt question"
-    - "Display changes are planned with plan_monitor_change, previewed in ConfirmModal, then applied via apply_monitor_plan which owns the 15 s countdown-to-revert (D-16); CountdownModal shows the live countdown with a Garder button and is instantiated inside DisplayTab.qml only"
-    - "No GUI code path calls Hyprland set_monitor / dispatch directly — only plan_monitor_change -> apply_monitor_plan (RESEARCH Pitfall 5)"
+    - "Display changes are planned with plan_monitor_change, previewed in ConfirmModal, then applied via apply_monitor_plan which owns the 15 s countdown-to-revert (D-16); CountdownModal shows the live countdown with Conserver (default) / Annuler buttons per D-16 and is instantiated inside DisplayTab.qml only"
     - "Long values (keybind combos, conf option values, monitor names) elide with ToolTip full value (UI Considerations long-text-keybind owned here)"
   artifacts:
     - "Write invokables: AppearanceModel.set_blur/set_opacity/set_wallpaper/set_font, InputModel.set_sensitivity/set_accelerate/add_keybind/remove_keybind, DisplayModel.plan_change/keep_change/revert_change"
-    - "CountdownModal real implementation (api block from 06-02 untouched) instantiated in DisplayTab.qml"
+    - "CountdownModal real implementation (06-01 placeholder body replaced; its api block defined by this plan following the 06-06 modal convention) instantiated in DisplayTab.qml"
   key_links:
     - "AppearanceModel writes -> hyprland::appearance::apply_blur_with / validate_opacity+apply path / wallpaper::apply_wallpaper_with / font::apply_font_with (DI-with-hyprctl seams so unit tests run headless)"
     - "InputModel.add_keybind -> binds::plan_bind -> collision_hint -> confirm_bind_prompt question -> add_bind_line; remove -> confirm_bind_remove_prompt -> remove_bind_line"
     - "DisplayModel.plan_change -> monitors::plan_monitor_change -> ConfirmModal -> monitors::apply_monitor_plan (15 s timer inside core) -> CountdownModal countdown + keep -> keep-monitor keyword ack"
+  prohibitions:
+    - "No GUI code path may call Hyprland set_monitor / dispatch directly — display mutation flows only through plan_monitor_change -> apply_monitor_plan (RESEARCH Pitfall 5)"
+    - "No hyprland.conf write may bypass the core line editor (apply_*_with / apply_input_with) — the GUI never edits conf text itself"
+    - "CountdownModal may not be instantiated anywhere except inside DisplayTab.qml (instantiation-count grep == 1)"
+    - "This plan must not touch build.rs QmlModule registration (all files it fills were registered by 06-01)"
 ---
 
 <objective>
@@ -63,7 +67,7 @@ Output: write-capable Appearance/Input/Display tabs + CountdownModal.
 
 <task type="auto">
   <name>Task 1: Appearance writes (blur / opacity / wallpaper / font)</name>
-  <files>crates/archel/src/gui/models/appearance.rs, crates/archel/qml/tabs/AppearanceTab.qml</files>
+  <files>crates/archel/src/gui/models/appearance.rs, crates/archel/src/gui/qml/tabs/AppearanceTab.qml</files>
   <action>
     Four write invokables on AppearanceModel (06-05 read model), each:
     validate (opacity via validate_opacity, wallpaper path via the read path in
@@ -91,7 +95,7 @@ Output: write-capable Appearance/Input/Display tabs + CountdownModal.
 
 <task type="auto">
   <name>Task 2: Input writes (sensitivity / accel / keybind add + remove)</name>
-  <files>crates/archel/src/gui/models/input.rs, crates/archel/qml/tabs/InputTab.qml</files>
+  <files>crates/archel/src/gui/models/input.rs, crates/archel/src/gui/qml/tabs/InputTab.qml</files>
   <action>
     InputModel: set_sensitivity/set_accelerate via input::apply_input_with
     (pointer settings read by 06-05). Keybind list: add row = key combo
@@ -115,16 +119,17 @@ Output: write-capable Appearance/Input/Display tabs + CountdownModal.
 
 <task type="auto">
   <name>Task 3: Display plan->apply->countdown (CountdownModal)</name>
-  <files>crates/archel/src/gui/models/display.rs, crates/archel/qml/tabs/DisplayTab.qml, crates/archel/qml/components/CountdownModal.qml</files>
+  <files>crates/archel/src/gui/models/display.rs, crates/archel/src/gui/qml/tabs/DisplayTab.qml, crates/archel/src/gui/qml/components/CountdownModal.qml</files>
   <action>
     DisplayModel.plan_change(monitor, resolution, refresh, scale):
     monitors::plan_monitor_change -> preview summary (current -> proposed) in
     ConfirmModal -> on confirm spawn_blocking monitors::apply_monitor_plan
     through the model's injected Hyprland seam. apply_monitor_plan owns the
     15 s auto-revert timer (D-16) — GUI only displays it: CountdownModal shows
-    monitor name, "Réinitialisation automatique dans {n} s" ticking each second,
-    primary Button "Garder les paramètres" calling keep -> the core keep ack,
-    secondary "Annuler maintenant" forcing immediate revert. Instantiated
+    monitor name + the UI-SPEC copy "Conserver ces paramètres ? Annulation
+    automatique dans {s} s." ticking each second, primary Button "Conserver"
+    (default, D-16) calling keep -> the core keep ack, secondary Button
+    "Annuler" forcing immediate revert. Instantiated
     inside DisplayTab.qml (its only host — instantiation-count grep == 1).
     NEVER call set_monitor/dispatch directly (Pitfall 5) — grep display.rs
     model for forbidden IPC verbs as part of verify.
@@ -177,7 +182,7 @@ Output: write-capable Appearance/Input/Display tabs + CountdownModal.
 <verification>
 - `cargo test -p archel --no-default-features` green; clippy clean; offscreen smoke rc=124.
 - Manual UAT at wave end: wallpaper change, keybind add/remove, resolution
-  change letting the countdown expire (auto-revert) and once with Garder.
+  change letting the countdown expire (auto-revert) and once with Conserver.
 </verification>
 
 <success_criteria>

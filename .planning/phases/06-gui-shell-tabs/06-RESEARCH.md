@@ -415,15 +415,10 @@ qmllint --blocklist=false $(find crates/archel/src/gui/qml -name '*.qml')   # /u
 | A4 | SIGINT to pkexec child propagates to pacman and yields clean-ish abort | Core Gaps | Medium — verify on live machine during the streaming task; D-14 wording ("requests a stop") matches SIGINT semantics |
 | A5 | Progressive BT list can be deferred to burst-end populate | Core Gaps #2 | Low — D-08 compatible either way |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where do icon assets come from (D-25)?**
-   - Known: Qt built-in icon providers are thin in QML; bundled inline SVG in qrc is the robust path.
-   - Unclear: user taste on icon set.
-   - Recommendation: 10 hand-picked simple SVGs (Material-style, MIT) vendored in qrc; agent's discretion per CONTEXT.
-2. **One bridge module or one per tab?**
-   - Known: cxx-qt supports multiple `#[cxx_qt::bridge]` modules; spike has one.
-   - Recommendation: one `bridge.rs` (or `bridge/` folder) with N qobjects sharing namespace `org.archel.settings` — fewer build.rs moving parts.
+1. **Where do icon assets come from (D-25)?** — **RESOLVED: recommendation adopted verbatim.** 10 hand-picked simple Material-style SVGs (MIT) vendored in qrc, created in 06-01 alongside the QmlModule registration.
+2. **One bridge module or one per tab?** — **RESOLVED: alternative adopted.** One `#[cxx_qt::bridge]` mod per model file under `crates/archel/src/gui/models/<tab>.rs` (shared namespace `org.archel.settings`), registration appended centrally in `models/mod.rs` + `gui/mod.rs`; `bridge.rs` keeps only ShellModel/ShellModalSession. Chosen over the single-bridge recommendation so each plan's model edits stay file-disjoint for wave parallelism (06-03 through 06-08).
 
 ## Environment Availability
 

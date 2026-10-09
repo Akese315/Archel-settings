@@ -5,17 +5,19 @@ type: execute
 wave: 6
 depends_on: [06-04, 06-06]
 files_modified:
+  - crates/archel/src/gui/bridge.rs
+  - crates/archel-core/src/network.rs
   - crates/archel/src/gui/models/power.rs
   - crates/archel/src/gui/models/audio.rs
-  - crates/archel/src/gui/models/network.rs
-  - crates/archel/src/gui/models/bluetooth.rs
-  - crates/archel/qml/tabs/PowerTab.qml
-  - crates/archel/qml/tabs/AudioTab.qml
-  - crates/archel/qml/tabs/NetworkTab.qml
-  - crates/archel/qml/tabs/BluetoothTab.qml
-  - crates/archel/qml/components/PairingModal.qml
-  - crates/archel/qml/components/VpnImportPopup.qml
-  - crates/archel/qml/Main.qml
+  - crates/archel/src/gui/models/net.rs
+  - crates/archel/src/gui/models/bt.rs
+  - crates/archel/src/gui/qml/tabs/PowerTab.qml
+  - crates/archel/src/gui/qml/tabs/AudioTab.qml
+  - crates/archel/src/gui/qml/tabs/NetTab.qml
+  - crates/archel/src/gui/qml/tabs/BtTab.qml
+  - crates/archel/src/gui/qml/components/PairingModal.qml
+  - crates/archel/src/gui/qml/components/VpnImportPopup.qml
+  - crates/archel/src/gui/qml/Main.qml
 autonomous: true
 requirements: [PLAT-03]
 tags: [write, power, audio, dns, bluetooth, vpn, privilege]
@@ -36,12 +38,17 @@ must_haves:
     - "Privilege-required paths surface NeedsPrivilege-style errors through ErrorModal; pkexec needs a polkit agent (hyprpolkit) on the live box — precondition, not plan work (D-18)"
   artifacts:
     - "Write invokables added to the 06-04 models: PowerModel.set_profile, AudioModel.set_default_output/set_default_input, NetModel.dns_validate/dns_apply/vpn_import_start, BtModel.pair/unpair/connect/disconnect/set_adapter_on"
-    - "PairingModal and VpnImportPopup real implementations (api blocks from 06-02 untouched) instantiated at Main.qml root"
+    - "PairingModal and VpnImportPopup real implementations (06-01 placeholder bodies replaced; their api blocks defined by this plan, following the 06-06 modal convention) instantiated at Main.qml root"
   key_links:
     - "PowerModel.set_profile -> core power::confirm_set_prompt question -> ShellModel.openConfirm -> power::power_set via spawn_blocking"
     - "NetModel.dns_apply -> nm_dns::validate_dns_servers -> plan_dns_set -> apply_dns_plan (NEVER edit nm-connection-editor config directly)"
     - "BtModel.pair -> bluetooth::pair_picked_with with PassKey/YesNo callbacks -> ShellModel pairing-session properties -> PairingModal (the ONLY pairing UI)"
     - "NetModel.vpn_import_start -> network::vpn_import (nmcli --ask child, stdin Stdio::null() per assumption A6) -> results banner/ErrorModal"
+  prohibitions:
+    - "No subprocess may be spawned or signaled from the GUI crate — nmcli/pkexec children belong to archel-core; the GUI only invokes core entry points (thin-view contract)"
+    - "No second pairing dialog may exist anywhere — PairingModal instantiated at Main.qml root is the single pairing surface (D-21)"
+    - "DNS mutation must not bypass the core plan/apply structure (validate_dns_servers -> plan_dns_set -> apply_dns_plan) — no direct config-file or nmcli writes from GUI code"
+    - "This plan must not touch build.rs QmlModule registration (all files it fills were registered by 06-01)"
 ---
 
 <objective>
@@ -70,7 +77,7 @@ Output: write-capable Power/Audio/Network/Bluetooth tabs.
 
 <task type="auto">
   <name>Task 1: Power + audio writes</name>
-  <files>crates/archel/src/gui/models/power.rs, crates/archel/src/gui/models/audio.rs, crates/archel/qml/tabs/PowerTab.qml, crates/archel/qml/tabs/AudioTab.qml</files>
+  <files>crates/archel/src/gui/models/power.rs, crates/archel/src/gui/models/audio.rs, crates/archel/src/gui/qml/tabs/PowerTab.qml, crates/archel/src/gui/qml/tabs/AudioTab.qml</files>
   <action>
     PowerModel.set_profile(profile): build question from core
     power::confirm_set_prompt, openConfirm on ShellModel, on yes
@@ -96,7 +103,7 @@ Output: write-capable Power/Audio/Network/Bluetooth tabs.
 
 <task type="auto">
   <name>Task 2: DNS edit/apply + VPN import (VpnImportPopup)</name>
-  <files>crates/archel/src/gui/models/network.rs, crates/archel/qml/tabs/NetworkTab.qml, crates/archel/qml/components/VpnImportPopup.qml, crates/archel/qml/Main.qml</files>
+  <files>crates/archel/src/gui/models/net.rs, crates/archel/src/gui/qml/tabs/NetTab.qml, crates/archel/src/gui/qml/components/VpnImportPopup.qml, crates/archel/src/gui/qml/Main.qml</files>
   <action>
     NetModel DNS: dnsServers string list property + add/remove/edit rows;
     dns_validate runs nm_dns::validate_dns_servers live (French inline errors);
@@ -128,7 +135,7 @@ Output: write-capable Power/Audio/Network/Bluetooth tabs.
 
 <task type="auto">
   <name>Task 3: Bluetooth pair/connect/disconnect + global PairingModal</name>
-  <files>crates/archel/src/gui/models/bluetooth.rs, crates/archel/qml/tabs/BluetoothTab.qml, crates/archel/qml/components/PairingModal.qml, crates/archel/qml/Main.qml</files>
+  <files>crates/archel/src/gui/bridge.rs, crates/archel/src/gui/models/bt.rs, crates/archel/src/gui/qml/tabs/BtTab.qml, crates/archel/src/gui/qml/components/PairingModal.qml, crates/archel/src/gui/qml/Main.qml</files>
   <action>
     BtModel.pair(address): call bluetooth::pair_picked_with with callbacks that
     drive the ShellModel pairing session (pairingActive, pairingAddress,

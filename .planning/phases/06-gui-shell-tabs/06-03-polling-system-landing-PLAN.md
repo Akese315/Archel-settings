@@ -26,6 +26,7 @@ estimate:
 must_haves:
   truths:
     - "Every ticking model refreshes at most one request in flight — the 1 Hz Timer tick is skipped while the previous call has not returned (D-02); stale results are dropped by a sequence tag so an old answer never overwrites a newer one"
+    - "Timers keep ticking at 1 Hz while their tab is hidden, the window is minimized, or Archel is on another workspace — switching back always shows current data (D-03/D-06)"
     - "System Tab shows live 1 Hz CPU and RAM Canvas sparklines over a 60 s rolling window, aggregate line plus per-core expander, representative temps only, and the UI never freezes (D-09/D-10/D-11, success criterion 2)"
     - "Landing shows update counts from the 15-min-cached pending_counts(false) path without ever blocking (D-07)"
     - "Before the first successful tick every value reads the ellipsis token; N/A appears only after a failure — never a stale or zero-faked number (D-04)"
@@ -39,11 +40,11 @@ must_haves:
     - crates/archel/src/gui/models/landing.rs
     - "Sparkline.qml / PollBanner.qml / StatField.qml filled from placeholders"
   key_links:
-    - "QML Timer (running: tab is current index) -> model.tick() -> RUNTIME.handle().spawn -> CxxQtThread.queue closure -> Q_PROPERTY set (queue() is the ONLY place properties mutate — RESEARCH Pattern 1)"
+    - "QML Timer (running: true unconditionally, never bound to currentIndex) -> model.tick() -> RUNTIME.handle().spawn -> CxxQtThread.queue closure -> Q_PROPERTY set (queue() is the ONLY place properties mutate — RESEARCH Pattern 1; visibility gates rendering only, D-03/D-06)"
     - "SystemModel <-> archel_core::system::Monitor (stateful, Mutex-guarded, driven only from the spawn_blocking worker for a real 1 s CPU window)"
     - "models/mod.rs registration <-> gui/mod.rs register call (one registration site; later plans only append their own lines)"
 prohibitions:
-  - "Only the currently visible tab may tick; a hidden tab's Timer must be stopped — no background polling of invisible tabs (D-03)"
+  - "No model timer may be gated on tab visibility or window state — hidden, uncovered, and minimized tabs keep ticking (D-03/D-06); only rendering is visibility-gated"
   - "Poll workers must never touch QML-visible state off the queue — property writes only inside CxxQtThread.queue closures"
 ---
 
@@ -99,7 +100,7 @@ Output: poll.rs, models/{mod,system,landing}.rs, three real components, two live
   <name>Task 2: SystemModel + SystemTab (1 Hz graphs, D-09/D-10/D-11)</name>
   <read_first>crates/archel-core/src/system.rs (Monitor::new/cpu/ram/disk, cpu_snapshot/ram_snapshot/disk_snapshot, clamp_usage/bytes_to_gib/mhz_to_ghz), crates/archel/src/cmds/sys_cmds.rs (run_cpu/run_temp/run_all — the CLI entry point this tab mirrors, incl. the sensors temp path), crates/archel/src/gui/qml/Spike.qml history (Timer + queue pattern, from 06-01-SUMMARY), 06-UI-SPEC.md (Sparkline rows, zero-one-many row, D-09/D-10/D-11 contracts), 06-RESEARCH.md (Pitfall 1 — never block the Qt loop)</read_first>
   <files>crates/archel/src/gui/models/system.rs, crates/archel/src/gui/models/mod.rs, crates/archel/src/gui/qml/tabs/SystemTab.qml</files>
-  <action>SystemModel qobject (own #[cxx_qt] bridge mod in this file, registered via models/mod.rs — mirror SpikeModel's declaration pattern from bridge.rs): embeds Mutex<archel_core::system::Monitor> + PollGuard; tick() invokable spawns blocking cpu/ram/disk refresh on the runtime (the 1 s CPU window therefore never blocks Qt — Pitfall 1), queue() sets typed Q_PROPERTYs (cpu aggregate %, ram used/total GiB via bytes_to_gib, disk used/total, kernel_version) and a serde_json QString for the per-core array + rolling 60-sample series (VecDeque capacity 60, D-09). Representative temps only (D-11): reuse the exact core read path archel sys temp uses (sensors/TempSnapshot — read sys_cmds.rs:103 and call the same core fn); GPU line only when the GPU snapshot yields data; missing values => N/A token property, never 0 (D-04). SystemTab.qml: Timer running ONLY when Main.qml currentIndex is this tab (D-03), interval 1000ms, calls system.tick(); two Sparkline items bound to the series properties, aggregate stat rows via StatField, per-core expander (DisclosureRow hidden when cores.len() == 1 — zero-one-many row). Inline tests: series cap at 60, N/A on Err, core-count logic.</action>
+  <action>SystemModel qobject (own #[cxx_qt] bridge mod in this file, registered via models/mod.rs — mirror SpikeModel's declaration pattern from bridge.rs): embeds Mutex<archel_core::system::Monitor> + PollGuard; tick() invokable spawns blocking cpu/ram/disk refresh on the runtime (the 1 s CPU window therefore never blocks Qt — Pitfall 1), queue() sets typed Q_PROPERTYs (cpu aggregate %, ram used/total GiB via bytes_to_gib, disk used/total, kernel_version) and a serde_json QString for the per-core array + rolling 60-sample series (VecDeque capacity 60, D-09). Representative temps only (D-11): reuse the exact core read path archel sys temp uses (sensors/TempSnapshot — read sys_cmds.rs:103 and call the same core fn); GPU line only when the GPU snapshot yields data; missing values => N/A token property, never 0 (D-04). SystemTab.qml: Timer running: true unconditionally — never bound to currentIndex — so the model keeps ticking while the tab is hidden, the window is minimized, or the app sits on another workspace; returning to the tab always shows fresh data (D-03/D-06); StackLayout already gates rendering. Interval 1000ms, calls system.tick(); two Sparkline items bound to the series properties, aggregate stat rows via StatField, per-core expander (DisclosureRow hidden when cores.len() == 1 — zero-one-many row). Inline tests: series cap at 60, N/A on Err, core-count logic.</action>
   <verify>
     <automated>QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui system_model && QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui poll</automated>
     <fails_when>system model tests fail (series overflow, stale overwrite, N/A not emitted)</fails_when>
@@ -109,7 +110,7 @@ Output: poll.rs, models/{mod,system,landing}.rs, three real components, two live
   <acceptance_criteria>
   - System tab shows moving 1 Hz CPU/RAM sparklines (60 s window) without freezing the window (success criterion 2)
   - Per-core expander present, hidden for 1-core; representative temps only (D-11); N/A honest states (D-04)
-  - Hidden-tab Timer provably stopped (running bound to current index, D-03)
+  - Hidden-tab Timer provably still ticking (running not bound to currentIndex, D-03); unit/integration check: two consecutive tick() calls advance the series while the tab is never rendered, and data is fresh after a prolonged minimized window state (D-06)
   </acceptance_criteria>
   <done>System Info tab live at 1 Hz with graphs, expander, honest N/A behavior.</done>
 </task>
@@ -118,7 +119,7 @@ Output: poll.rs, models/{mod,system,landing}.rs, three real components, two live
   <name>Task 3: LandingModel + LandingTab (cached update counts, D-07)</name>
   <read_first>crates/archel-core/src/landing.rs (snapshot(false), LandingSnapshot, updates_cell, checker_notes), crates/archel-core/src/updates.rs:331 (pending_counts(false) 15-min cache), crates/archel/src/cmds/landing_cmd.rs (the CLI entry point this tab mirrors), 06-UI-SPEC.md (Landing rows + spacing 2xl/3xl hero block)</read_first>
   <files>crates/archel/src/gui/models/landing.rs, crates/archel/src/gui/models/mod.rs, crates/archel/src/gui/qml/tabs/LandingTab.qml</files>
-  <action>LandingModel qobject (same bridge-mod-per-file pattern): tick() -> spawn_blocking landing::snapshot(false) (cache-backed — never forces an alpm refresh, D-07; in-flight guard from PollGuard), queue() sets properties: pending updates count, checker notes (checker_notes joined), uptime/kernel summary fields as the snapshot exposes them. LandingTab.qml: hero block (2xl/3xl spacing rows), update counts via StatField with the ellipsis-until-first-tick rule, dismissible PollBanner wired to the model's banner-once signal (D-05), Timer running only while the Landing index is current (D-03; Landing is the default tab so it ticks at launch). Inline tests: snapshot Err -> N/A properties + banner flag; success -> counts populated; second consecutive failure does not re-signal the banner.</action>
+  <action>LandingModel qobject (same bridge-mod-per-file pattern): tick() -> spawn_blocking landing::snapshot(false) (cache-backed — never forces an alpm refresh, D-07; in-flight guard from PollGuard), queue() sets properties: pending updates count, checker notes (checker_notes joined), uptime/kernel summary fields as the snapshot exposes them. LandingTab.qml: hero block (2xl/3xl spacing rows), update counts via StatField with the ellipsis-until-first-tick rule, dismissible PollBanner wired to the model's banner-once signal (D-05), Timer running: true unconditionally (never gated on currentIndex — D-03/D-06; Landing is the default tab so it ticks from launch). Inline tests: snapshot Err -> N/A properties + banner flag; success -> counts populated; second consecutive failure does not re-signal the banner.</action>
   <verify>
     <automated>QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui landing</automated>
     <fails_when>landing model tests fail (banner re-fires, error path fakes zero counts)</fails_when>

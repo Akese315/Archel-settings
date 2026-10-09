@@ -40,21 +40,21 @@ created: "2026-10-09"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 06-TBD | — | 1 | PLAT-03 | T-06-01+ | GUI never concatenates command strings; argv via core fns | unit | `cargo test -p archel --features gui view_model` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | 1 | D-01/D-02 | — | N/A | unit | `cargo test -p archel --features gui in_flight` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | 1 | D-04/D-05 | — | N/A | unit | `cargo test -p archel --features gui poll_failures` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | 1 | D-07 | — | N/A | unit | `cargo test -p archel-core updates` | ✅ (extend if needed) | ⬜ pending |
-| 06-TBD | — | 2 | D-08 | — | N/A | unit | `cargo test -p archel --features gui bt_scan` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | 2 | D-13/D-14 | T-06-02 | Cancel → SIGINT request, never hard-kill; exit status reported | unit (fake child) | `cargo test -p archel-core privileged` | ❌ W0 (new variant) | ⬜ pending |
-| 06-TBD | — | 2 | D-16 | — | Timeout auto-rollback | unit | `cargo test -p archel-core monitors` | ✅ extend | ⬜ pending |
-| 06-TBD | — | 3 | D-23 | — | Geometry JSON serde-strict + clamps | unit + insta | `cargo test -p archel --features gui geometry` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | 3 | D-26 | — | Second bind fails cleanly | unit | `cargo test -p archel --features gui single_instance` | ❌ W0 | ⬜ pending |
-| 06-TBD | — | any | All QML | — | N/A | lint | `qmllint $(find crates/archel/src/gui/qml -name '*.qml')` | ❌ W0 (CI step) | ⬜ pending |
-| 06-TBD | — | any | Shell | — | N/A | smoke | `QT_QPA_PLATFORM=offscreen timeout 10 archel settings` exit 0 / no `qrc: load` errors | ❌ W0 | ⬜ pending |
+| 06-01-T2 | 06-01 | 1 | D-23 | — | Geometry JSON serde-strict + clamps | unit + insta | `cargo test -p archel --features gui geometry` | ❌ W0 | ⬜ pending |
+| 06-01-T3 | 06-01 | 1 | D-26 | — | Second bind fails cleanly | unit | `cargo test -p archel --features gui single_instance` | ❌ W0 | ⬜ pending |
+| 06-02-T1 | 06-02 | 1 | D-13/D-14 | T-06-02 | Cancel → one-shot SIGINT + drain to EOF; exit status reported, never hard-kill | unit (fake child) | `cargo test -p archel-core privileged` | ❌ W0 (new variant) | ⬜ pending |
+| 06-03-T1 | 06-03 | 2 | D-01/D-02 | — | One in-flight refresh per model; stale results dropped by sequence tag | unit | `cargo test -p archel --features gui poll` | ❌ W0 | ⬜ pending |
+| 06-03-T1 | 06-03 | 2 | D-04/D-05 | — | Poll failure banner + retry cadence | unit | `cargo test -p archel --features gui poll_failures` | ❌ W0 | ⬜ pending |
+| 06-03-T2 | 06-03 | 2 | D-03/D-06 | — | Timers tick while hidden/minimized; data fresh on return | unit | `cargo test -p archel --features gui system` | ❌ W0 | ⬜ pending |
+| 06-03-T3 | 06-03 | 2 | D-07 | — | Landing snapshot via `landing::snapshot(false)` | unit | `cargo test -p archel-core updates` | ✅ (extend if needed) | ⬜ pending |
+| 06-04-T2 | 06-04 | 3 | D-08 | — | 12 s burst scan, populate-at-end, own scan-in-flight flag | unit | `cargo test -p archel --features gui bt` | ❌ W0 | ⬜ pending |
+| 06-06-T3 | 06-06 | 5 | D-19 | T-06-29 | Valider disabled until PKGBUILD expander opened (pkgbuildSeen) AND trust checked | unit (flag seam) | `cargo test -p archel --features gui aur` | ❌ W0 | ⬜ pending |
+| 06-08-T3 | 06-08 | 6 | D-16 | — | Countdown keep/timeout auto-rollback; no direct set_monitor/dispatch | unit | `cargo test -p archel-core monitors` | ✅ extend | ⬜ pending |
+| 06-09-T1 | 06-09 | 7 | All QML | — | N/A | lint | `qmllint $(find crates/archel/src/gui/qml -name '*.qml')` (or `just lint-qml`) | ❌ W0 (CI step) | ⬜ pending |
+| 06-09-T1 | 06-09 | 7 | Shell | — | N/A | smoke | `QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings` exit 124 / no `qrc: load` errors | ❌ W0 | ⬜ pending |
+| 06-09-T2 | 06-09 | 7 | PLAT-03 | T-06-01+ | GUI never concatenates command strings; no subprocess/IPC literals in gui/; every cmds command annotated | unit (audit) | `cargo test -p archel --no-default-features gui_thin_view` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
-
-*(Task IDs finalized by planner — fill per-plan as waves are created.)*
 
 ---
 
