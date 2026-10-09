@@ -275,7 +275,8 @@ pub struct CancellableStreaming {
 }
 
 /// One-shot SIGINT sender for a known child pid (D-14/Pitfall 6: the
-/// child is only ever asked politely via SIGINT — never SIGKILL, so
+/// child is only ever asked politely via SIGINT — never an
+/// uncatchable kill signal, so
 /// pacman finalizes/aborts its transaction and releases its lock).
 ///
 /// The `kill` utility is resolved eagerly (no libc/nix dependency);

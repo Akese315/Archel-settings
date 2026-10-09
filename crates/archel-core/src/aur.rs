@@ -16,11 +16,14 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::atomic::AtomicBool;
 
 use serde::Serialize;
 
 use crate::error::ArchelError;
 use crate::packages::{self, PackageCard};
+use crate::privileged::{CancellableStreaming, drain_cancellable_child};
 
 /// AUR helper binary: always spawned as the invoking user (D-06), never
 /// through pkexec or any Archel-orchestrated elevation.
@@ -378,6 +381,50 @@ pub fn yay_build(name: &str, on_line: &mut dyn FnMut(&str)) -> Result<String, Ar
         )));
     }
     Ok(transcript)
+}
+
+/// Streams `yay -S <name> --noconfirm` with a stop channel (D-13):
+/// the GUI's StreamModal Annuler button sets `cancel`, the yay child
+/// gets exactly one SIGINT (yay traps INT and stops makepkg cleanly),
+/// stdout still drains to EOF, and the returned
+/// [`CancellableStreaming`] reports how the build ended (D-14).
+///
+/// Same contract as
+/// [`privileged::run_privileged_streaming_cancellable`](crate::privileged::run_privileged_streaming_cancellable):
+/// the ONE shared [`drain_cancellable_child`](crate::privileged) line-loop
+/// plus signal implementation (no duplicated cancel logic), the same
+/// which-detection and graceful [`ArchelError::YayMissing`] state as
+/// [`yay_build`], and `yay_build` itself keeps its exact signature for
+/// the CLI. A user-cancelled stop returns `Ok` with `cancelled == true`;
+/// the non-cancelled path keeps the exact non-zero-exit error of
+/// [`yay_build`].
+pub fn yay_build_cancellable(
+    name: &str,
+    on_line: &mut dyn FnMut(&str),
+    cancel: &AtomicBool,
+) -> Result<CancellableStreaming, ArchelError> {
+    packages::validate_package_names(&[name.to_string()])?;
+    let yay = resolve_tool(YAY_TOOL)?;
+    let child = std::process::Command::new(&yay)
+        .args(["-S", name, YAY_BUILD_FLAGS[0]])
+        .env("LC_ALL", "C")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| ArchelError::Internal(format!("cannot run 'yay -S': {err}")))?;
+    let drained = drain_cancellable_child(child, on_line, cancel)
+        .map_err(|detail| ArchelError::Internal(format!("cancellable 'yay -S': {detail}")))?;
+    if !drained.cancelled && drained.exit_code != Some(0) {
+        return Err(ArchelError::Internal(format!(
+            "'yay -S {name}' failed with exit code {:?}",
+            drained.exit_code
+        )));
+    }
+    Ok(CancellableStreaming {
+        transcript: drained.transcript,
+        cancelled: drained.cancelled,
+        exit_code: drained.exit_code,
+    })
 }
 
 /// Review title echoing the package name, from the catalog.
