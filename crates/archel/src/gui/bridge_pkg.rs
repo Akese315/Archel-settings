@@ -21,6 +21,8 @@ pub mod qobject {
         #[qproperty(bool, search_busy)]
         #[qproperty(bool, zero_hit)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, operation_kind)]
         #[namespace = "archel_settings"]
         type PkgModel = super::PkgModelRust;
 
@@ -39,6 +41,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "installStart"]
+        fn install_start(self: Pin<&mut Self>, names_json: QString);
+
+        #[qinvokable]
+        #[cxx_name = "upgradeStart"]
+        fn upgrade_start(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "removeStart"]
+        fn remove_start(self: Pin<&mut Self>, names_json: QString);
     }
 
     impl cxx_qt::Threading for PkgModel {}

@@ -1,22 +1,46 @@
-// Applications tab: installed packages, live search and package card
-// (read-only; Installer/Retirer/Mettre à jour land in plan 06).
+// Applications tab: installed list, live search, package card and the
+// write toolbar (plan 06-06). Reads stay the 06-05 shape (sequence
+// tags, banner, N/A contract); writes go through PkgModel invokables
+// only - the tab never talks to a subprocess, the modal or pkexec
+// directly. The confirm/stream/error choreography lives in the shared
+// modal session (Main.qml layer, D-12/D-13/D-15).
 //
-// The Timer runs unconditionally so the model keeps ticking while this
-// tab is hidden (D-03/D-06). Pre-first-tick values read the ellipsis
-// token; failures read N/A plus the once-per-episode banner (D-04/D-05).
-// The search field calls search() on accepted text; rapid typing never
-// flashes stale hits (per-query sequence tag, T-06-26). A zero-hit
-// search renders the refinement copy; selecting a row loads the card
-// through the core's label set. Names elide in the middle with the full
-// text in a ToolTip (UI-SPEC long-text backstop).
+// cxx-qt registers qproperties verbatim, so every model binding below
+// uses the snake_case names from bridge_pkg.rs (the invokables keep
+// their camelCase cxx_name).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.archel.settings
 
 Item {
+    id: root
+
     PkgModel {
         id: pkg
+    }
+
+    // Batch selection, keyed by package name so the 1 Hz installed
+    // refresh never loses the check marks. selectionRev is a bump
+    // counter read by isSelected() to force delegate re-evaluation.
+    property var selectedNames: []
+    property int selectionRev: 0
+
+    function isSelected(name) {
+        void (root.selectionRev);
+        return root.selectedNames.indexOf(name) >= 0;
+    }
+    function setSelected(name, on) {
+        var next = root.selectedNames.filter(function (n) { return n !== name; });
+        if (on) {
+            next.push(name);
+        }
+        root.selectedNames = next;
+        root.selectionRev += 1;
+    }
+    function clearSelection() {
+        root.selectedNames = [];
+        root.selectionRev += 1;
     }
 
     Timer {
@@ -45,7 +69,7 @@ Item {
             }
 
             PollBanner {
-                bannerVisible: pkg.bannerVisible
+                bannerVisible: pkg.banner_visible
                 onDismissRequested: pkg.dismissBanner()
             }
 
@@ -61,12 +85,15 @@ Item {
                         id: searchField
                         Layout.fillWidth: true
                         placeholderText: "Rechercher un paquet…"
-                        onAccepted: pkg.search(text)
+                        onAccepted: {
+                            root.clearSelection();
+                            pkg.search(text);
+                        }
                     }
 
                     BusyIndicator {
-                        running: pkg.searchBusy
-                        visible: pkg.searchBusy
+                        running: pkg.search_busy
+                        visible: pkg.search_busy
                         Layout.alignment: Qt.AlignHCenter
                     }
 
@@ -77,11 +104,11 @@ Item {
                         interactive: false
                         clip: true
                         model: {
-                            if (pkg.searchJson !== "")
-                                return JSON.parse(pkg.searchJson);
-                            if (pkg.installedJson === "")
+                            if (pkg.search_json !== "")
+                                return JSON.parse(pkg.search_json);
+                            if (pkg.installed_json === "")
                                 return [];
-                            return JSON.parse(pkg.installedJson);
+                            return JSON.parse(pkg.installed_json);
                         }
                         delegate: ItemDelegate {
                             width: pkgList.width
@@ -90,6 +117,11 @@ Item {
                             ToolTip.text: modelData.name + " " + modelData.version
                             contentItem: RowLayout {
                                 spacing: 8
+                                CheckBox {
+                                    checked: root.isSelected(modelData.name)
+                                    onToggled: root.setSelected(modelData.name, checked)
+                                    Accessible.name: "Sélectionner " + modelData.name
+                                }
                                 Label {
                                     text: modelData.name
                                     Layout.fillWidth: true
@@ -108,7 +140,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        visible: pkg.zeroHit
+                        visible: pkg.zero_hit
 
                         Label {
                             text: "Aucun paquet trouvé"
@@ -126,10 +158,59 @@ Item {
                 }
             }
 
+            // Write toolbar (D-12/D-15): while a modal session is open
+            // every button is disabled and the busy label names the
+            // running transaction. The plan's "Mettre à jour ({n})"
+            // count is not in the read model - honest label, no invented
+            // count (documented deviation).
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Button {
+                    text: "Installer"
+                    highlighted: true
+                    Layout.minimumWidth: 110
+                    enabled: !pkg.operation_busy && root.selectedNames.length > 0
+                    onClicked: {
+                        pkg.installStart(JSON.stringify(root.selectedNames));
+                        root.clearSelection();
+                    }
+                }
+                Button {
+                    text: "Mettre à jour"
+                    Layout.minimumWidth: 130
+                    enabled: !pkg.operation_busy
+                    onClicked: pkg.upgradeStart()
+                }
+                Button {
+                    text: "Supprimer"
+                    Layout.minimumWidth: 110
+                    enabled: !pkg.operation_busy && root.selectedNames.length > 0
+                    onClicked: {
+                        pkg.removeStart(JSON.stringify(root.selectedNames));
+                        root.clearSelection();
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                BusyIndicator {
+                    running: pkg.operation_busy
+                    visible: pkg.operation_busy
+                    implicitHeight: implicitIndicatorSize
+                }
+                Label {
+                    visible: pkg.operation_busy
+                    text: pkg.operation_kind === "install" ? "Installation en cours…"
+                          : pkg.operation_kind === "remove" ? "Suppression en cours…"
+                          : pkg.operation_kind === "upgrade" ? "Mise à jour en cours…"
+                          : "Opération en cours…"
+                }
+            }
+
             GroupBox {
                 title: "Fiche paquet"
                 Layout.fillWidth: true
-                visible: pkg.cardJson !== ""
+                visible: pkg.card_json !== ""
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -138,32 +219,32 @@ Item {
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Paquet"
-                        fieldValue: pkg.cardJson === "" ? "" : JSON.parse(pkg.cardJson).name
+                        fieldValue: pkg.card_json === "" ? "" : JSON.parse(pkg.card_json).name
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Version candidate"
-                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).candidate_version)
+                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).candidate_version)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Version installée"
-                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).installed_version)
+                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).installed_version)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Source"
-                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).source)
+                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).source)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Taille de téléchargement"
-                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).download_size)
+                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).download_size)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Taille installée"
-                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).installed_size)
+                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).installed_size)
                     }
                 }
             }
