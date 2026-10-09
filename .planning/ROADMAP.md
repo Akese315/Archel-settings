@@ -136,7 +136,31 @@ Plans:
   3. User can perform every write action (network, packages with progress + cancel, appearance, display with confirm dialog, input) from the GUI with spinner/disabled states and readable error messages
   4. User can do nothing in the GUI that isn't already CLI-proven — each tab is a thin view over the proven core
 
-**Plans**: TBD
+**Plans**: 9 plans
+
+**Wave 1**
+- [ ] 06-01-PLAN.md — CXX-Qt shell, window, vertical rail, QML registration (PLAT-03)
+- [ ] 06-02-PLAN.md — Core cancel/stream plumbing for write sessions (PLAT-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 06-03-PLAN.md — PollGuard + SystemModel 1 Hz sparklines + Landing (PLAT-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 06-04-PLAN.md — Read models: Network, Power, Audio, Bluetooth (PLAT-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 06-05-PLAN.md — Read models: Appearance, Display, Input, Packages (PLAT-03)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 06-06-PLAN.md — Modal infrastructure + Packages writes + AUR trust gate (PLAT-03)
+
+**Wave 6** *(blocked on Wave 5 completion — 06-07 and 06-08 run in parallel)*
+- [ ] 06-07-PLAN.md — Writes: power, audio, DNS, VPN import, Bluetooth pairing (PLAT-03)
+- [ ] 06-08-PLAN.md — Writes: Hyprland appearance, input/keybinds, display countdown (PLAT-03)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 06-09-PLAN.md — justfile gui-check harness + thin-view coverage audit (PLAT-03)
+
 **UI hint**: yes
 
 ## Progress
