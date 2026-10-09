@@ -1,4 +1,6 @@
-//! Rust side of the spike bridge: the `SpikeModel` QObject exposed to QML.
+//! Rust side of the GUI bridge: the QObjects exposed to QML. `ShellModel`
+//! owns window geometry (D-23); `SpikeModel` is the retired Phase-1 spike
+//! model, kept compiling until the GUI plans stop referencing the bridge.
 //!
 //! Pattern (per the CXX-Qt book `cargo_without_cmake` example): declare the
 //! QObject shape in `#[cxx_qt::bridge]`, implement behavior on the generated

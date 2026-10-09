@@ -2,6 +2,9 @@
   "app": {
     "version_line": "Archel version %{bin} — moteur archel-core %{core}"
   },
+  "settings": {
+    "already_running": "Archel Réglages est déjà ouvert."
+  },
   "privileged": {
     "dry_run_ok": "Module privilégié vérifié : réponse JSON v1 validée pour « %{action} »."
   },
