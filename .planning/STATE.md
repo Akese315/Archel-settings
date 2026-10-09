@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: GUI Shell & Tabs
 status: standby
-stopped_at: Completed 05-04-01-PLAN.md
-last_updated: "2026-10-08T15:10:00.000Z"
+stopped_at: Phase 06 UI-SPEC approved
+last_updated: "2026-10-08T22:43:09.743Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 06 discuss-phase complete (06-CONTEXT.md written, 26 decisions); entering plan-phase
-state_head: 4830092555f8ae124c7617c8c2e37c1f01c178cc
+state_head: 1246f9d787f758953dc54bc8b1e07a369874879d
 progress:
   total_phases: 6
   completed_phases: 5
@@ -103,6 +103,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-08T13:32:10.873Z
-Stopped at: Completed 05-04-01-PLAN.md
-Resume file: None
+Last session: 2026-10-09
+Stopped at: Session resumed — Phase 06 planned (06-01 + 06-02, both wave 1), awaiting execution go-ahead
+Resume file: .planning/phases/06-gui-shell-tabs/06-01-shell-window-PLAN.md
