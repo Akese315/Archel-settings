@@ -717,7 +717,7 @@ pub fn unpaired_ok_line(device: &BtDevice) -> String {
     rust_i18n::t!("bt.unpaired_ok", name = device.name).to_string()
 }
 
-/// French adapter state word (`allumé`/`éteint`), from the catalog.
+/// French adapter state word (on/off), from the catalog.
 pub fn adapter_state_word(on: bool) -> String {
     if on {
         rust_i18n::t!("bt.adapter_on_word").to_string()
