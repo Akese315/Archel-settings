@@ -23,7 +23,7 @@ covered_files:
   - crates/archel/src/cmds/landing_cmd.rs
   - crates/archel/src/cmds/mod.rs
   - crates/archel/src/cmds/sys_cmds.rs
-covered_digest: "v3:sha256:3d772d74b74e6fb8297870406d4396cdeb6b81c3d994f200f1e5677a52525ced"
+covered_digest: "v2:sha256:50ab3f6f0e7f04619d17737ca38e40ea3f0aac1d00d4ef70d362afb8683ce667"
 re_verification:
   previous_status: passed
   previous_score: 4/4
