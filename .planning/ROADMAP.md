@@ -143,8 +143,8 @@ Plans:
 - [x] 06-04-read-net-power-audio-bt-PLAN.md
 - [x] 06-05-read-hyprland-pkg-PLAN.md
 - [x] 06-06-modal-infra-pkg-write-PLAN.md
-- [ ] 06-07-write-system-domains-PLAN.md
-- [ ] 06-08-write-hyprland-domains-PLAN.md
+- [x] 06-07-write-system-domains-PLAN.md
+- [x] 06-08-write-hyprland-domains-PLAN.md
 - [ ] 06-09-gui-check-thin-view-PLAN.md
 
 **Wave 1**
@@ -164,8 +164,8 @@ Plans:
 - [x] 06-06-PLAN.md — Modal infrastructure + Packages writes + AUR trust gate (PLAT-03)
 
 **Wave 6** *(blocked on Wave 5 completion — 06-07 and 06-08 run in parallel)*
-- [ ] 06-07-PLAN.md — Writes: power, audio, DNS, VPN import, Bluetooth pairing (PLAT-03)
-- [ ] 06-08-PLAN.md — Writes: Hyprland appearance, input/keybinds, display countdown (PLAT-03)
+- [x] 06-07-PLAN.md — Writes: power, audio, DNS, VPN import, Bluetooth pairing (PLAT-03)
+- [x] 06-08-PLAN.md — Writes: Hyprland appearance, input/keybinds, display countdown (PLAT-03)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 06-09-PLAN.md — justfile gui-check harness + thin-view coverage audit (PLAT-03)

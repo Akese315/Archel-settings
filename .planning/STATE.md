@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (GUI Shell & Tabs) — EXECUTING
-Plan: 6 of 9 complete (06-01..06-06; wave 5 done, wave 6 ready)
-Status: PAUSED (user) — Wave 5 complete; 06-07 + 06-08 ready to dispatch
-Last activity: 2026-10-10 — 06-06 done (14fe6aa..4e24c58) with SUMMARY; gui suite 192 passed, clippy clean
+Plan: 8 of 9 complete (06-01..06-08 summarized; wave 6 done, wave 7 dispatching)
+Status: EXECUTING — Wave 6 complete (06-07 b3ebd03, 06-08 dcbb448); 06-09 ready dispatched
+Last activity: 2026-10-10 — Wave 6 done (gui 236 passed both plans, clippy clean, smoke rc=124)
 
 Progress: [████████░░] 82%
 
@@ -103,8 +103,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-10
-Stopped at: PAUSED by user (overnight). Waves 1-5 COMPLETE (06-01..06-06 summarized, tracking committed). 06-06 final gate results: gui 192 passed, headless 120, core aur 15, clippy clean, offscreen smoke rc=124.
+Last session: 2026-10-10 (resumed)
+Stopped at: Session resumed, proceeding to Wave 6 (06-07 + 06-08 parallel)
 Resume file: .planning/phases/06-gui-shell-tabs/06-07-write-system-domains-PLAN.md
 Remaining: Wave 6 = 06-07 + 06-08 (files_modified verified DISJOINT — safe to run in parallel; 06-07 owns bridge.rs/Main.qml, 06-08 does not touch them) -> Wave 7 = 06-09 -> verification gates.
 Executor note from 06-06: camelCase tab-binding debt + flaky core live_* tests + clippy baseline recorded in .planning/WINDOWS.md.
