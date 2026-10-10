@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can invoke the pkexec helper skeleton for an allowlisted dry-run action and gets structured JSON back
   4. User gets typed `ArchelError` diagnostics (not panics) from any core failure path
 
-**Plans**: 2 plans
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 01-01-PLAN.md — Core + CLI + i18n + typed errors tracer-first (PLAT-01)
@@ -51,7 +51,7 @@ Plans:
   3. User can see GPU VRAM used/total, CPU/GPU temperatures, and real-time CPU/GPU power draw — with honest N/A where hardware has no sensor
   4. User can fetch every value above headlessly via `archel-cli` (JSON output), proving the read API before any GUI exists
 
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 02-01-PLAN.md — Landing snapshot tracer + TTL update-count cache (LAND-01..03)
@@ -70,7 +70,7 @@ Plans:
   3. User can manage AUR packages via yay running unprivileged, with a PKGBUILD review step before building
   4. User can drive every Phase 2–3 capability through `archel-cli` with `--json` output and shell completions
 
-**Plans**: 3 plans
+**Plans**: 4/4 plans complete
 
 Plans:
 - [x] 03-01-PLAN.md — Read-side foundation: alpm list, repo+AUR search, pre-install card (PKG-01, PLAT-02)
@@ -90,7 +90,7 @@ Plans:
   4. User can select audio output and input devices and switch power profiles (performance/balanced/power-saver)
   5. User can perform every action above through `archel-cli`, proving each write path before GUI work starts
 
-**Plans**: 5 plans (4 + 1 gap-closure)
+**Plans**: 5/5 plans complete (4 + 1 gap-closure)
 
 Plans:
 - [x] 04-01-PLAN.md — Net tracer: live-bus spike, async foundation, status/DNS/triple-test (NET-01, NET-02, NET-03, NET-06)
@@ -179,9 +179,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Safety Rails | 0/TBD | Not started | - |
-| 2. System Insight | 0/TBD | Not started | - |
-| 3. Packages & CLI Harness | 0/TBD | Not started | - |
-| 4. Connectivity & Devices | 0/TBD | Not started | - |
+| 1. Foundations & Safety Rails | 3/3 | Complete    | 2026-10-10 |
+| 2. System Insight | 3/3 | Complete    | 2026-10-10 |
+| 3. Packages & CLI Harness | 4/4 | Complete    | 2026-10-10 |
+| 4. Connectivity & Devices | 5/5 | Complete    | 2026-10-10 |
 | 5. Hyprland Desktop | 4/4 | Complete    | 2026-10-08 |
 | 6. GUI Shell & Tabs | 9/9 | Complete ✓ | 2026-10-10 |

@@ -1,0 +1,43 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Foundations & Safety Rails",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "System Insight",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Packages & CLI Harness",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Connectivity & Devices",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Hyprland Desktop",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "GUI Shell & Tabs",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
+  },
+  "updated_at": "2026-10-10T19:56:55.587Z"
+}

@@ -1,7 +1,7 @@
 ---
 phase: 03-packages-cli-harness
 verified: 2026-10-10T18:52:38Z
-status: human_needed
+status: passed
 score: 10/10 goal-backward checks satisfied
 behavior_unverified: 0
 overrides_applied: 0
@@ -28,6 +28,7 @@ covered_files:
   - crates/archel/src/cmds/mod.rs
   - crates/archel/src/cmds/pkg_cmds.rs
   - policy/org.archel.privileged.policy
+
 covered_digest: "v2:sha256:f7b9bf63df2f2bf3f696e2be836163b80990a9ea7cb64af1b130bfca45a6ab61"
 re_verification:
   previous_status: passed

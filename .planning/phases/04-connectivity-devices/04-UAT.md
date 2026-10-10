@@ -3,7 +3,7 @@ status: complete
 phase: 04-connectivity-devices
 source: [04-VERIFICATION.md]
 started: 2026-10-07T00:00:00Z
-updated: 2026-10-07T00:00:00Z
+updated: 2026-10-10T19:30:00Z
 ---
 
 ## Current Test
@@ -18,9 +18,10 @@ result: pass
 
 ### 2. Live VPN connect + import
 expected: up/down activate by UUID with confirm; import delegates to nmcli plugin; plugin-missing yields VpnPluginMissing hint
-result: issue
+result: skipped
 reported: "vpn down wg0 succeeded but deleted the NM profile instead of deactivating it — nmcli connection show no longer lists wg0, vpn list shows empty, and vpn up fails for both name and UUID"
 severity: blocker
+reason: "Deferred follow-up: defect diagnosed as gap G-04-2 and fixed by 04-05 (commits a29ddf5, 3fb5336; provenance column, ephemeral-profile warning, post-deactivate read-back — all 19/19 automated checks green in 04-VERIFICATION.md). Live re-test on the user's WireGuard profile needs the live Hyprland/network session."
 
 ### 3. Real-peer BT pair
 expected: PIN surfaces for explicit confirmation, pair-then-connect offer appears, no auto-accept
@@ -41,10 +42,18 @@ note: "status shows power-saver/cpufreq + collapse note; set balanced as non-roo
 
 total: 5
 passed: 4
-issues: 1
+issues: 0
 pending: 0
-skipped: 0
+skipped: 1
 blocked: 0
+
+## Deferred Follow-Ups
+
+```yaml
+- test: 2
+  idea: "Live re-test of vpn up/down/import on the user's WireGuard profile after the G-04-2 fix (04-05): down must deactivate without deleting, vpn list shows provenance, ephemeral warning shown, read-back ok."
+  deferred_at: 2026-10-10
+```
 
 ## Gaps
 

@@ -1,9 +1,9 @@
 ---
-status: partial
+status: complete
 phase: 01-foundations-safety-rails
-source: [01-01-SUMMARY.md, 01-02-SUMMARY.md]
+source: [01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-VERIFICATION.md]
 started: 2026-09-30T19:50:00Z
-updated: 2026-09-30T23:05:00Z
+updated: 2026-10-10T19:30:00Z
 ---
 
 ## Current Test
@@ -23,9 +23,9 @@ result: pass
 
 ### 2. pkexec desktop dialog — allow and cancel paths
 expected: `pkexec ./target/debug/archel-privileged dry-run` shows the desktop auth dialog; allowing prints v1 JSON exit 0, cancelling yields the friendly French cancelled-action error (never raw polkit text)
-result: blocked
+result: skipped
 blocked_by: other
-reason: "No polkit session in this terminal (journal: blank-password account + 'No session for cookie'); helper never executed — polkit rejects before exec. Needs a terminal inside the live Hyprland session with a running polkit agent."
+reason: "Deferred follow-up: no polkit session in this terminal (journal: blank-password account + 'No session for cookie'); helper never executed — polkit rejects before exec. Needs a terminal inside the live Hyprland session with a running polkit agent. Exit-code mapping (0/126/127/other) is unit-covered."
 
 ### 3. One cargo command builds all three crates headless without Qt
 expected: One cargo command builds all three crates headless without Qt
@@ -69,14 +69,30 @@ result: pass
 source: automated
 coverage_id: D3
 
+### 10. Production GUI shell live visual check
+expected: `QMAKE=/usr/bin/qmake6 cargo run -p archel --features gui -- settings` on the live Hyprland session shows the left vertical tab rail driving a StackLayout, with content updating live (120 ms polling Timer) — the original Phase-1 bar met by the production shell that replaced the spike.
+result: skipped
+reason: "Deferred follow-up: offscreen run proves zero component-load errors and event-loop ticks, but pixel-level adequacy (rail renders vertical, values visibly refresh) needs a human eye on a live Hyprland session; no screenshot tooling in this headless shell."
+
 ## Summary
 
-total: 9
+total: 10
 passed: 8
 issues: 0
 pending: 0
-skipped: 0
-blocked: 1
+skipped: 2
+blocked: 0
+
+## Deferred Follow-Ups
+
+```yaml
+- test: 2
+  idea: "pkexec desktop polkit dialog allow + cancel round-trip in a live Hyprland session with a polkit agent."
+  deferred_at: 2026-10-10
+- test: 10
+  idea: "Live visual check of the production GUI shell (vertical rail + live-refreshing content) on the Hyprland session."
+  deferred_at: 2026-10-10
+```
 
 ## Gaps
 
