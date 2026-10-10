@@ -1,3 +1,75 @@
+---
+phase: 06-gui-shell-tabs
+verified: 2026-10-10T18:05:00Z
+status: passed
+score: 4/4 goal-backward checks satisfied (0 partial, 0 missing)
+behavior_unverified: 0
+overrides_applied: 0
+covered_files:
+  - .planning/phases/06-gui-shell-tabs/06-01-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-01-shell-window-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-02-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-02-core-cancel-stream-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-03-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-03-polling-system-landing-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-04-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-04-read-net-power-audio-bt-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-05-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-05-read-hyprland-pkg-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-06-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-06-modal-infra-pkg-write-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-07-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-07-write-system-domains-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-08-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-08-write-hyprland-domains-PLAN.md
+  - .planning/phases/06-gui-shell-tabs/06-09-SUMMARY.md
+  - .planning/phases/06-gui-shell-tabs/06-09-gui-check-thin-view-PLAN.md
+  - crates/archel/src/main.rs
+  - crates/archel/src/gui/mod.rs
+  - crates/archel/build.rs
+  - crates/archel/src/gui/single_instance.rs
+  - crates/archel/src/gui/geometry.rs
+  - crates/archel/src/gui/qml/Main.qml
+  - crates/archel/src/gui/qml/tabs/LandingTab.qml
+  - crates/archel/src/gui/qml/tabs/NetTab.qml
+  - crates/archel/src/gui/qml/tabs/PowerTab.qml
+  - crates/archel/src/gui/qml/tabs/BtTab.qml
+  - crates/archel/src/gui/qml/tabs/AppearanceTab.qml
+  - crates/archel/src/gui/qml/tabs/AudioTab.qml
+  - crates/archel/src/gui/qml/tabs/PkgTab.qml
+  - crates/archel/src/gui/qml/tabs/DisplayTab.qml
+  - crates/archel/src/gui/qml/tabs/InputTab.qml
+  - crates/archel/src/gui/qml/tabs/SystemTab.qml
+  - crates/archel/src/gui/qml/components/ConfirmModal.qml
+  - crates/archel/src/gui/qml/components/ErrorModal.qml
+  - crates/archel/src/gui/qml/components/StreamModal.qml
+  - crates/archel/src/gui/qml/components/CountdownModal.qml
+  - crates/archel/src/gui/qml/components/PairingModal.qml
+  - crates/archel/src/gui/qml/components/StatField.qml
+  - crates/archel/src/gui/qml/components/PollBanner.qml
+  - crates/archel/src/gui/qml/components/Sparkline.qml
+  - crates/archel/src/gui/qml/components/VpnImportPopup.qml
+  - crates/archel-core/src/i18n.rs
+  - crates/archel-core/locales/fr.json
+  - crates/archel-core/src/privileged.rs
+  - crates/archel-core/src/aur.rs
+  - crates/archel/src/gui/poll.rs
+  - crates/archel/src/gui/models/mod.rs
+  - crates/archel/src/gui/models/system.rs
+  - crates/archel/src/gui/models/landing.rs
+  - crates/archel/src/gui/models/net.rs
+  - crates/archel/src/gui/models/power.rs
+  - crates/archel/src/gui/models/audio.rs
+  - crates/archel/src/gui/models/bt.rs
+  - crates/archel/src/gui/models/appearance.rs
+  - crates/archel/src/gui/models/display.rs
+  - crates/archel/src/gui/models/input.rs
+  - crates/archel/src/gui/models/pkg.rs
+  - crates/archel-core/src/network.rs
+  - justfile
+covered_digest: "v2:sha256:dcaf223b511bcbf1eb598ccf96995b4eae06002d20ca3171e0270cf3512de237"
+---
+
 # Phase 06: GUI Shell & Tabs — Verification Report
 
 **Phase goal (ROADMAP.md):** Users get a modern vertical-tab GUI presenting every proven capability.
