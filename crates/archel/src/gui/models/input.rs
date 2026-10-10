@@ -277,7 +277,6 @@ impl crate::gui::bridge_input::qobject::InputModel {
     /// inline in `keybind_error` and never reach a modal or a
     /// worker. Only a valid spec spawns the confirm-gated worker.
     pub fn add_keybind(mut self: core::pin::Pin<&mut Self>, combo: QString, action: QString) {
-        use cxx_qt::CxxQtType;
         let combo_text = combo.to_string();
         let action_text = action.to_string();
         match plan_keybind_from_fields(&combo_text, &action_text) {
@@ -324,7 +323,6 @@ impl crate::gui::bridge_input::qobject::InputModel {
         dispatcher: QString,
         arg: QString,
     ) {
-        use cxx_qt::CxxQtType;
         let mods_text = mods.to_string();
         let key_text = key.to_string();
         let dispatcher_text = dispatcher.to_string();
@@ -796,8 +794,8 @@ mod tests {
         use archel_core::hyprland::binds as core_binds;
         let spec =
             core_binds::plan_bind("SUPER", "T", "exec", Some("kitty")).expect("spec plans");
-        let statuses = merge_binds(&[], &[spec.clone()]);
-        let json = binds_json_for(&statuses, &[spec]);
+        let statuses = merge_binds(&[], std::slice::from_ref(&spec));
+        let json = binds_json_for(&statuses, std::slice::from_ref(&spec));
         let rows: Vec<serde_json::Value> =
             serde_json::from_str(&json).expect("binds must be JSON");
         assert_eq!(rows.len(), 1);
