@@ -19,6 +19,9 @@ pub mod qobject {
         #[qproperty(QString, scroll_text)]
         #[qproperty(QString, binds_json)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, operation_kind)]
+        #[qproperty(QString, keybind_error)]
         #[namespace = "archel_settings"]
         type InputModel = super::InputModelRust;
 
@@ -29,6 +32,28 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "setSensitivity"]
+        fn set_sensitivity(self: Pin<&mut Self>, value: QString);
+
+        #[qinvokable]
+        #[cxx_name = "setAccelerate"]
+        fn set_accelerate(self: Pin<&mut Self>, value: QString);
+
+        #[qinvokable]
+        #[cxx_name = "addKeybind"]
+        fn add_keybind(self: Pin<&mut Self>, combo: QString, action: QString);
+
+        #[qinvokable]
+        #[cxx_name = "removeKeybind"]
+        fn remove_keybind(
+            self: Pin<&mut Self>,
+            mods: QString,
+            key: QString,
+            dispatcher: QString,
+            arg: QString,
+        );
     }
 
     impl cxx_qt::Threading for InputModel {}

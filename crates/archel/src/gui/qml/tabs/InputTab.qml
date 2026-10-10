@@ -1,13 +1,12 @@
-// Périphériques tab: mouse leaves plus the merged keybind inventory
-// (read-only; the Ajouter editor lands in plan 08).
+// Périphériques tab: mouse leaves plus the managed keybind inventory
+// (writable, plan 06-08).
 //
-// The Timer runs unconditionally so the model keeps ticking while this
-// tab is hidden (D-03/D-06). Pre-first-tick values read the ellipsis
-// token; failures read N/A plus the once-per-episode banner (D-04/D-05).
-// Keybind rows render the core's render strings verbatim via the
-// combo/detail pairs; long summaries elide in the middle with the full
-// text in a ToolTip (UI-SPEC long-text backstop). The Ajouter button is
-// an affordance only: plan 08 wires it to the keybind editor (D-12).
+// Pointer writes and keybind add/remove confirm first in the global
+// ConfirmModal (D-12); keybind typos render inline under the editor
+// (never a modal). Managed rows carry their exact-match address and
+// show a red Supprimer button; compositor-reported (user) binds are
+// display-only (D-06). Long combos/actions elide with the full text
+// in a ToolTip (UI-SPEC long-text backstop).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -48,6 +47,12 @@ Item {
                 onDismissRequested: input.dismissBanner()
             }
 
+            BusyIndicator {
+                running: input.operationBusy
+                visible: input.operationBusy
+                Layout.alignment: Qt.AlignHCenter
+            }
+
             GroupBox {
                 title: "Souris"
                 Layout.fillWidth: true
@@ -65,6 +70,7 @@ Item {
                             Layout.preferredWidth: 140
                         }
                         Slider {
+                            id: sensitivitySlider
                             Layout.fillWidth: true
                             from: -1
                             to: 1
@@ -75,13 +81,18 @@ Item {
                                 var v = parseFloat(input.sensitivityText);
                                 return isNaN(v) ? 0 : v;
                             }
-                            enabled: false
+                            enabled: !input.operationBusy
                         }
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Valeur"
                         fieldValue: input.sensitivityText
+                    }
+                    Button {
+                        text: "Appliquer"
+                        enabled: !input.operationBusy
+                        onClicked: input.setSensitivity(sensitivitySlider.value.toFixed(2))
                     }
 
                     RowLayout {
@@ -98,10 +109,31 @@ Item {
                         }
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            text: "Accélération"
+                            Layout.preferredWidth: 140
+                        }
+                        TextField {
+                            id: accelerateField
+                            Layout.fillWidth: true
+                            placeholderText: "Facteur (ex. 1.50)"
+                            text: input.scrollText === "N/A" ? "" : input.scrollText
+                            enabled: !input.operationBusy
+                        }
+                    }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Facteur de défilement"
                         fieldValue: input.scrollText
+                    }
+                    Button {
+                        text: "Appliquer"
+                        enabled: !input.operationBusy && accelerateField.text !== ""
+                        onClicked: input.setAccelerate(accelerateField.text)
                     }
                 }
             }
@@ -140,6 +172,18 @@ Item {
                                     elide: Text.ElideMiddle
                                     Layout.maximumWidth: parent.width * 0.4
                                 }
+                                Button {
+                                    text: "Supprimer"
+                                    visible: modelData.managed === true
+                                    enabled: !input.operationBusy
+                                    contentItem: Label {
+                                        text: parent.text
+                                        color: "#c01c28"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    onClicked: input.removeKeybind(modelData.mods, modelData.key, modelData.dispatcher, modelData.arg)
+                                }
                             }
                         }
                     }
@@ -163,10 +207,34 @@ Item {
                         }
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: comboField
+                            Layout.fillWidth: true
+                            placeholderText: "Combinaison (ex. SUPER + T)"
+                            enabled: !input.operationBusy
+                        }
+                        TextField {
+                            id: actionField
+                            Layout.fillWidth: true
+                            placeholderText: "Action (ex. exec kitty)"
+                            enabled: !input.operationBusy
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: input.keybindError
+                        visible: input.keybindError !== ""
+                        wrapMode: Text.Wrap
+                        color: "#c01c28"
+                    }
                     Button {
                         text: "Ajouter"
-                        // Affordance only: plan 08 wires this to the keybind editor.
-                        onClicked: {}
+                        enabled: !input.operationBusy && comboField.text !== "" && actionField.text !== ""
+                        onClicked: input.addKeybind(comboField.text, actionField.text)
                     }
                 }
             }
