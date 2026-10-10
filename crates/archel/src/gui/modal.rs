@@ -129,6 +129,18 @@ pub struct ModalSession {
     result: Mutex<EndState>,
     exit_code: Mutex<Option<i32>>,
     confirm_tx: Mutex<Option<std::sync::mpsc::Sender<bool>>>,
+    // -- Bluetooth pairing session (plan 06-07, D-21) --
+    //
+    // Fully independent from the confirm/error/stream fields above:
+    // the pairing modal has its own visibility (`pairing_active`),
+    // so a worker `reset()` on the shared session (e.g. a concurrent
+    // confirm from another tab) never tears down a pairing prompt.
+    pairing_active: Mutex<bool>,
+    pairing_address: Mutex<String>,
+    pairing_name: Mutex<String>,
+    pairing_mode: Mutex<String>,
+    pairing_passkey: Mutex<String>,
+    pairing_answer_tx: Mutex<Option<std::sync::mpsc::Sender<bool>>>,
 }
 
 impl Default for ModalSession {
@@ -149,6 +161,12 @@ impl Default for ModalSession {
             result: Mutex::new(EndState::Completed),
             exit_code: Mutex::new(None),
             confirm_tx: Mutex::new(None),
+            pairing_active: Mutex::new(false),
+            pairing_address: Mutex::new(String::new()),
+            pairing_name: Mutex::new(String::new()),
+            pairing_mode: Mutex::new(String::new()),
+            pairing_passkey: Mutex::new(String::new()),
+            pairing_answer_tx: Mutex::new(None),
         }
     }
 }
@@ -293,6 +311,62 @@ impl ModalSession {
         self.cancel.load(Ordering::SeqCst)
     }
 
+    // -- Bluetooth pairing session (plan 06-07, D-21) --
+    //
+    // The global PairingModal (Main.qml root, the ONLY pairing UI)
+    // renders this state. Workers drive it from the blocking pool;
+    // `ShellModel::sync_session` mirrors it onto QML properties; the
+    // modal's Confirmer/Refuser resolve the pending answer through
+    // `resolve_pairing`. Never auto-accept: no waiter resolves to
+    // `true` - only an explicit Confirmer does.
+
+    /// Opens the pairing session for one device. `mode` is the BlueZ
+    /// association model the core agent reports (`yesno` for the
+    /// numeric-comparison path - the code shows plus an explicit
+    /// match question). Any previous pairing answer is dropped.
+    pub fn begin_pairing(&self, address: &str, name: &str, mode: &str) {
+        *self.pairing_address.lock().expect("pairing lock") = address.to_string();
+        *self.pairing_name.lock().expect("pairing lock") = name.to_string();
+        *self.pairing_mode.lock().expect("pairing lock") = mode.to_string();
+        *self.pairing_passkey.lock().expect("pairing lock") = String::new();
+        *self.pairing_answer_tx.lock().expect("pairing lock") = None;
+        *self.pairing_active.lock().expect("pairing lock") = true;
+    }
+
+    /// Publishes a BlueZ code and returns the receiver the agent
+    /// callback blocks on. The code shown is always the core
+    /// `format_passkey` output - this function stores exactly what it
+    /// is given, and the only caller is the GUI pair worker fed by
+    /// the core agent (thin-view contract).
+    pub fn pairing_request_code(&self, code: &str) -> std::sync::mpsc::Receiver<bool> {
+        *self.pairing_passkey.lock().expect("pairing lock") = code.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        *self.pairing_answer_tx.lock().expect("pairing lock") = Some(tx);
+        rx
+    }
+
+    /// Resolves a pending pairing answer. Confirmer releases the
+    /// waiter with `true`; Refuser with `false`. No waiter (direct
+    /// QML use) makes this a harmless no-op that never accepts.
+    pub fn resolve_pairing(&self, accepted: bool) {
+        if let Some(tx) = self.pairing_answer_tx.lock().expect("pairing lock").take() {
+            let _ = tx.send(accepted);
+        }
+        if !accepted {
+            *self.pairing_active.lock().expect("pairing lock") = false;
+        }
+    }
+
+    /// Closes the pairing session after the handshake ends (paired,
+    /// rejected, timed out or declined). Clears the code and drops
+    /// any unanswered waiter (a late Confirmer after the close is a
+    /// no-op, never a stray accept).
+    pub fn end_pairing(&self) {
+        *self.pairing_answer_tx.lock().expect("pairing lock") = None;
+        *self.pairing_passkey.lock().expect("pairing lock") = String::new();
+        *self.pairing_active.lock().expect("pairing lock") = false;
+    }
+
     // -- Qt-thread snapshot getters (used by sync_session) --
 
     pub fn snapshot_kind(&self) -> ModalKind {
@@ -336,6 +410,24 @@ impl ModalSession {
     }
     pub fn snapshot_exit_code(&self) -> Option<i32> {
         *self.exit_code.lock().expect("exit lock")
+    }
+
+    // -- Pairing snapshot getters (used by sync_session) --
+
+    pub fn snapshot_pairing_active(&self) -> bool {
+        *self.pairing_active.lock().expect("pairing lock")
+    }
+    pub fn snapshot_pairing_address(&self) -> String {
+        self.pairing_address.lock().expect("pairing lock").clone()
+    }
+    pub fn snapshot_pairing_name(&self) -> String {
+        self.pairing_name.lock().expect("pairing lock").clone()
+    }
+    pub fn snapshot_pairing_mode(&self) -> String {
+        self.pairing_mode.lock().expect("pairing lock").clone()
+    }
+    pub fn snapshot_pairing_passkey(&self) -> String {
+        self.pairing_passkey.lock().expect("pairing lock").clone()
     }
 }
 
@@ -510,5 +602,38 @@ mod tests {
             ModalKind::Stream,
             "the running stream stays open until the worker reports the end state"
         );
+    }
+
+    #[test]
+    fn pairing_session_carries_device_code_and_mode() {
+        let session = fresh();
+        assert!(!session.snapshot_pairing_active());
+        session.begin_pairing("AA:BB:CC:DD:EE:FF", "Casque Salon", "yesno");
+        assert!(session.snapshot_pairing_active());
+        assert_eq!(session.snapshot_pairing_address(), "AA:BB:CC:DD:EE:FF");
+        assert_eq!(session.snapshot_pairing_name(), "Casque Salon");
+        assert_eq!(session.snapshot_pairing_mode(), "yesno");
+        assert_eq!(session.snapshot_pairing_passkey(), "");
+        let rx = session.pairing_request_code("000042");
+        assert_eq!(session.snapshot_pairing_passkey(), "000042");
+        session.resolve_pairing(true);
+        assert!(rx.recv().expect("waiter resolves"));
+        session.end_pairing();
+        assert!(!session.snapshot_pairing_active());
+        assert_eq!(session.snapshot_pairing_passkey(), "");
+    }
+
+    #[test]
+    fn pairing_decline_never_accepts_and_late_answers_are_noops() {
+        let session = fresh();
+        session.begin_pairing("AA:BB:CC:DD:EE:FF", "Casque Salon", "yesno");
+        let rx = session.pairing_request_code("123456");
+        session.resolve_pairing(false);
+        assert!(!rx.recv().expect("waiter resolves"));
+        assert!(!session.snapshot_pairing_active());
+        // A Confirmer arriving after the close has no waiter to
+        // release and changes nothing (never a stray accept).
+        session.resolve_pairing(true);
+        assert!(!session.snapshot_pairing_active());
     }
 }

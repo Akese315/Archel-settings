@@ -176,7 +176,14 @@
     "disconnect_confirm": "Déconnecter %{name} (%{address}) ? [o/N]",
     "paired_ok": "« %{name} » apparié.",
     "connected_ok": "« %{name} » connecté.",
-    "disconnected_ok": "« %{name} » déconnecté."
+    "disconnected_ok": "« %{name} » déconnecté.",
+    "unpair_confirm": "Supprimer l'appairage avec « %{name} » (%{address}) ? [o/N]",
+    "adapter_on_confirm": "Allumer l'adaptateur Bluetooth ? [o/N]",
+    "adapter_off_confirm": "Éteindre l'adaptateur Bluetooth ? [o/N]",
+    "unpaired_ok": "Appairage avec « %{name} » supprimé.",
+    "adapter_ok": "Adaptateur Bluetooth %{state}.",
+    "adapter_on_word": "allumé",
+    "adapter_off_word": "éteint"
   },
   "audio": {
     "list_title": "Audio — périphériques",

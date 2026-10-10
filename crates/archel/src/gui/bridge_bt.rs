@@ -17,6 +17,9 @@ pub mod qobject {
         #[qproperty(QString, devices_json)]
         #[qproperty(bool, scanning)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, adapter_on)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, busy_address)]
         #[namespace = "archel_settings"]
         type BtModel = super::BtModelRust;
 
@@ -31,6 +34,26 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "pair"]
+        fn pair(self: Pin<&mut Self>, address: QString);
+
+        #[qinvokable]
+        #[cxx_name = "unpair"]
+        fn unpair(self: Pin<&mut Self>, address: QString);
+
+        #[qinvokable]
+        #[cxx_name = "connect"]
+        fn connect(self: Pin<&mut Self>, address: QString);
+
+        #[qinvokable]
+        #[cxx_name = "disconnect"]
+        fn disconnect(self: Pin<&mut Self>, address: QString);
+
+        #[qinvokable]
+        #[cxx_name = "setAdapterOn"]
+        fn set_adapter_powered(self: Pin<&mut Self>, on: bool);
     }
 
     impl cxx_qt::Threading for BtModel {}

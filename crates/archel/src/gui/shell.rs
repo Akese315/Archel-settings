@@ -35,6 +35,11 @@ pub mod qobject {
         #[qproperty(QString, modal_pkgbuild)]
         #[qproperty(bool, modal_pkgbuild_seen)]
         #[qproperty(bool, modal_trust_confirmed)]
+        #[qproperty(bool, pairing_active)]
+        #[qproperty(QString, pairing_address)]
+        #[qproperty(QString, pairing_device_name)]
+        #[qproperty(QString, pairing_mode)]
+        #[qproperty(QString, pairing_passkey)]
         #[namespace = "archel_settings"]
         type ShellModel = super::ShellModelRust;
 
@@ -96,6 +101,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "confirmTrust"]
         fn confirm_trust(self: Pin<&mut Self>, confirmed: bool);
+
+        #[qinvokable]
+        #[cxx_name = "pairingAccepted"]
+        fn pairing_accepted(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "pairingDeclined"]
+        fn pairing_declined(self: Pin<&mut Self>);
     }
 }
 
@@ -122,6 +135,7 @@ struct ModalSnapshot {
     pkgbuild: String,
     pkgbuild_seen: bool,
     trust_confirmed: bool,
+    pairing: PairingSnapshot,
 }
 
 impl ModalSnapshot {
@@ -138,6 +152,31 @@ impl ModalSnapshot {
             pkgbuild: session.snapshot_pkgbuild(),
             pkgbuild_seen: session.snapshot_pkgbuild_seen(),
             trust_confirmed: session.snapshot_trust_confirmed(),
+            pairing: PairingSnapshot::from_session(session),
+        }
+    }
+}
+
+/// Pairing half of the mirrored session: compared and published
+/// together with the modal half, so one `sync_session` poll carries
+/// both (the PairingModal never sets its own visibility).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct PairingSnapshot {
+    active: bool,
+    address: String,
+    device_name: String,
+    mode: String,
+    passkey: String,
+}
+
+impl PairingSnapshot {
+    fn from_session(session: &ModalSession) -> Self {
+        Self {
+            active: session.snapshot_pairing_active(),
+            address: session.snapshot_pairing_address(),
+            device_name: session.snapshot_pairing_name(),
+            mode: session.snapshot_pairing_mode(),
+            passkey: session.snapshot_pairing_passkey(),
         }
     }
 }
@@ -163,6 +202,11 @@ pub struct ShellModelRust {
     modal_pkgbuild: QString,
     modal_pkgbuild_seen: bool,
     modal_trust_confirmed: bool,
+    pairing_active: bool,
+    pairing_address: QString,
+    pairing_device_name: QString,
+    pairing_mode: QString,
+    pairing_passkey: QString,
     /// Change-detector for `sync_session` (never read from QML).
     mirror: ModalSnapshot,
 }
@@ -186,6 +230,11 @@ impl Default for ShellModelRust {
             modal_pkgbuild: QString::from(""),
             modal_pkgbuild_seen: false,
             modal_trust_confirmed: false,
+            pairing_active: false,
+            pairing_address: QString::from(""),
+            pairing_device_name: QString::from(""),
+            pairing_mode: QString::from(""),
+            pairing_passkey: QString::from(""),
             mirror: ModalSnapshot::default(),
         }
     }
@@ -270,6 +319,15 @@ impl qobject::ShellModel {
             .set_modal_pkgbuild_seen(next.pkgbuild_seen);
         self.as_mut()
             .set_modal_trust_confirmed(next.trust_confirmed);
+        self.as_mut().set_pairing_active(next.pairing.active);
+        self.as_mut()
+            .set_pairing_address(QString::from(&next.pairing.address));
+        self.as_mut()
+            .set_pairing_device_name(QString::from(&next.pairing.device_name));
+        self.as_mut()
+            .set_pairing_mode(QString::from(&next.pairing.mode));
+        self.as_mut()
+            .set_pairing_passkey(QString::from(&next.pairing.passkey));
     }
 
     // -- Command invokables: session writers only --
@@ -323,5 +381,19 @@ impl qobject::ShellModel {
     /// Trust checkbox state for the AUR review block.
     pub fn confirm_trust(self: core::pin::Pin<&mut Self>, confirmed: bool) {
         modal::session().set_trust_confirmed(confirmed);
+    }
+
+    /// PairingModal Confirmer: releases a waiting agent callback with
+    /// `true` (the ONLY path that accepts a pairing - never
+    /// auto-accept, D-21).
+    pub fn pairing_accepted(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_pairing(true);
+    }
+
+    /// PairingModal Refuser: releases a waiting agent callback with
+    /// `false` (decline is a first-class answer - the worker then
+    /// removes any half-bond and reports nothing).
+    pub fn pairing_declined(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_pairing(false);
     }
 }

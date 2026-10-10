@@ -433,6 +433,33 @@ pub async fn bt_scan() -> Result<Vec<BtDevice>, ArchelError> {
 /// `PairingTimeout`; any other bluer failure is `PairingRejected`.
 /// The code is displayed for confirm only — never logged (T-4-06).
 pub async fn pair_device(device: &BtDevice) -> Result<(), ArchelError> {
+    let name = device.name.clone();
+    let address = device.address.clone();
+    pair_device_with(device, move |code| {
+        let prompt = pair_code_prompt(&name, &address, &code);
+        async move {
+            tokio::task::spawn_blocking(move || crate::packages::confirm_action(&prompt))
+                .await
+                .is_ok_and(|answer| answer.is_ok())
+        }
+    })
+    .await
+}
+
+/// Confirm-injected pairing: the same confirm-only agent body with
+/// the caller's code gate. `on_code` receives the zero-padded
+/// display code ([`format_passkey`]) and resolves `true` (accept) or
+/// `false` (decline); anything but an explicit accept rejects, and a
+/// callback that outlives [`PAIR_TIMEOUT`] rejects too. The GUI
+/// passes a closure that publishes the code to its global pairing
+/// modal and awaits the Confirmer/Refuser answer; the CLI passes the
+/// terminal prompt (see [`pair_device`]). `on_code` runs at most
+/// once per pairing - a second BlueZ request rejects.
+pub async fn pair_device_with<F, Fut>(device: &BtDevice, on_code: F) -> Result<(), ArchelError>
+where
+    F: FnOnce(String) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = bool> + Send,
+{
     ensure_daemon(daemon_present().await)?;
     let label = format!("{} ({})", device.name, device.address);
     let address: bluer::Address = device
@@ -448,27 +475,30 @@ pub async fn pair_device(device: &BtDevice) -> Result<(), ArchelError> {
     let peer = adapter
         .device(address)
         .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
-    let prompt_name = device.name.clone();
-    let prompt_address = device.address.clone();
+    let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(on_code)));
     let agent = bluer::agent::Agent {
         request_confirmation: Some(Box::new(move |req| {
-            let name = prompt_name.clone();
-            let address = prompt_address.clone();
+            let slot = slot.clone();
             Box::pin(async move {
                 if !check_passkey_shape(req.passkey) {
                     return Err(bluer::agent::ReqError::Rejected);
                 }
                 // Display for confirm only: the code travels to the
-                // prompt string, never to logs or error payloads.
+                // caller, never to logs or error payloads.
                 let code = format_passkey(req.passkey);
-                let prompt = pair_code_prompt(&name, &address, &code);
-                let answer = tokio::task::spawn_blocking(move || {
-                    crate::packages::confirm_action(&prompt)
-                })
-                .await;
-                match answer {
-                    Ok(Ok(())) => Ok(()),
-                    _ => Err(bluer::agent::ReqError::Rejected),
+                let callback = slot.lock().ok().and_then(|mut guard| guard.take());
+                let accepted = match callback {
+                    Some(callback) => {
+                        tokio::time::timeout(PAIR_TIMEOUT, callback(code))
+                            .await
+                            .unwrap_or(false)
+                    }
+                    None => false,
+                };
+                if accepted {
+                    Ok(())
+                } else {
+                    Err(bluer::agent::ReqError::Rejected)
                 }
             })
                 as std::pin::Pin<
@@ -485,6 +515,65 @@ pub async fn pair_device(device: &BtDevice) -> Result<(), ArchelError> {
         Ok(Err(err)) => Err(ArchelError::pairing_rejected(format!("{label}: {err}"))),
         Err(_) => Err(ArchelError::pairing_timeout(label)),
     }
+}
+
+/// Removes an existing bond (BT-03): daemon probe first, then the
+/// adapter's `RemoveDevice`. Used after a declined pairing code to
+/// leave no half-bond behind, and by the GUI's Supprimer action.
+/// Bluer failures surface as `Internal` with log-only detail (pairing
+/// has the dedicated typed variants; unpair is a transport call).
+pub async fn unpair_device(device: &BtDevice) -> Result<(), ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let address: bluer::Address = device
+        .address
+        .parse()
+        .map_err(|_| ArchelError::device_not_found(device.address.clone()))?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    adapter.remove_device(address).await.map_err(|err| {
+        ArchelError::Internal(format!(
+            "bluetooth unpair {} ({}): {err}",
+            device.name, device.address
+        ))
+    })
+}
+
+/// Reads the default adapter's `Powered` property (BT-04): the GUI
+/// toggle's read side. Daemon and adapter probes first, like every
+/// other transport call.
+pub async fn adapter_powered() -> Result<bool, ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    adapter.is_powered().await.map_err(|err| {
+        ArchelError::Internal(format!("bluetooth adapter powered read: {err}"))
+    })
+}
+
+/// Sets the default adapter's `Powered` property (BT-04) and reads it
+/// back: the returned state is the proof, never a silent ok.
+pub async fn set_adapter_powered(on: bool) -> Result<bool, ArchelError> {
+    ensure_daemon(daemon_present().await)?;
+    let session = bluer::Session::new().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("bluer session: {err}"))
+    })?;
+    let adapter = session.default_adapter().await.map_err(|err| {
+        ArchelError::bluetooth_unavailable(format!("no default adapter: {err}"))
+    })?;
+    adapter.set_powered(on).await.map_err(|err| {
+        ArchelError::Internal(format!("bluetooth adapter set powered: {err}"))
+    })?;
+    adapter.is_powered().await.map_err(|err| {
+        ArchelError::Internal(format!("bluetooth adapter powered read-back: {err}"))
+    })
 }
 
 /// Connects an already scan-picked device (BT-02): daemon probe
@@ -601,6 +690,45 @@ pub fn connected_ok_line(device: &BtDevice) -> String {
 /// French disconnected-ok line naming the device, from the catalog.
 pub fn disconnected_ok_line(device: &BtDevice) -> String {
     rust_i18n::t!("bt.disconnected_ok", name = device.name).to_string()
+}
+
+/// French unpair-intent prompt naming name plus MAC (`[o/N]`), from
+/// the catalog (D-05/D-07).
+pub fn unpair_confirm_prompt(device: &BtDevice) -> String {
+    rust_i18n::t!(
+        "bt.unpair_confirm",
+        name = device.name,
+        address = device.address
+    )
+    .to_string()
+}
+
+/// French adapter-toggle prompt (`[o/N]`), from the catalog.
+pub fn adapter_confirm_prompt(on: bool) -> String {
+    if on {
+        rust_i18n::t!("bt.adapter_on_confirm").to_string()
+    } else {
+        rust_i18n::t!("bt.adapter_off_confirm").to_string()
+    }
+}
+
+/// French unpaired-ok line naming the device, from the catalog.
+pub fn unpaired_ok_line(device: &BtDevice) -> String {
+    rust_i18n::t!("bt.unpaired_ok", name = device.name).to_string()
+}
+
+/// French adapter state word (`allumé`/`éteint`), from the catalog.
+pub fn adapter_state_word(on: bool) -> String {
+    if on {
+        rust_i18n::t!("bt.adapter_on_word").to_string()
+    } else {
+        rust_i18n::t!("bt.adapter_off_word").to_string()
+    }
+}
+
+/// French adapter-ok line carrying the read-back state, from the catalog.
+pub fn adapter_ok_line(on: bool) -> String {
+    rust_i18n::t!("bt.adapter_ok", state = adapter_state_word(on)).to_string()
 }
 
 #[cfg(test)]

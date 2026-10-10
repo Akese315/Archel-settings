@@ -374,6 +374,22 @@ ApplicationWindow {
         z: 103
     }
 
+    // Bluetooth pairing modal (D-21, plan 06-07): the ONLY pairing
+    // surface in the app, global by construction (it pops above
+    // whichever tab is visible). Pure view over the ShellModel
+    // pairing session: visibility follows pairing_active, the code
+    // is the core-formatted passkey, and Confirmer/Refuser resolve
+    // the waiting agent callback - never auto-accept.
+    PairingModal {
+        deviceName: shell.pairing_device_name
+        address: shell.pairing_address
+        passkey: shell.pairing_passkey
+        visible: shell.pairing_active
+        onAccepted: shell.pairingAccepted()
+        onDeclined: shell.pairingDeclined()
+        z: 104
+    }
+
     // Mirror ModalSession onto ShellModel's modal properties. 120 ms sits
     // well under the flicker threshold and coalesces a streaming flood into
     // at most one property write per tick.
