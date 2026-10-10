@@ -16,6 +16,11 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(QString, monitors_json)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, operation_kind)]
+        #[qproperty(bool, countdown_visible)]
+        #[qproperty(i32, countdown_seconds)]
+        #[qproperty(QString, countdown_monitor)]
         #[namespace = "archel_settings"]
         type DisplayModel = super::DisplayModelRust;
 
@@ -26,6 +31,28 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "planChange"]
+        fn plan_change(
+            self: Pin<&mut Self>,
+            monitor: QString,
+            resolution: QString,
+            refresh: QString,
+            scale: QString,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "keepChange"]
+        fn keep_change(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "revertChange"]
+        fn revert_change(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "countdownTick"]
+        fn countdown_tick(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for DisplayModel {}
