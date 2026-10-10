@@ -19,10 +19,10 @@ current_phase: 04
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-30)
+See: .planning/PROJECT.md (updated 2026-10-11, post-v1.0 evolution review)
 
 **Core value:** One reliable API through which every system setting can be read and changed on Arch + Hyprland — proven via the CLI before the GUI ever draws it.
-**Current focus:** Phase 06 — GUI Shell & Tabs
+**Current focus:** Planning next milestone (v1.1 candidates in PROJECT.md Active)
 
 ## Current Position
 
