@@ -139,10 +139,20 @@ pub fn run_keybind_edit(
         arg.as_deref(),
     )?;
     let body = read_snippet_body()?;
-    run_keybind_edit_with(&old, &new, &body, json, |spec| {
-        let line = core_binds::render_bind_line(spec)?;
-        archel_core::hyprland::run_hyprctl_eval("hyprctl", &line)
-    })
+    run_keybind_edit_with(
+        &old,
+        &new,
+        &body,
+        json,
+        |spec| {
+            let line = core_binds::render_bind_line(spec)?;
+            archel_core::hyprland::run_hyprctl_eval("hyprctl", &line)
+        },
+        |spec| {
+            let stmt = core_binds::unbind_eval_statement(spec)?;
+            archel_core::hyprland::run_hyprctl_eval("hyprctl", &stmt)
+        },
+    )
 }
 
 /// Reads the current arg for an addressed spec out of the snippet
@@ -163,15 +173,28 @@ fn old_arg_of(old: &core_binds::BindSpec) -> Option<String> {
         .and_then(|existing| existing.arg)
 }
 
+/// True when the addressed chord identity (mods+key) changes — the
+/// case where the live session keeps the OLD binding bound unless an
+/// explicit `hl.unbindkey` runs first (WR-07). Dispatcher/arg-only
+/// edits return false: the follow-up eval overwrites those in place.
+fn bind_identity_changed(old: &core_binds::BindSpec, new: &core_binds::BindSpec) -> bool {
+    old.mods != new.mods || old.key != new.key
+}
+
 /// Confirm-then-execute gate for bind edits over an injected body
 /// (headless-coverable): miss check first, then preview, prompt,
-/// eval, snippet publish.
+/// unbind-when-rekeyed, eval, snippet publish. WR-07: changing the
+/// chord (mods/key) first live-unbinds the old binding via `unbind`
+/// (same `hl.unbindkey` path removals use), so old and new chords are
+/// never simultaneously active; a refused unbind fails typed with the
+/// snippet untouched.
 fn run_keybind_edit_with(
     old: &core_binds::BindSpec,
     new: &core_binds::BindSpec,
     body: &str,
     json: bool,
     eval: impl FnOnce(&core_binds::BindSpec) -> Result<(), ArchelError>,
+    unbind: impl FnOnce(&core_binds::BindSpec) -> Result<(), ArchelError>,
 ) -> Result<(), ArchelError> {
     let merged = core_binds::edit_bind_line(body, old, new)?;
     if !json {
@@ -184,6 +207,9 @@ fn run_keybind_edit_with(
         );
     }
     archel_core::packages::confirm_action(&core_binds::confirm_bind_prompt(new))?;
+    if bind_identity_changed(old, new) {
+        unbind(old)?;
+    }
     eval(new)?;
     publish_snippet_body(&merged)?;
     let ok = core_binds::bind_ok_line(new);
@@ -570,18 +596,89 @@ mod tests {
         use std::sync::Arc;
         let calls = Arc::new(AtomicUsize::new(0));
         let probe = Arc::clone(&calls);
+        let unbind_calls = Arc::new(AtomicUsize::new(0));
+        let unbind_probe = Arc::clone(&unbind_calls);
         let ghost = core_binds::plan_bind("ALT", "F4", "killactive", None).expect("plans");
         let new = core_binds::plan_bind("ALT", "F4", "exec", Some("x")).expect("plans");
-        let err = run_keybind_edit_with(&ghost, &new, "-- empty body\n", false, move |_| {
-            probe.fetch_add(1, Ordering::SeqCst);
-            panic!("a miss must never reach eval");
-        })
+        let err = run_keybind_edit_with(
+            &ghost,
+            &new,
+            "-- empty body\n",
+            false,
+            move |_| {
+                probe.fetch_add(1, Ordering::SeqCst);
+                panic!("a miss must never reach eval");
+            },
+            move |_| {
+                unbind_probe.fetch_add(1, Ordering::SeqCst);
+                panic!("a miss must never reach unbind");
+            },
+        )
         .expect_err("miss fails fast");
         assert!(
             matches!(err, ArchelError::DesktopInvalid { .. }),
             "miss is typed DesktopInvalid: {err:?}"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 0, "eval never runs on a miss");
+        assert_eq!(unbind_calls.load(Ordering::SeqCst), 0, "unbind never runs on a miss");
+    }
+
+    #[test]
+    fn rekey_decision_fires_only_on_mods_or_key_change() {
+        // WR-07 pure decision: the live unbind must run exactly when
+        // the chord identity changes, never on dispatcher/arg-only edits.
+        let base = core_binds::plan_bind("SUPER", "T", "exec", Some("xterm")).expect("plans");
+        let mods_changed =
+            core_binds::plan_bind("SUPER+SHIFT", "T", "exec", Some("xterm")).expect("plans");
+        let key_changed =
+            core_binds::plan_bind("SUPER", "U", "exec", Some("xterm")).expect("plans");
+        let dispatcher_changed =
+            core_binds::plan_bind("SUPER", "T", "exec", Some("kitty")).expect("plans");
+        let unchanged =
+            core_binds::plan_bind("SUPER", "T", "exec", Some("xterm")).expect("plans");
+        assert!(bind_identity_changed(&base, &mods_changed), "mods change rekeys");
+        assert!(bind_identity_changed(&base, &key_changed), "key change rekeys");
+        assert!(
+            !bind_identity_changed(&base, &dispatcher_changed),
+            "dispatcher/arg-only edit must not rekey (eval overwrites in place)"
+        );
+        assert!(!bind_identity_changed(&base, &unchanged), "identical spec must not rekey");
+    }
+
+    #[test]
+    fn rekey_edit_headless_refusal_runs_neither_eval_nor_unbind() {
+        // WR-07 gate symmetry: a headless rekey edit refuses at the
+        // confirm prompt before either live leg runs (snippet untouched
+        // by publish later, so nothing to roll back either).
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "abort-gate test requires headless stdin"
+        );
+        use std::cell::Cell;
+        let old = core_binds::plan_bind("SUPER", "T", "exec", Some("xterm")).expect("plans");
+        let new = core_binds::plan_bind("SUPER+SHIFT", "T", "exec", Some("xterm")).expect("plans");
+        let body = format!("{}\n", core_binds::render_bind_line(&old).expect("render"));
+        let evaluated = Cell::new(false);
+        let unbound = Cell::new(false);
+        let err = run_keybind_edit_with(
+            &old,
+            &new,
+            &body,
+            false,
+            |_| {
+                evaluated.set(true);
+                Ok(())
+            },
+            |_| {
+                unbound.set(true);
+                Ok(())
+            },
+        )
+        .expect_err("headless confirm must refuse");
+        assert!(matches!(err, ArchelError::NeedsTty), "{err:?}");
+        assert!(!evaluated.get(), "refused edit never evals");
+        assert!(!unbound.get(), "refused edit never unbinds");
     }
 
     #[test]
