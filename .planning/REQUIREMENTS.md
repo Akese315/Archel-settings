@@ -9,27 +9,27 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Landing
 
-- [ ] **LAND-01**: User sees the app version on the home page
-- [ ] **LAND-02**: User sees the running kernel version on the home page
-- [ ] **LAND-03**: User sees the number of packages with available updates (pacman repo + yay/AUR) on the home page
+- [x] **LAND-01**: User sees the app version on the home page
+- [x] **LAND-02**: User sees the running kernel version on the home page
+- [x] **LAND-03**: User sees the number of packages with available updates (pacman repo + yay/AUR) on the home page
 
 ### Network
 
-- [ ] **NET-01**: User can see connection state (connected/disconnected, interface, SSID/wired)
-- [ ] **NET-02**: User can see IP address and gateway of the active connection
-- [ ] **NET-03**: User can configure DNS servers per NetworkManager connection profile
-- [ ] **NET-04**: User can configure proxy settings (system/session layer, separate from NM)
-- [ ] **NET-05**: User can manage VPN connections (list, connect, disconnect via NetworkManager)
-- [ ] **NET-06**: User can run network tests (ping gateway/DNS, DNS resolution check, latency)
+- [x] **NET-01**: User can see connection state (connected/disconnected, interface, SSID/wired)
+- [x] **NET-02**: User can see IP address and gateway of the active connection
+- [x] **NET-03**: User can configure DNS servers per NetworkManager connection profile
+- [x] **NET-04**: User can configure proxy settings (system/session layer, separate from NM)
+- [x] **NET-05**: User can manage VPN connections (list, connect, disconnect via NetworkManager)
+- [x] **NET-06**: User can run network tests (ping gateway/DNS, DNS resolution check, latency)
 
 ### Power
 
-- [ ] **PWR-01**: User can switch power profile between performance, balanced, and power-saver (power-profiles-daemon)
+- [x] **PWR-01**: User can switch power profile between performance, balanced, and power-saver (power-profiles-daemon)
 
 ### Bluetooth
 
-- [ ] **BT-01**: User can scan and list nearby Bluetooth devices
-- [ ] **BT-02**: User can pair, connect, and disconnect Bluetooth devices
+- [x] **BT-01**: User can scan and list nearby Bluetooth devices
+- [x] **BT-02**: User can pair, connect, and disconnect Bluetooth devices
 
 ### Appearance
 
@@ -40,16 +40,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Sound
 
-- [ ] **SND-01**: User can select the audio output device (PipeWire/WirePlumber default sink)
-- [ ] **SND-02**: User can select the audio input device (PipeWire/WirePlumber default source)
+- [x] **SND-01**: User can select the audio output device (PipeWire/WirePlumber default sink)
+- [x] **SND-02**: User can select the audio input device (PipeWire/WirePlumber default source)
 
 ### Packages
 
-- [ ] **PKG-01**: User can list and search installed packages (pacman metadata, read-only)
-- [ ] **PKG-02**: User can install packages via pacman (through privileged helper)
-- [ ] **PKG-03**: User can remove packages via pacman (through privileged helper)
-- [ ] **PKG-04**: User can update system packages (full `-Syu`, never `-Sy` alone)
-- [ ] **PKG-05**: User can manage AUR packages via yay (run as user, with AUR review step)
+- [x] **PKG-01**: User can list and search installed packages (pacman metadata, read-only)
+- [x] **PKG-02**: User can install packages via pacman (through privileged helper)
+- [x] **PKG-03**: User can remove packages via pacman (through privileged helper)
+- [x] **PKG-04**: User can update system packages (full `-Syu`, never `-Sy` alone)
+- [x] **PKG-05**: User can manage AUR packages via yay (run as user, with AUR review step)
 
 ### Display
 
@@ -67,21 +67,21 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### System Info
 
-- [ ] **SYS-01**: User can see RAM usage (used/total)
-- [ ] **SYS-02**: User can see disk usage per mount
-- [ ] **SYS-03**: User can see live per-core CPU usage graph
-- [ ] **SYS-04**: User can see current CPU clock speed (GHz)
-- [ ] **SYS-05**: User can see GPU VRAM used/total
-- [ ] **SYS-06**: User can see CPU and GPU temperature
-- [ ] **SYS-07**: User can see real-time CPU power consumption (W)
-- [ ] **SYS-08**: User can see real-time GPU power consumption (W)
+- [x] **SYS-01**: User can see RAM usage (used/total)
+- [x] **SYS-02**: User can see disk usage per mount
+- [x] **SYS-03**: User can see live per-core CPU usage graph
+- [x] **SYS-04**: User can see current CPU clock speed (GHz)
+- [x] **SYS-05**: User can see GPU VRAM used/total
+- [x] **SYS-06**: User can see CPU and GPU temperature
+- [x] **SYS-07**: User can see real-time CPU power consumption (W)
+- [x] **SYS-08**: User can see real-time GPU power consumption (W)
 
 ### Platform
 
-- [ ] **PLAT-01**: A shared Rust API library (`archel-core`) exposes every domain above as a programmatic interface
-- [ ] **PLAT-02**: `archel-cli` exposes the full API surface from the command line (doubles as API test harness)
-- [ ] **PLAT-03**: `archel settings` GUI presents the API with vertical tabs, one tab per domain (Landing + 9 domains)
-- [ ] **PLAT-04**: Privileged operations (pacman transactions) go through an allowlisted pkexec helper; yay always runs unprivileged
+- [x] **PLAT-01**: A shared Rust API library (`archel-core`) exposes every domain above as a programmatic interface
+- [x] **PLAT-02**: `archel-cli` exposes the full API surface from the command line (doubles as API test harness)
+- [x] **PLAT-03**: `archel settings` GUI presents the API with vertical tabs, one tab per domain (Landing + 9 domains)
+- [x] **PLAT-04**: Privileged operations (pacman transactions) go through an allowlisted pkexec helper; yay always runs unprivileged
 
 ## v2 Requirements
 
@@ -140,9 +140,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LAND-01 | Phase 2 | Pending |
-| LAND-02 | Phase 2 | Pending |
-| LAND-03 | Phase 2 | Pending |
+| LAND-01 | Phase 2 | Complete |
+| LAND-02 | Phase 2 | Complete |
+| LAND-03 | Phase 2 | Complete |
 | NET-01 | Phase 4 | Complete |
 | NET-02 | Phase 4 | Complete |
 | NET-03 | Phase 4 | Complete |
@@ -152,37 +152,37 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PWR-01 | Phase 4 | Complete |
 | BT-01 | Phase 4 | Complete |
 | BT-02 | Phase 4 | Complete |
-| APP-01 | Phase 5 | Complete |
-| APP-02 | Phase 5 | Complete |
-| APP-03 | Phase 5 | Complete |
-| APP-04 | Phase 5 | Complete |
+| APP-01 | Phase 5 | Pending phase verification |
+| APP-02 | Phase 5 | Pending phase verification |
+| APP-03 | Phase 5 | Pending phase verification |
+| APP-04 | Phase 5 | Pending phase verification |
 | SND-01 | Phase 4 | Complete |
 | SND-02 | Phase 4 | Complete |
-| PKG-01 | Phase 3 | Pending |
-| PKG-02 | Phase 3 | Pending |
-| PKG-03 | Phase 3 | Pending |
-| PKG-04 | Phase 3 | Pending |
-| PKG-05 | Phase 3 | Pending |
-| DSP-01 | Phase 5 | Complete |
-| DSP-02 | Phase 5 | Complete |
-| DSP-03 | Phase 5 | Complete |
-| DSP-04 | Phase 5 | Complete |
-| INP-01 | Phase 5 | Complete |
-| INP-02 | Phase 5 | Complete |
-| INP-03 | Phase 5 | Complete |
-| INP-04 | Phase 5 | Complete |
-| SYS-01 | Phase 2 | Pending |
-| SYS-02 | Phase 2 | Pending |
-| SYS-03 | Phase 2 | Pending |
-| SYS-04 | Phase 2 | Pending |
-| SYS-05 | Phase 2 | Pending |
-| SYS-06 | Phase 2 | Pending |
-| SYS-07 | Phase 2 | Pending |
-| SYS-08 | Phase 2 | Pending |
-| PLAT-01 | Phase 1 | Pending |
-| PLAT-02 | Phase 3 | Pending |
-| PLAT-03 | Phase 6 | Pending |
-| PLAT-04 | Phase 1 | Pending |
+| PKG-01 | Phase 3 | Complete |
+| PKG-02 | Phase 3 | Complete |
+| PKG-03 | Phase 3 | Complete |
+| PKG-04 | Phase 3 | Complete |
+| PKG-05 | Phase 3 | Complete |
+| DSP-01 | Phase 5 | Pending phase verification |
+| DSP-02 | Phase 5 | Pending phase verification |
+| DSP-03 | Phase 5 | Pending phase verification |
+| DSP-04 | Phase 5 | Pending phase verification |
+| INP-01 | Phase 5 | Pending phase verification |
+| INP-02 | Phase 5 | Pending phase verification |
+| INP-03 | Phase 5 | Pending phase verification |
+| INP-04 | Phase 5 | Pending phase verification |
+| SYS-01 | Phase 2 | Complete |
+| SYS-02 | Phase 2 | Complete |
+| SYS-03 | Phase 2 | Complete |
+| SYS-04 | Phase 2 | Complete |
+| SYS-05 | Phase 2 | Complete |
+| SYS-06 | Phase 2 | Complete |
+| SYS-07 | Phase 2 | Complete |
+| SYS-08 | Phase 2 | Complete |
+| PLAT-01 | Phase 1 | Complete |
+| PLAT-02 | Phase 3 | Complete |
+| PLAT-03 | Phase 6 | Complete |
+| PLAT-04 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 43 total
@@ -191,4 +191,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-09-30*
-*Last updated: 2026-09-30 after initial definition*
+*Last updated: 2026-10-10 after v1.0 milestone audit (3-source cross-reference)*

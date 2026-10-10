@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: GUI Shell & Tabs
-status: executing
-stopped_at: Phase 06 UI-SPEC approved
-last_updated: "2026-10-09T10:33:05.670Z"
-last_activity: 2026-10-09
-last_activity_desc: Phase 06 execution resumed (wave continue)
+status: all_phases_complete
+stopped_at: All 6 phases complete — awaiting milestone close
+last_updated: "2026-10-10T00:00:00.000Z"
+last_activity: 2026-10-10
+last_activity_desc: Session resumed — Phase 06 verified and closed (32cb40e)
 state_head: dba1ba52d0a480afad903ffa6acbe5d658bcc2e1
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 28
-  completed_plans: 23
-  percent: 82
+  completed_plans: 28
+  percent: 100
 ---
 
 # Project State
@@ -32,7 +32,7 @@ Plan: 9 of 9 complete + VERIFICATION.md (GAP-1 closed in 05fb455)
 Status: COMPLETE — all waves done, review blockers fixed, verification passed
 Last activity: 2026-10-10 — Phase 06 verified and closed (core 269 + headless 123 + gui 241 green, smoke rc=124)
 
-Progress: [████████░░] 82%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -104,7 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-10-10 (resumed)
-Stopped at: Session resumed, proceeding to Wave 6 (06-07 + 06-08 parallel)
-Resume file: .planning/phases/06-gui-shell-tabs/06-07-write-system-domains-PLAN.md
-Remaining: Wave 6 = 06-07 + 06-08 (files_modified verified DISJOINT — safe to run in parallel; 06-07 owns bridge.rs/Main.qml, 06-08 does not touch them) -> Wave 7 = 06-09 -> verification gates.
+Stopped at: v1.0 milestone audit complete — status gaps_found (sole blocker: Phase 5 missing VERIFICATION.md; 31/43 satisfied, 12 partial). Report: .planning/v1.0-MILESTONE-AUDIT.md
+Resume file: none
 Executor note from 06-06: camelCase tab-binding debt + flaky core live_* tests + clippy baseline recorded in .planning/WINDOWS.md.
