@@ -405,13 +405,37 @@ pub fn parse_bind_line(line: &str) -> Option<BindSpec> {
     })
 }
 
-/// Strips one layer of Lua double-quote wrapping (no escape
-/// processing — rendered args never contain raw quotes thanks to
-/// [`lua_quote`]). `None` for non-quoted text.
+/// Strips one layer of Lua double-quote wrapping and undoes the
+/// `\"`/`\\` escapes [`lua_quote`] emitted — the exact inverse, so a
+/// parse→render round-trip never double-escapes exec args (WR-04).
+/// A backslash before any other character is kept verbatim (defensive
+/// with foreign lines); an unpaired trailing backslash survives.
+/// `None` for non-quoted text.
 fn unquote(raw: &str) -> Option<String> {
-    raw.strip_prefix('"')
-        .and_then(|inner| inner.strip_suffix('"'))
-        .map(str::to_string)
+    let inner = raw
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))?;
+    if !inner.contains('\\') {
+        return Some(inner.to_string());
+    }
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('\\') => out.push('\\'),
+                Some('"') => out.push('"'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
 }
 
 /// Splits one `MODS + KEY` combo: the last `+`-separated token is
@@ -806,6 +830,47 @@ mod tests {
             let err = result.expect_err("miss must fail");
             assert!(matches!(err, ArchelError::DesktopInvalid { .. }), "{err:?}");
         }
+    }
+
+    #[test]
+    fn unquote_is_the_exact_inverse_of_lua_quote() {
+        // WR-04 regression: parse→render round-trips re-apply
+        // lua_quote over the parsed value, so unquote must undo the
+        // escaping exactly — anything less double-escapes exec args.
+        for raw in [
+            "kitty",
+            r#"a"b\c"#,
+            r#"sh -c "echo hi""#,
+            r#"trailing\"#,
+            r#"\\"#,
+            r#"back\\slash and "quote" both"#,
+            "",
+        ] {
+            let quoted = super::super::lua_quote(raw).expect("quotes");
+            assert_eq!(
+                unquote(&quoted).as_deref(),
+                Some(raw),
+                "unquote(lua_quote({raw:?})) must return {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bind_line_round_trips_hostile_exec_args() {
+        // WR-04 regression, end to end over the snippet line shape:
+        // a hostile exec arg survives render → parse with its bytes
+        // intact, and re-rendering reproduces the same line (no
+        // double-escaping drift).
+        let hostile = r#"sh -c "echo a\"b\c""#;
+        let spec = plan_bind("SUPER", "T", "exec", Some(hostile)).expect("plans");
+        let line = render_bind_line(&spec).expect("renders");
+        let back = parse_bind_line(&line).expect("app shape parses");
+        assert_eq!(back.arg.as_deref(), Some(hostile), "arg bytes survive");
+        assert_eq!(
+            render_bind_line(&back).expect("re-renders"),
+            line,
+            "re-render is byte-identical — no escape drift"
+        );
     }
 
     #[test]
