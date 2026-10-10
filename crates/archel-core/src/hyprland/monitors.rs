@@ -547,13 +547,16 @@ pub struct MonitorReport {
 
 /// Replaces the `hl.monitor(...)` line for `output` in a snippet body,
 /// or appends it when absent. Pure over the text: matched by the
-/// `hl.monitor(` marker plus the output name, so sibling leaves
-/// (blur, opacity, font) pass through byte-identical.
+/// exact quoted first argument `hl.monitor({ output = "<name>"` —
+/// including the closing quote — so prefix-colliding outputs
+/// (`DP-1` vs `DP-1.1`) never clobber each other (CR-01). Sibling
+/// leaves (blur, opacity, font) pass through byte-identical.
 pub fn upsert_monitor_line(body: &str, output: &str, line: &str) -> String {
+    let needle = format!("hl.monitor({{ output = \"{output}\"");
     let mut replaced = false;
     let mut out = String::new();
     for body_line in body.lines() {
-        if !replaced && body_line.contains("hl.monitor(") && body_line.contains(output) {
+        if !replaced && body_line.contains(&needle) {
             out.push_str(line);
             out.push('\n');
             replaced = true;
@@ -1030,6 +1033,41 @@ mod tests {
             "replacing never duplicates the output line"
         );
         assert!(replaced.contains("1920x1080@60"), "replacement carries the new mode");
+    }
+
+    #[test]
+    fn snippet_upsert_never_clobbers_prefix_colliding_outputs() {
+        // CR-01 regression: `DP-1` is a substring of `DP-1.1` — the
+        // match must anchor on the exact quoted first argument, or
+        // upserting one managed output silently destroys the other's
+        // persisted line.
+        let body = "hl.monitor({ output = \"DP-1\", mode = \"2560x1440@144\", position = \"0x0\", scale = 1 })\n\
+            hl.monitor({ output = \"DP-1.1\", mode = \"1920x1080@60\", position = \"2560x0\", scale = 1 })\n";
+        let next = upsert_monitor_line(
+            body,
+            "DP-1",
+            "hl.monitor({ output = \"DP-1\", mode = \"1280x720@60\", position = \"0x0\", scale = 1 })",
+        );
+        assert_eq!(
+            next.lines().filter(|l| l.contains("output = \"DP-1\"")).count(),
+            1,
+            "the DP-1 line is replaced, never duplicated: {next}"
+        );
+        assert!(
+            next.contains("1280x720@60"),
+            "the replacement carries the new mode"
+        );
+        assert_eq!(
+            next.lines()
+                .filter(|l| l.contains("output = \"DP-1.1\""))
+                .count(),
+            1,
+            "DP-1.1 survives byte-identical: {next}"
+        );
+        assert!(
+            next.contains("1920x1080@60"),
+            "DP-1.1 keeps its original mode: {next}"
+        );
     }
 
     #[test]
