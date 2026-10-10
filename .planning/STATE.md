@@ -102,7 +102,15 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
-| *(none)* | | | | |
+| deferred_items | 06/deferred-items.md: 06-06 (Task 2 gates) — deviation — Tab QML files bind model properties in camelCase while the bridge qproperties are snake_case (works via Qt's cas… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: 06-06 (gates) — flaky-test — `archel-core` `live_*` timing tests (install/update duration thresholds) fail under heavy parallel cargo load; pass on… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: 06-06 (gates) — clippy-baseline — 29 pre-existing `archel-core` clippy findings block a clean `-D warnings` run repo-wide; out of execution scope, … | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — follow-up — WR-01: 1 Hz tick overwrites in-progress Input tab edits — decouple editor state like NetTab (local state, wri… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — follow-up — WR-02: FileDialog `file://` strip breaks percent-encoded paths (VPN + wallpaper pickers) — resolve via `toLoc… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — follow-up — WR-03: single global confirm session multiplexes all tabs — add write-slot guard or generation-tagged confirm… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — follow-up — WR-04: keybind-add live-evals before persisting — compensating unbind or persist-then-eval on post-eval persi… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — follow-up — WR-05: GUI has no path back to automatic DNS (CLI `reset` leg unmapped) — add "Automatique" affordance or ann… | acknowledged | 2026-10-10 | v1.0 |
+| deferred_items | 06/deferred-items.md: code-review (waves 6-7) — advisory — IN-01: audio read-back matches on name not id; IN-02: NetTab hardcodes `"N/A"`; IN-03: thin-view audit parses … | acknowledged | 2026-10-10 | v1.0 |
 
 ## Session Continuity
 
