@@ -16,6 +16,10 @@ import org.archel.settings
 Item {
     id: root
 
+    // Exposed so Main.qml (AUR trust review) can reach the model:
+    // component ids are scoped to this file (GAP-1).
+    property alias pkg: pkg
+
     PkgModel {
         id: pkg
     }

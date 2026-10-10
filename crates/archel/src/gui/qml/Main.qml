@@ -354,7 +354,7 @@ ApplicationWindow {
         onTrustToggled: shell.confirmTrust(checked)
         // D-19: Valider is the only path to the build; the
         // authoritative gate re-checks both flags Rust-side.
-        onAurValidated: pkg.aurBuildStart()
+        onAurValidated: pkgTab.pkg.aurBuildStart()
         z: 102
     }
 
