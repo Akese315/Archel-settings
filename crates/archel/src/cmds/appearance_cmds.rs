@@ -13,6 +13,7 @@ use archel_core::ArchelError;
 
 /// Runs `archel appearance blur on|off`: preview, confirm, then flip
 /// the live switch with snippet durability (APP-03 tracer).
+// gui: appearance.set_blur
 pub fn run_blur(enabled: bool, json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::appearance as core_appearance;
     run_blur_confirmed(enabled, json, core_appearance::set_blur)
@@ -54,6 +55,7 @@ fn run_blur_confirmed(
 
 /// Runs `archel appearance opacity set`: validated floats, preview,
 /// confirm, live-apply with read-back (APP-04, expansion task).
+// gui: appearance.set_opacity
 pub fn run_opacity_set(
     active: Option<String>,
     inactive: Option<String>,
@@ -66,6 +68,7 @@ pub fn run_opacity_set(
 
 /// Runs `archel appearance opacity` (bare): live values of both
 /// leaves, no confirm, no write (read-only).
+// gui: appearance.tick
 pub fn run_opacity(json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::appearance as core_appearance;
     let state = core_appearance::read_opacity()?;
@@ -126,6 +129,7 @@ fn run_opacity_plan_confirmed(
 
 /// Runs `archel appearance font` (bare): both stores (GTK gsettings
 /// plus live Hyprland leaf), no confirm, no write (read-only).
+// gui: appearance.tick
 pub fn run_font(json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::font as core_font;
     let status = core_font::read_font()?;
@@ -142,6 +146,7 @@ pub fn run_font(json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel appearance font set '<family> [size]'`: validated
 /// spec, preview, confirm, two-store apply with read-back (APP-02).
+// gui: appearance.set_font
 pub fn run_font_set(value: String, json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::font as core_font;
     // Read-only planning first: validation plus old-snippet read run
@@ -198,6 +203,7 @@ fn run_font_plan_confirmed(
 
 /// Runs `archel appearance wallpaper` (bare): the managed slice path,
 /// no confirm, no write (read-only).
+// gui: appearance.tick
 pub fn run_wallpaper(json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::wallpaper as core_wallpaper;
     let status = core_wallpaper::read_wallpaper_at(&archel_core::hyprland::hypr_dir());
@@ -219,6 +225,7 @@ pub fn run_wallpaper(json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel appearance wallpaper set <path>`: validated path,
 /// preview, confirm, slice rewrite plus daemon restart (APP-01).
+// gui: appearance.set_wallpaper
 pub fn run_wallpaper_set(path: String, json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::wallpaper as core_wallpaper;
     // Read-only planning first: validation runs before any prompt, so

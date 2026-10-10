@@ -14,6 +14,7 @@ use archel_core::ArchelError;
 
 /// Runs `archel net status`: primary-connection state, interface,
 /// SSID, IPv4, gateway, effective DNS and backing profile (NET-01/02).
+// gui: net.tick
 pub async fn run_status(json: bool) -> Result<(), ArchelError> {
     let snap = archel_core::network::net_status().await?;
     if json {
@@ -26,6 +27,7 @@ pub async fn run_status(json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel net dns show`: configured profile DNS plus the
 /// effective (post-DHCP-or-custom) DNS (NET-03, read-only).
+// gui: net.tick
 pub async fn run_dns_show(profile: Option<String>, json: bool) -> Result<(), ArchelError> {
     let show = archel_core::network::dns::dns_show(profile.as_deref()).await?;
     if json {
@@ -38,6 +40,7 @@ pub async fn run_dns_show(profile: Option<String>, json: bool) -> Result<(), Arc
 
 /// Runs `archel net dns set`: validate, preview, confirm, then replace
 /// the profile DNS and reactivate (NET-03, D-01/D-02).
+// gui: net.dns_apply
 pub fn run_dns_set(
     profile: Option<String>,
     servers: Vec<String>,
@@ -50,6 +53,7 @@ pub fn run_dns_set(
 }
 
 /// Runs `archel net dns reset`: same gate as set, back to DHCP (D-03).
+// cli-only: reset-to-DHCP has no editor button in v1; the editor applies explicit server lists only
 pub fn run_dns_reset(profile: Option<String>, json: bool) -> Result<(), ArchelError> {
     let plan = archel_core::network::dns::plan_dns_reset(profile.as_deref())?;
     run_dns_plan_confirmed(&plan, json, archel_core::network::dns::apply_dns_plan)
@@ -84,6 +88,7 @@ fn run_dns_plan_confirmed(
 /// Runs `archel net test`: gateway ping, DNS resolution, internet
 /// reachability with raw ms figures (NET-06, D-09/D-10). Read-only
 /// probes (ping/dig); the blocking spawns run off-executor.
+// cli-only: one-shot gateway/DNS/internet probe; live status is already shown by the tab
 pub async fn run_test(json: bool) -> Result<(), ArchelError> {
     let test = tokio::task::spawn_blocking(archel_core::network::selftest::run_net_test)
         .await
@@ -102,6 +107,7 @@ pub async fn run_test(json: bool) -> Result<(), ArchelError> {
 /// the shell export hint for Hyprland terminals (NET-04 tracer).
 /// Read-only over the `gsettings` CLI; a missing store maps to the
 /// typed unavailable error, never a panic.
+// cli-only: session proxy is terminal-shell scope (export hint for Hyprland terminals); no GUI surface in v1
 pub fn run_proxy(json: bool) -> Result<(), ArchelError> {
     let state = archel_core::proxy::proxy_status()?;
     if json {
@@ -117,6 +123,7 @@ pub fn run_proxy(json: bool) -> Result<(), ArchelError> {
 /// confirmation (NET-04). Planned read-only first (old mode read
 /// before any prompt), so store failures surface typed with no TTY
 /// need.
+// cli-only: session proxy is terminal-shell scope; no GUI surface in v1
 pub fn run_proxy_off(json: bool) -> Result<(), ArchelError> {
     let old = archel_core::proxy::proxy_status()?;
     let plan = archel_core::proxy::ProxyPlan::off(&old.mode);
@@ -127,6 +134,7 @@ pub fn run_proxy_off(json: bool) -> Result<(), ArchelError> {
 /// bypass list and auth (NET-04). `--password` triggers a no-echo
 /// stdin prompt at use time — the secret travels straight into the
 /// plan, never through argv, logs or snapshots.
+// cli-only: session proxy is terminal-shell scope; no GUI surface in v1
 pub fn run_proxy_manual(
     host: &str,
     port: u16,
@@ -153,6 +161,7 @@ pub fn run_proxy_manual(
 }
 
 /// Runs `archel net proxy auto`: PAC-URL mode after confirmation.
+// cli-only: session proxy is terminal-shell scope; no GUI surface in v1
 pub fn run_proxy_auto(pac_url: &str, json: bool) -> Result<(), ArchelError> {
     let old = archel_core::proxy::proxy_status()?;
     let plan = archel_core::proxy::plan_proxy_auto(&old.mode, pac_url)?;
@@ -194,6 +203,7 @@ fn run_proxy_plan_confirmed(
 /// Runs `archel net vpn list`: configured tunnels plus active state
 /// (NET-05, read-only). An empty store renders the honest-empty line —
 /// never fake rows; `--json` encodes `[]`.
+// gui: net.tick
 pub fn run_vpn_list(json: bool) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
     let conns = core_vpn::vpn_list()?;
@@ -229,6 +239,7 @@ fn render_vpn_list_table(conns: &[archel_core::network::vpn::VpnConnection]) -> 
 /// Runs `archel net vpn up`: resolve read-only, preview, confirm, then
 /// activate (NET-05). The secret (if the profile needs one) is
 /// prompted by the NM path, never by Archel.
+// cli-only: tunnel activation has no tab toggle in v1; the tab lists tunnels and imports new ones
 pub fn run_vpn_up(connection: &str, json: bool) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
     let conns = core_vpn::vpn_list()?;
@@ -254,6 +265,7 @@ pub fn run_vpn_up(connection: &str, json: bool) -> Result<(), ArchelError> {
 /// (G-04-2): deactivating a non-persistent profile drops NM tracking
 /// and `vpn up` cannot restore it — the operator sees this before
 /// the `[o/N]` gate, with the `vpn import` hint.
+// cli-only: tunnel deactivation has no tab toggle in v1; the tab lists tunnels and imports new ones
 pub fn run_vpn_down(connection: &str, json: bool) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
     let conns = core_vpn::vpn_list()?;
@@ -276,6 +288,7 @@ pub fn run_vpn_down(connection: &str, json: bool) -> Result<(), ArchelError> {
 /// Runs `archel net vpn import`: validate the path client-side (no
 /// spawn, no prompt on failure), preview file plus plugin, confirm,
 /// then import through the nmcli plugin with `--ask` secrets.
+// gui: net.vpn_import_start
 pub fn run_vpn_import(path: &str, json: bool) -> Result<(), ArchelError> {
     use archel_core::network::vpn as core_vpn;
     let canonical = core_vpn::validate_vpn_import_path(path)?;

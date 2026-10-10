@@ -18,6 +18,7 @@ const WATCH_INTERVAL: Duration = Duration::from_millis(500);
 /// only (re-forcing every 500 ms would spawn the checkers twice a
 /// second); later ticks serve the cache. `json` switches the table for
 /// one JSON object per print (NDJSON stream under `--watch`, D-03).
+// gui: landing.tick
 pub fn run_landing(refresh: bool, watch: bool, json: bool) -> Result<(), ArchelError> {
     let mut force = refresh;
     loop {

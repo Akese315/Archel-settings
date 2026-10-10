@@ -196,9 +196,15 @@ mod tests {
     /// inline suites), cleaned up by the test itself.
     fn scratch_dir(label: &str) -> PathBuf {
         static SEQ: AtomicU32 = AtomicU32::new(0);
+        // No process-handle API here on purpose: gui/ must stay free of
+        // subprocess primitives (06-09 thin-view audit), so uniqueness
+        // comes from a nanos timestamp plus the per-test sequence.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         let dir = std::env::temp_dir().join(format!(
-            "archel-geometry-{label}-{}-{}",
-            std::process::id(),
+            "archel-geometry-{label}-{nanos}-{}",
             SEQ.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).expect("scratch dir");

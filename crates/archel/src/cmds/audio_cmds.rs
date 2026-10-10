@@ -15,6 +15,7 @@ use archel_core::audio::{AudioDevice, AudioSnapshot};
 use archel_core::ArchelError;
 
 /// Runs `archel audio list`: sinks then sources by stable node.name.
+// gui: audio.tick
 pub fn run_list(json: bool) -> Result<(), ArchelError> {
     let snap = archel_core::audio::audio_list()?;
     if json {
@@ -28,6 +29,7 @@ pub fn run_list(json: bool) -> Result<(), ArchelError> {
 /// Runs `archel audio set-output <name>`: resolve the stable name to
 /// the current session ID, confirm, switch, read back. `--json`
 /// emits the single-object mutation report shape.
+// gui: audio.set_default_output
 pub fn run_set_output(name: &str, json: bool) -> Result<(), ArchelError> {
     let device = archel_core::audio::set_output_by_name(name)?;
     let ok = archel_core::audio::output_ok_line(&device);
@@ -40,6 +42,7 @@ pub fn run_set_output(name: &str, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel audio set-input <name>`: same shape over the sources.
+// gui: audio.set_default_input
 pub fn run_set_input(name: &str, json: bool) -> Result<(), ArchelError> {
     let device = archel_core::audio::set_input_by_name(name)?;
     let ok = archel_core::audio::input_ok_line(&device);

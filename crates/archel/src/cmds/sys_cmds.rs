@@ -35,6 +35,7 @@ use archel_core::ArchelError;
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Runs `archel sys cpu`: per-core usage plus clock (SYS-03/04).
+// gui: system.tick
 pub fn run_cpu(watch: bool, json: bool) -> Result<(), ArchelError> {
     let mut monitor = archel_core::system::Monitor::new();
     loop {
@@ -51,6 +52,7 @@ pub fn run_cpu(watch: bool, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel sys ram`: used/total memory (SYS-01).
+// gui: system.tick
 pub fn run_ram(watch: bool, json: bool) -> Result<(), ArchelError> {
     let mut monitor = archel_core::system::Monitor::new();
     loop {
@@ -67,6 +69,7 @@ pub fn run_ram(watch: bool, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel sys disk`: system-partition used/total/free (SYS-02).
+// gui: system.tick
 pub fn run_disk(watch: bool, json: bool) -> Result<(), ArchelError> {
     let mut monitor = archel_core::system::Monitor::new();
     loop {
@@ -84,6 +87,7 @@ pub fn run_disk(watch: bool, json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel sys gpu`: model plus VRAM used/total (SYS-05). The
 /// NVML handle opens once outside the loop and is reused across ticks.
+// gui: system.tick
 pub fn run_gpu(watch: bool, json: bool) -> Result<(), ArchelError> {
     let sensors = archel_core::sensors::Sensors::new();
     loop {
@@ -100,6 +104,7 @@ pub fn run_gpu(watch: bool, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel sys temp`: hottest temperature per category (SYS-06).
+// gui: system.tick
 pub fn run_temp(watch: bool, json: bool) -> Result<(), ArchelError> {
     let sensors = archel_core::sensors::Sensors::new();
     loop {
@@ -116,6 +121,7 @@ pub fn run_temp(watch: bool, json: bool) -> Result<(), ArchelError> {
 }
 
 /// Runs `archel sys power`: real-time CPU and GPU watts (SYS-07/08).
+// gui: system.tick
 pub fn run_power(watch: bool, json: bool) -> Result<(), ArchelError> {
     let sensors = archel_core::sensors::Sensors::new();
     loop {
@@ -133,6 +139,7 @@ pub fn run_power(watch: bool, json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel sys all`: every metric in one table and one `--json`
 /// object, composed through the two reusable handles.
+// gui: system.tick
 pub fn run_all(watch: bool, json: bool) -> Result<(), ArchelError> {
     let mut monitor = archel_core::system::Monitor::new();
     let sensors = archel_core::sensors::Sensors::new();

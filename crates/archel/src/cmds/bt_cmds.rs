@@ -16,6 +16,7 @@ use archel_core::ArchelError;
 
 /// Runs `archel bt devices`: known devices (name, MAC, signal,
 /// state) or the honest enable-hint error with the daemon down.
+// gui: bt.tick
 pub async fn run_devices(json: bool) -> Result<(), ArchelError> {
     let devices = archel_core::bluetooth::bt_devices().await?;
     if json {
@@ -29,6 +30,7 @@ pub async fn run_devices(json: bool) -> Result<(), ArchelError> {
 /// Runs `archel bt scan`: timed discovery sweep into the numbered
 /// live list (name, MAC, signal), or the honest-empty line when the
 /// air is silent. Returns the scanned set for pick validation.
+// gui: bt.scan_now
 pub async fn run_scan(json: bool) -> Result<Vec<BtDevice>, ArchelError> {
     let devices = archel_core::bluetooth::bt_scan().await?;
     if json {
@@ -43,6 +45,7 @@ pub async fn run_scan(json: bool) -> Result<Vec<BtDevice>, ArchelError> {
 /// the pick against it, confirm intent, pair with the BlueZ code
 /// confirm, then offer pair-then-connect (each step confirm-gated;
 /// piped runs refuse with `NeedsTty` before anything mutates).
+// gui: bt.pair
 pub async fn run_pair(pick: &str, json: bool) -> Result<(), ArchelError> {
     let scanned = run_scan(json).await?;
     let picked = archel_core::bluetooth::resolve_pick(&scanned, pick)?;
@@ -76,6 +79,7 @@ pub async fn run_pair(pick: &str, json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel bt connect <pick>`: scan, print the live list,
 /// resolve the pick, confirm, connect.
+// gui: bt.connect
 pub async fn run_connect(pick: &str, json: bool) -> Result<(), ArchelError> {
     let scanned = run_scan(json).await?;
     let picked = archel_core::bluetooth::resolve_pick(&scanned, pick)?;
@@ -96,6 +100,7 @@ pub async fn run_connect(pick: &str, json: bool) -> Result<(), ArchelError> {
 
 /// Runs `archel bt disconnect <pick>`: scan, print the live list,
 /// resolve the pick, confirm, disconnect.
+// gui: bt.disconnect
 pub async fn run_disconnect(pick: &str, json: bool) -> Result<(), ArchelError> {
     let scanned = run_scan(json).await?;
     let picked = archel_core::bluetooth::resolve_pick(&scanned, pick)?;

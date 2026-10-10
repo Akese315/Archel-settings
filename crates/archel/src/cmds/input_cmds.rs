@@ -17,6 +17,7 @@ use archel_core::ArchelError;
 /// Runs `archel input keybinds list`: user binds from `binds -j`
 /// with decoded mods plus app binds from the snippet marked as
 /// managed (INP-01). Read-only: no confirm, no write.
+// gui: input.tick
 pub fn run_keybinds_list(json: bool) -> Result<(), ArchelError> {
     let raw = archel_core::hyprland::run_hyprctl("hyprctl", &["binds", "-j"])?;
     let user = core_binds::parse_binds_json(&raw);
@@ -48,6 +49,7 @@ fn run_keybinds_list_with(
 /// Runs `archel input keybinds add --mods <words> --key <k> --action
 /// <dispatcher> [--arg <opaque>]`: validate, preview, confirm, eval
 /// live-apply, snippet merge (INP-02).
+// gui: input.add_keybind
 pub fn run_keybind_add(
     mods: String,
     key: String,
@@ -106,6 +108,7 @@ fn run_keybind_add_with(
 /// addressed, preview old-arrow-new, confirm, eval plus snippet edit
 /// (INP-02). A miss fails typed-DesktopInvalid before any prompt.
 #[allow(clippy::too_many_arguments)]
+// cli-only: composed in GUI via remove_keybind + add_keybind; no dedicated edit control in v1
 pub fn run_keybind_edit(
     mods: String,
     key: String,
@@ -196,6 +199,7 @@ fn run_keybind_edit_with(
 /// exact-match addressed, confirm, `hl.unbind` live leg plus snippet
 /// removal (INP-02). A refused unbind fails typed with the snippet
 /// untouched. A miss fails typed-DesktopInvalid before any prompt.
+// gui: input.remove_keybind
 pub fn run_keybind_remove(
     mods: String,
     key: String,
@@ -243,6 +247,7 @@ fn run_keybind_remove_with(
 
 /// Runs `archel input mouse` (bare): all three live leaves,
 /// read-only (INP-03/04 reads).
+// gui: input.tick
 pub fn run_mouse(json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::input as core_input;
     let state = core_input::read_input()?;
@@ -261,6 +266,7 @@ pub fn run_mouse(json: bool) -> Result<(), ArchelError> {
 /// [--natural-scroll <on|off>] [--scroll-factor <f>]`: validated
 /// leaves, preview, core confirm-plus-apply with read-back
 /// (INP-03/04).
+// gui: input.set_sensitivity,input.set_accelerate
 pub fn run_mouse_set(
     sensitivity: Option<String>,
     natural_scroll: Option<String>,

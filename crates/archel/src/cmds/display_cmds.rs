@@ -19,6 +19,7 @@ use archel_core::ArchelError;
 /// Runs `archel display monitors`: live inventory with current mode,
 /// scale, refresh, and position (DSP-01..04 reads). Read-only: no
 /// confirm, no write.
+// gui: display.tick
 pub fn run_monitors(json: bool) -> Result<(), ArchelError> {
     use archel_core::hyprland::monitors as core_monitors;
     let monitors = core_monitors::read_monitors()?;
@@ -42,6 +43,7 @@ pub fn run_monitors(json: bool) -> Result<(), ArchelError> {
 /// [--position ...] [--disable]`: validate, plan, project the layout,
 /// preview, then confirm-gated apply with 15 s keep-or-rollback
 /// (DSP-01..04, D-04).
+// gui: display.plan_change
 pub fn run_display_set(
     output: String,
     mode: Option<String>,

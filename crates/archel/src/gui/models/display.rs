@@ -616,10 +616,13 @@ mod tests {
     }
 
     fn test_base(tag: &str) -> std::path::PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "archel-display-gui-{tag}-{}",
-            std::process::id()
-        ));
+        // Nanos stamp keeps parallel test runs apart without any
+        // process-handle API (gui/ stays subprocess-free, 06-09 audit).
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let base = std::env::temp_dir().join(format!("archel-display-gui-{tag}-{unique}"));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).expect("test base");
         base

@@ -11,6 +11,7 @@ use archel_core::ArchelError;
 
 /// Runs `archel pkg list`: every installed package with its version
 /// (D-08: installed only, search stays global in a later task).
+// gui: pkg.tick
 pub fn run_list(json: bool) -> Result<(), ArchelError> {
     let pkgs = archel_core::packages::list_installed()?;
     if json {
@@ -27,6 +28,7 @@ pub fn run_list(json: bool) -> Result<(), ArchelError> {
 /// Runs `archel pkg search <query>`: repo hits first, then AUR, newest
 /// versions on top (D-07). A missing `yay` binary surfaces the typed
 /// French hint with a non-zero exit, never a crash.
+// gui: pkg.search
 pub fn run_search(query: &str, json: bool) -> Result<(), ArchelError> {
     let hits = archel_core::packages::search(query)?;
     if json {
@@ -79,6 +81,7 @@ pub fn render_search_table(query: &str, hits: &[PackageInfo]) -> String {    let
 /// source, candidate versus installed version) or one JSON object.
 /// An unknown name surfaces the honest not-found error, never a
 /// zero-filled card.
+// gui: pkg.select
 pub fn run_info(name: &str, json: bool) -> Result<(), ArchelError> {
     let card = archel_core::packages::package_card(name)?;
     if json {
@@ -108,6 +111,7 @@ pub fn run_info(name: &str, json: bool) -> Result<(), ArchelError> {
 /// `packages` slice reaches the installs path unchanged (T-3-12), and
 /// the AUR check reuses the exact `is_aur_card` predicate the `run_aur`
 /// redirect trusts (T-3-13).
+// gui: pkg.install_start
 pub fn run_install(packages: &[String], json: bool) -> Result<(), ArchelError> {
     let preview = archel_core::packages::install_preview(packages)?;
     let aur_names = aur_names_in_cards(&preview.cards);
@@ -186,6 +190,7 @@ fn stream_install(packages: &[String], silent: bool) -> Result<String, ArchelErr
 /// Runs `archel pkg remove <pkgs...>`: same confirm-then-stream flow
 /// as install, over the removal preview (installed versions plus the
 /// removal closure). Plain `-R` underneath: recursion stays opt-in.
+// gui: pkg.remove_start
 pub fn run_remove(packages: &[String], json: bool) -> Result<(), ArchelError> {
     let preview = archel_core::packages::remove_preview(packages)?;
     if json {
@@ -224,6 +229,7 @@ fn stream_remove(packages: &[String], silent: bool) -> Result<String, ArchelErro
 /// package argument is the partial-upgrade equivalent and is refused
 /// with the catalog French message — nothing executes. An empty
 /// pending list reports honestly up-to-date with no prompt.
+// gui: pkg.upgrade_start
 pub fn run_upgrade(package: Option<String>, json: bool) -> Result<(), ArchelError> {
     if let Some(name) = package {
         return Err(ArchelError::PartialUpgradeRefused { name });
@@ -279,6 +285,7 @@ fn stream_upgrade(silent: bool) -> Result<String, ArchelError> {
 /// then `yay -S` as the user with native sudo handling (D-06 — Archel
 /// never orchestrates elevation). Abort at any gate builds nothing:
 /// `yay -S` is reachable only past the confirm.
+// gui: pkg.aur_review_start,pkg.aur_build_start
 pub fn run_aur(name: &str, json: bool) -> Result<(), ArchelError> {
     archel_core::packages::validate_package_names(&[name.to_string()])?;
     let card = archel_core::packages::package_card(name)?;

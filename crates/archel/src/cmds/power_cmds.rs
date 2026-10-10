@@ -15,6 +15,7 @@ use archel_core::power::PowerStatus;
 use archel_core::ArchelError;
 
 /// Runs `archel power status`: active profile plus backend tag.
+// gui: power.tick
 pub async fn run_status(json: bool) -> Result<(), ArchelError> {
     let status = archel_core::power::power_status().await?;
     if json {
@@ -28,6 +29,7 @@ pub async fn run_status(json: bool) -> Result<(), ArchelError> {
 /// Runs `archel power set <profile>`: confirm-gated switch on
 /// whichever backend serves this machine. `--json` emits the
 /// single-object mutation report shape.
+// gui: power.set_profile
 pub async fn run_set(profile_arg: &str, json: bool) -> Result<(), ArchelError> {
     let profile = archel_core::power::parse_profile_arg(profile_arg).ok_or_else(|| {
         ArchelError::Internal(format!("clap allowed an unknown power profile: '{profile_arg}'"))
