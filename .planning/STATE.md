@@ -12,8 +12,8 @@ progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 28
-  completed_plans: 22
-  percent: 79
+  completed_plans: 23
+  percent: 82
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (GUI Shell & Tabs) — EXECUTING
-Plan: 5 of 9 complete (06-01..06-05; wave 4 done, wave 5 ready)
-Status: Wave 4 complete — 06-06 ready to dispatch
-Last activity: 2026-10-09 — 06-05 done (a7a53d0, 2a4ee3b) with SUMMARY; post-merge gates green
+Plan: 6 of 9 complete (06-01..06-06; wave 5 done, wave 6 ready)
+Status: PAUSED (user) — Wave 5 complete; 06-07 + 06-08 ready to dispatch
+Last activity: 2026-10-10 — 06-06 done (14fe6aa..4e24c58) with SUMMARY; gui suite 192 passed, clippy clean
 
-Progress: [███████░░░] 68%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
@@ -103,7 +103,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-09
-Stopped at: Wave 1 COMPLETE (06-01 merged 1193ef2 + SUMMARY; 06-02 done earlier). Wave 2 (06-03) ready.
-Resume file: .planning/phases/06-gui-shell-tabs/06-03-polling-system-landing-PLAN.md
-Wave 1 report: 06-01 tasks 1-2 by worker (21c955b, 7d4aeca), task 3 finished inline (3741ef6) after worker death + continuation binding breach (main reverted clean). Key learning for future spawns: use full-clone checkouts (linked worktrees inherit the registered project's git identity and mis-bind tool-cwd — proven via opencode sqlite project table + probes); verify binding from the first tool call. Backend thor.sealix.eu flapped all session (~1/3 probe success). Worker records all reconciled. Next: dispatch 06-03 (needs 06-01 SUMMARY only — ready).
+Last session: 2026-10-10
+Stopped at: PAUSED by user (overnight). Waves 1-5 COMPLETE (06-01..06-06 summarized, tracking committed). 06-06 final gate results: gui 192 passed, headless 120, core aur 15, clippy clean, offscreen smoke rc=124.
+Resume file: .planning/phases/06-gui-shell-tabs/06-07-write-system-domains-PLAN.md
+Remaining: Wave 6 = 06-07 + 06-08 (files_modified verified DISJOINT — safe to run in parallel; 06-07 owns bridge.rs/Main.qml, 06-08 does not touch them) -> Wave 7 = 06-09 -> verification gates.
+Executor note from 06-06: camelCase tab-binding debt + flaky core live_* tests + clippy baseline recorded in .planning/WINDOWS.md.

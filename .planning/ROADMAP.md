@@ -136,34 +136,32 @@ Plans:
   3. User can perform every write action (network, packages with progress + cancel, appearance, display with confirm dialog, input) from the GUI with spinner/disabled states and readable error messages
   4. User can do nothing in the GUI that isn't already CLI-proven — each tab is a thin view over the proven core
 
-**Plans**: 5/9 plans executed
+**Plans**: 6/9 plans executed
 - [x] 06-01-shell-window-PLAN.md
 - [x] 06-02-core-cancel-stream-PLAN.md
 - [x] 06-03-polling-system-landing-PLAN.md
 - [x] 06-04-read-net-power-audio-bt-PLAN.md
 - [x] 06-05-read-hyprland-pkg-PLAN.md
-- [ ] 06-04-read-net-power-audio-bt-PLAN.md
-- [ ] 06-05-read-hyprland-pkg-PLAN.md
-- [ ] 06-06-modal-infra-pkg-write-PLAN.md
+- [x] 06-06-modal-infra-pkg-write-PLAN.md
 - [ ] 06-07-write-system-domains-PLAN.md
 - [ ] 06-08-write-hyprland-domains-PLAN.md
 - [ ] 06-09-gui-check-thin-view-PLAN.md
 
 **Wave 1**
-- [ ] 06-01-PLAN.md — CXX-Qt shell, window, vertical rail, QML registration (PLAT-03)
+- [x] 06-01-PLAN.md — CXX-Qt shell, window, vertical rail, QML registration (PLAT-03)
 - [x] 06-02-PLAN.md — Core cancel/stream plumbing for write sessions (PLAT-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 06-03-PLAN.md — PollGuard + SystemModel 1 Hz sparklines + Landing (PLAT-03)
+- [x] 06-03-PLAN.md — PollGuard + SystemModel 1 Hz sparklines + Landing (PLAT-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 06-04-PLAN.md — Read models: Network, Power, Audio, Bluetooth (PLAT-03)
+- [x] 06-04-PLAN.md — Read models: Network, Power, Audio, Bluetooth (PLAT-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 06-05-PLAN.md — Read models: Appearance, Display, Input, Packages (PLAT-03)
+- [x] 06-05-PLAN.md — Read models: Appearance, Display, Input, Packages (PLAT-03)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 06-06-PLAN.md — Modal infrastructure + Packages writes + AUR trust gate (PLAT-03)
+- [x] 06-06-PLAN.md — Modal infrastructure + Packages writes + AUR trust gate (PLAT-03)
 
 **Wave 6** *(blocked on Wave 5 completion — 06-07 and 06-08 run in parallel)*
 - [ ] 06-07-PLAN.md — Writes: power, audio, DNS, VPN import, Bluetooth pairing (PLAT-03)
@@ -186,4 +184,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
 | 5. Hyprland Desktop | 4/4 | Complete ✓ | 2026-10-08 |
-| 6. GUI Shell & Tabs | 2/9 | In Progress|  |
+| 6. GUI Shell & Tabs | 6/9 | In Progress |  |
