@@ -111,7 +111,7 @@ Plans:
   3. User can view keyboard shortcuts and add, edit, or remove them, plus configure mouse sensitivity and scrolling
   4. User's main hyprland.conf is never rewritten — all persistence lands in the app-owned `source=` snippet with backup, and every action above works via `archel-cli`
 
-**Plans**: 4/4 plans executed
+**Plans**: 4/4 plans complete
 **Wave 1**
 - [x] 05-01-01-PLAN.md — Blur + opacity tracer with snippet writer and typed errors (APP-03, APP-04)
 
@@ -183,5 +183,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. System Insight | 0/TBD | Not started | - |
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
-| 5. Hyprland Desktop | 4/4 | Complete ✓ | 2026-10-08 |
+| 5. Hyprland Desktop | 4/4 | Complete    | 2026-10-08 |
 | 6. GUI Shell & Tabs | 9/9 | Complete ✓ | 2026-10-10 |
