@@ -31,4 +31,10 @@
 - The last four read tabs over CLI-proven core entry points: Appearance, Display, Input, and Packages — all ten tabs now navigate with live content.
 - Single-command GUI verification plus the executable PLAT-03 guarantee: `just gui-check` (build + 20/20 qmllint + offscreen smoke rc=124 + 239/239 gui tests) and a 47-entry tab<->CLI coverage audit green in both feature suites.
 
+**Requirements:** 43/43 checked off | **Tests:** 278 core + 125 bin green (offline) | **Span:** 2026-09-30 → 2026-10-11, 206 commits
+
+**Closeout type:** override_closeout — pre-close audit cleared via 6 verified fixes (`bf52ba1`, `05fb455`, `ebe84f8`, `097a989`) and 9 acknowledged debt items (disclosed in STATE.md `## Deferred Items`).
+
+**Known verification overrides:** 9 newly acknowledged, 0 carried forward. Acknowledgments are verdict-preserving and self-invalidating — any change to the underlying artifact resurfaces the item at the next audit. Follow-ups tracked as v1.1 candidates in PROJECT.md **Active**.
+
 ---
