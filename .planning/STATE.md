@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 
 ## Current Position
 
-Phase: 06 (GUI Shell & Tabs) — EXECUTING
-Plan: 8 of 9 complete (06-01..06-08 summarized; wave 6 done, wave 7 dispatching)
-Status: EXECUTING — Wave 6 complete (06-07 b3ebd03, 06-08 dcbb448); 06-09 ready dispatched
-Last activity: 2026-10-10 — Wave 6 done (gui 236 passed both plans, clippy clean, smoke rc=124)
+Phase: 06 (GUI Shell & Tabs) — COMPLETE ✓ (9/9, verified 4/4)
+Plan: 9 of 9 complete + VERIFICATION.md (GAP-1 closed in 05fb455)
+Status: COMPLETE — all waves done, review blockers fixed, verification passed
+Last activity: 2026-10-10 — Phase 06 verified and closed (core 269 + headless 123 + gui 241 green, smoke rc=124)
 
 Progress: [████████░░] 82%
 

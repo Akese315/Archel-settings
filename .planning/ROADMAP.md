@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Packages & CLI Harness** - pacman/yay management plus full CLI surface for proven domains
 - [x] **Phase 4: Connectivity & Devices** - Network, Bluetooth, sound, and power control (completed 2026-10-07)
 - [x] **Phase 5: Hyprland Desktop** - Appearance, display, and input via snippet-file writes (completed 2026-10-08)
-- [ ] **Phase 6: GUI Shell & Tabs** - archel-settings vertical-tab GUI over the proven API
+- [x] **Phase 6: GUI Shell & Tabs** - archel-settings vertical-tab GUI over the proven API (completed 2026-10-10)
 
 ## Phase Details
 
@@ -145,7 +145,7 @@ Plans:
 - [x] 06-06-modal-infra-pkg-write-PLAN.md
 - [x] 06-07-write-system-domains-PLAN.md
 - [x] 06-08-write-hyprland-domains-PLAN.md
-- [ ] 06-09-gui-check-thin-view-PLAN.md
+- [x] 06-09-gui-check-thin-view-PLAN.md
 
 **Wave 1**
 - [x] 06-01-PLAN.md — CXX-Qt shell, window, vertical rail, QML registration (PLAT-03)
@@ -168,7 +168,7 @@ Plans:
 - [x] 06-08-PLAN.md — Writes: Hyprland appearance, input/keybinds, display countdown (PLAT-03)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 06-09-PLAN.md — justfile gui-check harness + thin-view coverage audit (PLAT-03)
+- [x] 06-09-PLAN.md — justfile gui-check harness + thin-view coverage audit (PLAT-03)
 
 **UI hint**: yes
 
@@ -184,4 +184,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Packages & CLI Harness | 0/TBD | Not started | - |
 | 4. Connectivity & Devices | 0/TBD | Not started | - |
 | 5. Hyprland Desktop | 4/4 | Complete ✓ | 2026-10-08 |
-| 6. GUI Shell & Tabs | 6/9 | In Progress |  |
+| 6. GUI Shell & Tabs | 9/9 | Complete ✓ | 2026-10-10 |
