@@ -179,6 +179,12 @@ fn run_checker(tool: &str, args: &[&str]) -> Result<String, ArchelError> {
     let handle = duct::cmd(&binary, args)
         .stdout_capture()
         .stderr_capture()
+        // `.unchecked()` is load-bearing: without it duct turns any
+        // non-zero status into an Err at wait time, so `checkupdates`
+        // exit 2 (fully-up-to-date system) never reaches map_update_exit
+        // and degrades to stale instead of Fresh(0). Same as
+        // packages.rs::run_capped_query.
+        .unchecked()
         .start()
         .map_err(|err| ArchelError::Internal(format!("cannot run '{tool}': {err}")))?;
     let output = match handle.wait_timeout(CHECK_TIMEOUT).map_err(|err| {
@@ -390,6 +396,30 @@ mod tests {
             matches!(err, ArchelError::UpdatesCheckerMissing { .. }),
             "wrong variant: {err:?}"
         );
+    }
+
+    #[test]
+    fn exit_two_spawn_reaches_exit_mapping() {
+        // Regression for the deferred 03-01 task-3 finding: without
+        // `.unchecked()` on the run_checker spawn, duct converts any
+        // non-zero status into an Err at wait_timeout, so a fully
+        // up-to-date system (checkupdates exit 2) never reaches
+        // map_update_exit's Ok arm and the repo half degrades to
+        // Unavailable instead of Fresh(0). This mirrors run_checker's
+        // exact spawn/wait shape for a benign exit-2 command.
+        let handle = duct::cmd("sh", ["-c", "exit 2"])
+            .stdout_capture()
+            .stderr_capture()
+            .unchecked()
+            .start()
+            .expect("sh must be runnable");
+        let output = handle
+            .wait_timeout(CHECK_TIMEOUT)
+            .expect("wait must not error")
+            .expect("sh exits well within the timeout");
+        assert_eq!(output.status.code(), Some(2));
+        // The mapping arm itself: exit 2 from checkupdates is success.
+        map_update_exit("checkupdates", Some(2)).expect("checkupdates exit 2 is Fresh(0), not a failure");
     }
 
     #[test]
