@@ -599,6 +599,27 @@ pub fn persist_monitor_plan(base: &std::path::Path, plan: &MonitorPlan) -> Resul
     Ok(())
 }
 
+/// Runs every rollback leg, collecting failures instead of swallowing
+/// them (WR-03). Returns `None` when the whole rollback succeeded, or
+/// the joined failure descriptions when any leg errored — the caller
+/// upgrades the exit to a loud `HyprlandUnavailable` so a half-restored
+/// compositor never reads as a clean refusal/timeout.
+fn run_rollback(
+    plan: &MonitorPlan,
+    rollbacker: &impl Fn(&str) -> Result<(), ArchelError>,
+) -> Option<String> {
+    let failures: Vec<String> = plan
+        .rollback
+        .iter()
+        .filter_map(|leg| rollbacker(leg).err().map(|err| format!("{leg}: {err}")))
+        .collect();
+    if failures.is_empty() {
+        None
+    } else {
+        Some(failures.join("; "))
+    }
+}
+
 /// Applies a monitor plan with the D-04 confirm-and-rollback contract:
 /// pre-confirm via `confirm_action` (abort structurally never
 /// mutates), apply all eval legs, then a 15 s timed re-confirm — on
@@ -607,7 +628,10 @@ pub fn persist_monitor_plan(base: &std::path::Path, plan: &MonitorPlan) -> Resul
 /// runs through the shared runner semantics (rc != 0 OR stdout
 /// starting with `error:` fails; `wait_timeout` plus kill per leg in
 /// production via [`run_hyprctl_eval`]). The snippet persists only the
-/// kept config (WR-01 persist-on-agreement).
+/// kept config (WR-01 persist-on-agreement). Rollback-leg failures are
+/// never swallowed (WR-03): any failed rollback upgrades the exit to
+/// `HyprlandUnavailable` naming the failing legs, so the CLI never
+/// prints a "restored" line over a half-restored state.
 pub fn apply_monitor_plan(
     base: &std::path::Path,
     plan: &MonitorPlan,
@@ -619,10 +643,12 @@ pub fn apply_monitor_plan(
     confirm(&confirm_monitor_prompt(plan))?;
     for leg in &plan.apply {
         if let Err(err) = applier(leg) {
-            for rollback_leg in &plan.rollback {
-                let _ = rollbacker(rollback_leg);
-            }
-            return Err(err);
+            return match run_rollback(plan, &rollbacker) {
+                None => Err(err),
+                Some(failures) => Err(ArchelError::hyprland_unavailable(format!(
+                    "apply failed ({err}) and automatic rollback was incomplete: {failures}"
+                ))),
+            };
         }
     }
     match timed_confirm(&confirm_monitor_keep_prompt(plan)) {
@@ -630,18 +656,18 @@ pub fn apply_monitor_plan(
             persist_monitor_plan(base, plan)?;
             Ok(report_for(plan, true))
         }
-        Ok(false) => {
-            for rollback_leg in &plan.rollback {
-                let _ = rollbacker(rollback_leg);
-            }
-            Err(ArchelError::ConfirmationAborted)
-        }
-        Err(err) => {
-            for rollback_leg in &plan.rollback {
-                let _ = rollbacker(rollback_leg);
-            }
-            Err(err)
-        }
+        Ok(false) => match run_rollback(plan, &rollbacker) {
+            None => Err(ArchelError::ConfirmationAborted),
+            Some(failures) => Err(ArchelError::hyprland_unavailable(format!(
+                "keep refused and automatic rollback was incomplete: {failures}"
+            ))),
+        },
+        Err(err) => match run_rollback(plan, &rollbacker) {
+            None => Err(err),
+            Some(failures) => Err(ArchelError::hyprland_unavailable(format!(
+                "{err}; automatic rollback was incomplete: {failures}"
+            ))),
+        },
     }
 }
 
@@ -1173,6 +1199,49 @@ mod tests {
             !super::super::snippet_path_at(&base).exists(),
             "timeout persists nothing"
         );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn orchestration_incomplete_rollback_fails_loud_not_silent() {
+        // WR-03 regression: a failing rollback leg must never be
+        // swallowed — the exit upgrades to HyprlandUnavailable naming
+        // the failing leg, so the CLI cannot print a "restored" line
+        // over a half-restored compositor.
+        let base = scratch_base("rollback-partial");
+        std::fs::write(base.join(super::super::ENTRY_FILE), "-- entry\n").expect("entry seeds");
+        let monitors = fixture_monitors();
+        let hdmi = hdmi(&monitors);
+        let plan = plan_monitor_change(
+            hdmi,
+            &MonitorWant {
+                output: "HDMI-A-2".to_string(),
+                mode: Some("1280x720@59".to_string()),
+                scale: None,
+                position: None,
+                disabled: false,
+            },
+        )
+        .expect("plan builds");
+        let failing_leg = plan.rollback[0].clone();
+        let err = apply_monitor_plan(
+            &base,
+            &plan,
+            |_| Ok(()),
+            |_| Ok(()),
+            |leg| Err(ArchelError::hyprland_unavailable(format!("leg {leg} rejected"))),
+            |_| Ok(false),
+        )
+        .expect_err("refusal still fails");
+        match err {
+            ArchelError::HyprlandUnavailable { detail, .. } => {
+                assert!(
+                    detail.contains("rollback was incomplete") && detail.contains(&failing_leg),
+                    "the failing leg is named: {detail}"
+                );
+            }
+            other => panic!("incomplete rollback must be loud, not {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 
