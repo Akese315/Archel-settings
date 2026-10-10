@@ -12,6 +12,7 @@
 use cxx_qt_lib::QString;
 
 use super::super::poll::{BannerPolicy, PollGuard};
+use crate::gui::modal::{self, ModalSession};
 use crate::gui::models::system::NOT_AVAILABLE;
 
 /// Fully formatted tick payload, built off the Qt thread so the
@@ -32,6 +33,7 @@ pub struct PowerModelRust {
     pub(crate) note_text: QString,
     pub(crate) profiles_json: QString,
     pub(crate) banner_visible: bool,
+    pub(crate) operation_busy: bool,
     guard: PollGuard,
     banner: BannerPolicy,
 }
@@ -44,6 +46,7 @@ impl Default for PowerModelRust {
             note_text: QString::from(""),
             profiles_json: QString::from(""),
             banner_visible: false,
+            operation_busy: false,
             guard: PollGuard::new(),
             banner: BannerPolicy::new(),
         }
@@ -151,6 +154,116 @@ impl crate::gui::bridge_power::qobject::PowerModel {
         self.as_mut().rust_mut().banner.dismiss();
         self.as_mut().set_banner_visible(false);
     }
+
+    /// Switches the power profile (D-12): the question is the core's
+    /// own `confirm_set_prompt` verbatim; only a yes reaches the
+    /// backend switch, which runs on the blocking pool (D-Bus + a
+    /// possible cpufreq sysfs write). While in flight the segmented
+    /// control shows a spinner and stays disabled (D-15); on done a
+    /// PollGuard refresh reads the new profile back from PPD.
+    pub fn set_profile(mut self: core::pin::Pin<&mut Self>, profile: QString) {
+        let text = profile.to_string();
+        if !self.as_mut().begin_write_operation() {
+            return;
+        }
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            power_worker(&text, &PROD_POWER_WRITE_OPS, modal::session());
+            let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
+                obj.as_mut().finish_write_operation();
+            });
+        });
+    }
+
+    /// Claims the single-operation slot (one profile switch at a time;
+    /// the second click of a double-click loses here) and mirrors the
+    /// claim onto the QML-visible flag so the segmented control can
+    /// disable itself and show the spinner (D-15).
+    fn begin_write_operation(mut self: core::pin::Pin<&mut Self>) -> bool {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().operation_busy {
+            return false;
+        }
+        self.as_mut().rust_mut().operation_busy = true;
+        self.as_mut().set_operation_busy(true);
+        true
+    }
+
+    /// Releases the operation slot and refreshes the status so the
+    /// tab reflects the switch that just ended. Called from the
+    /// `queue()` closure only (property writes stay on the Qt thread,
+    /// RESEARCH Pattern 1).
+    fn finish_write_operation(mut self: core::pin::Pin<&mut Self>) {
+        use cxx_qt::CxxQtType;
+        self.as_mut().rust_mut().operation_busy = false;
+        self.as_mut().set_operation_busy(false);
+        self.as_mut().tick();
+    }
+}
+
+/// Injection seam for the write path: the exact core entry points
+/// the worker calls, as plain function pointers. Production passes
+/// the real core functions ([`PROD_POWER_WRITE_OPS`]); unit tests
+/// pass fakes so the confirm choreography is proven without touching
+/// D-Bus or sysfs (the subprocess/IPC contract is the core's tested
+/// territory - the GUI never holds a child, a pid or a signal).
+pub(crate) struct PowerWriteOps {
+    pub parse: fn(&str) -> Option<archel_core::power::PowerProfile>,
+    pub prompt: fn(archel_core::power::PowerProfile) -> String,
+    pub apply:
+        fn(archel_core::power::PowerProfile) -> Result<archel_core::power::PowerStatus, archel_core::ArchelError>,
+}
+
+/// The production wiring: parse and prompt are the CLI-proven core
+/// helpers; apply is the confirm-free backend switch over the same
+/// dispatch [`archel_core::power::power_set`] uses (thin-view
+/// contract; PLAT-03). Blocking is fine - the worker runs on the
+/// blocking pool.
+pub(crate) const PROD_POWER_WRITE_OPS: PowerWriteOps = PowerWriteOps {
+    parse: archel_core::power::parse_profile_arg,
+    prompt: archel_core::power::confirm_set_prompt,
+    apply: |profile| {
+        tokio::runtime::Handle::current()
+            .block_on(archel_core::power::power_set_direct(profile))
+    },
+};
+
+/// Profile-switch worker body (runs on the blocking pool): the word
+/// is parsed first so an unknown profile is rejected with the honest
+/// typed error BEFORE any confirmation is shown; the question is the
+/// core prompt verbatim; only a yes reaches the backend switch; a
+/// backend failure surfaces as core's readable `message()` in the
+/// error modal (D-17), privilege shapes included.
+pub(crate) fn power_worker(
+    profile_arg: &str,
+    ops: &PowerWriteOps,
+    sess: &ModalSession,
+) {
+    let profile = match (ops.parse)(profile_arg) {
+        Some(profile) => profile,
+        None => {
+            sess.open_error(
+                &archel_core::ArchelError::Internal(format!(
+                    "unknown power profile: '{profile_arg}'"
+                ))
+                .message(),
+            );
+            return;
+        }
+    };
+    let rx = sess.request_confirm(&(ops.prompt)(profile));
+    if !rx.recv().unwrap_or(false) {
+        return;
+    }
+    if let Err(err) = (ops.apply)(profile) {
+        sess.open_error(&err.message());
+    }
 }
 
 #[cfg(test)]
@@ -219,5 +332,127 @@ mod tests {
             applied.profile_text,
             applied.backend_text
         );
+    }
+
+    // -- Write-path choreography (plan 06-07, Task 1) --
+    //
+    // The fakes below replace only the three `PowerWriteOps` seams;
+    // the worker itself runs for real against a local ModalSession, so
+    // parse-before-confirm, default-No and the verbatim question are
+    // all proven without touching D-Bus or sysfs.
+
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+    use std::time::{Duration, Instant};
+
+    use crate::gui::modal::ModalKind;
+
+    fn wait_until(what: &str, cond: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if cond() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("condition never held within 5s: {what}");
+    }
+
+    fn ok_status() -> PowerStatus {
+        ready_status()
+    }
+
+    #[test]
+    fn decline_short_circuits_before_any_backend_call() {
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn apply_must_not_run(
+            _profile: PowerProfile,
+        ) -> Result<PowerStatus, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Err(archel_core::ArchelError::Internal(
+                "backend must never run after a decline".to_string(),
+            ))
+        }
+        let ops = PowerWriteOps {
+            parse: archel_core::power::parse_profile_arg,
+            prompt: archel_core::power::confirm_set_prompt,
+            apply: apply_must_not_run,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| power_worker("performance", &ops, &sess));
+            wait_until("profile confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            assert_eq!(
+                sess.snapshot_question(),
+                archel_core::power::confirm_set_prompt(PowerProfile::Performance),
+                "the question is the core prompt verbatim"
+            );
+            sess.resolve_confirm(false);
+        });
+        assert_eq!(
+            APPLY_CALLS.load(AtomicOrdering::SeqCst),
+            0,
+            "a decline must never reach the backend switch"
+        );
+        assert_eq!(sess.snapshot_kind(), ModalKind::None);
+    }
+
+    #[test]
+    fn accept_reaches_the_backend_and_surfaces_its_error_verbatim() {
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn apply_fails(
+            _profile: PowerProfile,
+        ) -> Result<PowerStatus, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Err(archel_core::ArchelError::Internal(
+                "PPD set ActiveProfile: backend down in test".to_string(),
+            ))
+        }
+        let ops = PowerWriteOps {
+            parse: archel_core::power::parse_profile_arg,
+            prompt: archel_core::power::confirm_set_prompt,
+            apply: apply_fails,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| power_worker("balanced", &ops, &sess));
+            wait_until("profile confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(true);
+            wait_until("backend error opens", || {
+                sess.snapshot_kind() == ModalKind::Error
+            });
+        });
+        assert_eq!(APPLY_CALLS.load(AtomicOrdering::SeqCst), 1);
+        assert!(
+            sess.snapshot_error()
+                == archel_core::ArchelError::Internal(
+                    "PPD set ActiveProfile: backend down in test".to_string()
+                )
+                .message(),
+            "the error modal carries core's readable message"
+        );
+    }
+
+    #[test]
+    fn unknown_profile_is_rejected_before_any_confirm_or_backend() {
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn apply_must_not_run(
+            _profile: PowerProfile,
+        ) -> Result<PowerStatus, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(ok_status())
+        }
+        let ops = PowerWriteOps {
+            parse: archel_core::power::parse_profile_arg,
+            prompt: archel_core::power::confirm_set_prompt,
+            apply: apply_must_not_run,
+        };
+        let sess = ModalSession::default();
+        power_worker("turbo-ultra", &ops, &sess);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(APPLY_CALLS.load(AtomicOrdering::SeqCst), 0);
     }
 }

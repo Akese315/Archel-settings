@@ -358,13 +358,19 @@ pub fn set_input_picked_with(
 /// A read-back miss is an [`ArchelError::Internal`] (the switch did
 /// not stick), never a silent ok.
 pub fn set_output_by_name(name: &str) -> Result<AudioDevice, ArchelError> {
+    set_output_by_name_with(name, crate::packages::confirm_action)
+}
+
+/// Confirm-injected `set-output`: the same list-resolve-switch-
+/// read-back body with the caller's confirm gate. The GUI passes a
+/// closure that routes the question through its confirm modal;
+/// unknown names are rejected before any confirm is shown.
+pub fn set_output_by_name_with(
+    name: &str,
+    confirm: impl FnOnce(&str) -> Result<(), ArchelError>,
+) -> Result<AudioDevice, ArchelError> {
     let snapshot = audio_list()?;
-    let device = set_output_picked_with(
-        &snapshot,
-        name,
-        crate::packages::confirm_action,
-        set_default,
-    )?;
+    let device = set_output_picked_with(&snapshot, name, confirm, set_default)?;
     let fresh = audio_list()?;
     match fresh.sinks.iter().find(|sink| sink.name == device.name) {
         Some(current) if current.default => Ok(current.clone()),
@@ -378,13 +384,17 @@ pub fn set_output_by_name(name: &str) -> Result<AudioDevice, ArchelError> {
 /// Live `set-input`: same list-resolve-confirm-read-back shape over
 /// the sources.
 pub fn set_input_by_name(name: &str) -> Result<AudioDevice, ArchelError> {
+    set_input_by_name_with(name, crate::packages::confirm_action)
+}
+
+/// Confirm-injected `set-input`: same contract as
+/// [`set_output_by_name_with`] over the sources.
+pub fn set_input_by_name_with(
+    name: &str,
+    confirm: impl FnOnce(&str) -> Result<(), ArchelError>,
+) -> Result<AudioDevice, ArchelError> {
     let snapshot = audio_list()?;
-    let device = set_input_picked_with(
-        &snapshot,
-        name,
-        crate::packages::confirm_action,
-        set_default,
-    )?;
+    let device = set_input_picked_with(&snapshot, name, confirm, set_default)?;
     let fresh = audio_list()?;
     match fresh.sources.iter().find(|source| source.name == device.name) {
         Some(current) if current.default => Ok(current.clone()),

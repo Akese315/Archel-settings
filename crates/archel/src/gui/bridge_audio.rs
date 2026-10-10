@@ -17,6 +17,9 @@ pub mod qobject {
         #[qproperty(QString, sinks_json)]
         #[qproperty(QString, sources_json)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, output_error_text)]
+        #[qproperty(QString, input_error_text)]
         #[namespace = "archel_settings"]
         type AudioModel = super::AudioModelRust;
 
@@ -27,6 +30,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "setDefaultOutput"]
+        fn set_default_output(self: Pin<&mut Self>, name: QString);
+
+        #[qinvokable]
+        #[cxx_name = "setDefaultInput"]
+        fn set_default_input(self: Pin<&mut Self>, name: QString);
     }
 
     impl cxx_qt::Threading for AudioModel {}

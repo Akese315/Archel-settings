@@ -19,6 +19,8 @@ pub mod qobject {
         #[qproperty(QString, wallpaper_text)]
         #[qproperty(QString, font_text)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
+        #[qproperty(QString, operation_kind)]
         #[namespace = "archel_settings"]
         type AppearanceModel = super::AppearanceModelRust;
 
@@ -29,6 +31,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "setBlur"]
+        fn set_blur(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "setOpacity"]
+        fn set_opacity(self: Pin<&mut Self>, active: QString, inactive: QString);
+
+        #[qinvokable]
+        #[cxx_name = "setWallpaper"]
+        fn set_wallpaper(self: Pin<&mut Self>, path: QString);
+
+        #[qinvokable]
+        #[cxx_name = "setFont"]
+        fn set_font(self: Pin<&mut Self>, family: QString, size: QString);
     }
 
     impl cxx_qt::Threading for AppearanceModel {}

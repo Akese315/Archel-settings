@@ -1,10 +1,14 @@
-// Alimentation tab: active profile plus backend tag (read-only).
+// Alimentation tab: active profile plus backend tag, with the
+// plan-07 profile switch behind the D-12 confirm modal.
 //
 // The Timer runs unconditionally so the model keeps ticking while this
 // tab is hidden (D-03/D-06). Pre-first-tick values read the ellipsis
 // token; failures read N/A plus the once-per-episode banner (D-04/D-05).
-// The profile list renders read-only at this stage: writes land in
-// plan 07 behind the D-12 confirm modal.
+// The segmented control calls power.setProfile on click: the question
+// is the core's own confirm_set_prompt verbatim, and while the switch
+// is in flight the control shows a spinner and stays disabled (D-15) -
+// every other tab stays usable. The refresh after the switch reads the
+// new profile back from PPD.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -53,12 +57,21 @@ Item {
                     anchors.fill: parent
                     spacing: 8
 
-                    Repeater {
-                        model: power.profilesJson === "" ? [] : JSON.parse(power.profilesJson)
-                        delegate: RadioButton {
-                            text: modelData.id
-                            checked: modelData.active
-                            enabled: false
+                    RowLayout {
+                        spacing: 8
+
+                        Repeater {
+                            model: power.profilesJson === "" ? [] : JSON.parse(power.profilesJson)
+                            delegate: RadioButton {
+                                text: modelData.id
+                                checked: modelData.active
+                                enabled: !power.operationBusy
+                                onClicked: power.setProfile(modelData.id)
+                            }
+                        }
+                        BusyIndicator {
+                            visible: power.operationBusy
+                            running: power.operationBusy
                         }
                     }
                     StatField {

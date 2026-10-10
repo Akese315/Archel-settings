@@ -19,6 +19,7 @@ pub mod qobject {
         #[qproperty(QString, note_text)]
         #[qproperty(QString, profiles_json)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, operation_busy)]
         #[namespace = "archel_settings"]
         type PowerModel = super::PowerModelRust;
 
@@ -29,6 +30,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "setProfile"]
+        fn set_profile(self: Pin<&mut Self>, profile: QString);
     }
 
     impl cxx_qt::Threading for PowerModel {}

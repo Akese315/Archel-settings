@@ -345,14 +345,25 @@ pub async fn power_status() -> Result<PowerStatus, ArchelError> {
 /// Live `power set`: confirm-gated switch on whichever backend
 /// serves this machine (PPD property or cpufreq governor writes).
 pub async fn power_set(profile: PowerProfile) -> Result<PowerStatus, ArchelError> {
+    crate::packages::confirm_action(&confirm_set_prompt(profile))?;
+    power_set_direct(profile).await
+}
+
+/// Applies a profile switch WITHOUT any terminal confirmation.
+///
+/// The confirm moment belongs to the caller: the CLI passes through
+/// [`power_set`] (terminal `[o/N]` gate); the GUI shows
+/// [`confirm_set_prompt`] in its confirm modal and calls this only on
+/// accept. Backend dispatch is identical in both paths (thin-view
+/// contract; PLAT-03).
+pub async fn power_set_direct(profile: PowerProfile) -> Result<PowerStatus, ArchelError> {
     if ppd_present().await {
-        crate::packages::confirm_action(&confirm_set_prompt(profile))?;
         ppd_set(profile).await
     } else {
         cpufreq_set_with(
             Path::new(CPUFREQ_DIR),
             profile,
-            crate::packages::confirm_action,
+            |_| Ok(()),
             |governor| write_governors_at(Path::new(CPUFREQ_DIR), governor).map(|_| ()),
         )
     }
