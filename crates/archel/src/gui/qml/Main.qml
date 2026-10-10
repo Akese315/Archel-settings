@@ -300,7 +300,10 @@ ApplicationWindow {
             currentIndex: 0
 
             LandingTab {}
-            NetTab {}
+            NetTab {
+                id: netTab
+                onImportRequested: vpnPopup.open()
+            }
             PowerTab {}
             BtTab {}
             AppearanceTab {}
@@ -353,6 +356,22 @@ ApplicationWindow {
         // authoritative gate re-checks both flags Rust-side.
         onAurValidated: pkg.aurBuildStart()
         z: 102
+    }
+
+    // VPN import popup (D-20, plan 06-07): single instance at the
+    // root, opened by the NetTab Importer button. The chosen path
+    // goes to the NetModel worker (validate-infer-confirm-import);
+    // the popup closes on submit so the tab shows the spinner and
+    // the result banner. Failures surface in the ErrorModal.
+    VpnImportPopup {
+        id: vpnPopup
+        busy: netTab.net.vpnBusy
+        onImportRequested: function (path) {
+            netTab.net.vpnImportStart(path)
+            close()
+        }
+        onDismissed: close()
+        z: 103
     }
 
     // Mirror ModalSession onto ShellModel's modal properties. 120 ms sits

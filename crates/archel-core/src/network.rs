@@ -2509,14 +2509,30 @@ pub mod vpn {
     /// Runs one mutating `nmcli connection import` argv with the
     /// import-specific error map (same spawn discipline as the other
     /// NM writes: exact argv, `LC_ALL=C`, `wait_timeout` plus kill).
-    fn run_vpn_import(tool: &str, args: &[&str], action: &str, plugin: &str) -> Result<String, ArchelError> {
+    /// `stdin_null` detaches the child's stdin: the GUI path sets it
+    /// so a plugin-requested secret can never block on an inherited
+    /// terminal the user cannot see (T-06-32); the CLI keeps the
+    /// inherited stdin so `--ask` can prompt.
+    fn run_vpn_import(
+        tool: &str,
+        args: &[&str],
+        action: &str,
+        plugin: &str,
+        stdin_null: bool,
+    ) -> Result<String, ArchelError> {
         let binary = which::which(tool)
             .map_err(|err| ArchelError::network_unavailable(format!("{tool} ({err})")))?;
-        let handle = duct::cmd(&binary, args)
+        let expression = duct::cmd(&binary, args)
             .unchecked()
             .env("LC_ALL", "C")
             .stdout_capture()
-            .stderr_capture()
+            .stderr_capture();
+        let expression = if stdin_null {
+            expression.stdin_null()
+        } else {
+            expression
+        };
+        let handle = expression
             .start()
             .map_err(|err| ArchelError::Internal(format!("cannot run '{tool}': {err}")))?;
         let output = match handle
@@ -2554,6 +2570,22 @@ pub mod vpn {
     /// infer the plugin, spawn `connection import --ask`, parse the
     /// reported connection name. Never parses `.ovpn`/`.conf` in Rust.
     pub fn vpn_import(path: &str) -> Result<VpnImportReport, ArchelError> {
+        vpn_import_with(path, false)
+    }
+
+    /// GUI entry point for the same import with the child's stdin
+    /// detached (`--ask` secrets fail fast instead of blocking on an
+    /// inherited terminal the user cannot see, T-06-32). Validation,
+    /// plugin inference, argv and error mapping are identical to
+    /// [`vpn_import`] - only the stdin differs, so the CLI twin's
+    /// behaviour is unchanged.
+    pub fn vpn_import_stdin_null(path: &str) -> Result<VpnImportReport, ArchelError> {
+        vpn_import_with(path, true)
+    }
+
+    /// Shared validate-infer-spawn-parse body behind both import
+    /// entry points.
+    fn vpn_import_with(path: &str, stdin_null: bool) -> Result<VpnImportReport, ArchelError> {
         let canonical = validate_vpn_import_path(path)?;
         let vpn_type = infer_vpn_type(&canonical).ok_or_else(|| ArchelError::VpnPathInvalid {
             path: path.to_string(),
@@ -2561,7 +2593,7 @@ pub mod vpn {
         let canonical_str = canonical.to_string_lossy().into_owned();
         let argv = vpn_import_argv(vpn_type, &canonical_str);
         let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
-        let stdout = run_vpn_import("nmcli", &argv_ref, path, vpn_type)?;
+        let stdout = run_vpn_import("nmcli", &argv_ref, path, vpn_type, stdin_null)?;
         Ok(VpnImportReport {
             file: path.to_string(),
             vpn_type: vpn_type.to_string(),

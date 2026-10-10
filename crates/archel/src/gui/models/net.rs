@@ -10,9 +10,12 @@
 //! No D-Bus or nmcli call lives in this file: every read goes through
 //! the CLI-proven core entry points (PLAT-03).
 
+use std::path::{Path, PathBuf};
+
 use cxx_qt_lib::QString;
 
 use super::super::poll::{BannerPolicy, PollGuard};
+use crate::gui::modal::{self, ModalSession};
 use crate::gui::models::system::NOT_AVAILABLE;
 
 /// Fully formatted tick payload, built off the Qt thread so the
@@ -43,6 +46,9 @@ pub struct NetModelRust {
     pub(crate) conns_json: QString,
     pub(crate) vpn_json: QString,
     pub(crate) banner_visible: bool,
+    pub(crate) dns_busy: bool,
+    pub(crate) vpn_busy: bool,
+    pub(crate) vpn_result_text: QString,
     guard: PollGuard,
     banner: BannerPolicy,
 }
@@ -60,6 +66,9 @@ impl Default for NetModelRust {
             conns_json: QString::from(""),
             vpn_json: QString::from(""),
             banner_visible: false,
+            dns_busy: false,
+            vpn_busy: false,
+            vpn_result_text: QString::from(""),
             guard: PollGuard::new(),
             banner: BannerPolicy::new(),
         }
@@ -209,6 +218,243 @@ impl crate::gui::bridge_net::qobject::NetModel {
         self.as_mut().rust_mut().banner.dismiss();
         self.as_mut().set_banner_visible(false);
     }
+
+    /// Dismisses the VPN import success banner.
+    pub fn dismiss_vpn_result(mut self: core::pin::Pin<&mut Self>) {
+        use cxx_qt::CxxQtType;
+        self.as_mut()
+            .set_vpn_result_text(QString::from(""));
+    }
+
+    /// Live DNS validation for the editor rows: runs core
+    /// `validate_dns_servers` synchronously (pure, no spawn) and
+    /// returns the French error for inline display, or the empty
+    /// string when the list is valid (T-06-31 gate, same call the
+    /// apply worker re-checks before planning).
+    pub fn dns_validate(self: core::pin::Pin<&mut Self>, servers_json: QString) -> QString {
+        let servers = parse_servers_json(&servers_json.to_string());
+        match archel_core::network::dns::validate_dns_servers(&servers) {
+            Ok(_) => QString::from(""),
+            Err(err) => QString::from(&err.message()),
+        }
+    }
+
+    /// Applies the edited DNS list (D-12): validate, plan against the
+    /// active profile, confirm with the plan's own question verbatim,
+    /// then apply via `spawn_blocking` with a spinner on the apply
+    /// button (D-15). Failures surface in the error modal (D-17);
+    /// success refreshes the tab so the DNS row reads back.
+    pub fn dns_apply(mut self: core::pin::Pin<&mut Self>, servers_json: QString) {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().dns_busy {
+            return;
+        }
+        self.as_mut().rust_mut().dns_busy = true;
+        self.as_mut().set_dns_busy(true);
+        let servers = parse_servers_json(&servers_json.to_string());
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            dns_worker(&servers, &PROD_NET_DNS_OPS, modal::session());
+            let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
+                use cxx_qt::CxxQtType;
+                obj.as_mut().rust_mut().dns_busy = false;
+                obj.as_mut().set_dns_busy(false);
+                obj.as_mut().tick();
+            });
+        });
+    }
+
+    /// Starts a VPN import for one picked or typed path (D-20): the
+    /// core path validation and plugin inference run first (traversal
+    /// and nonexistent paths are rejected with core's own message
+    /// before any confirm), then the core import confirm question,
+    /// then `vpn_import_stdin_null` on the blocking pool - the nmcli
+    /// `--ask` child runs with stdin detached so no secret prompt can
+    /// hang the GUI (T-06-32). The inferred type plus the reported
+    /// connection name publish as a success banner; failures go to
+    /// the error modal.
+    pub fn vpn_import_start(mut self: core::pin::Pin<&mut Self>, path: QString) {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().vpn_busy {
+            return;
+        }
+        self.as_mut().rust_mut().vpn_busy = true;
+        self.as_mut().set_vpn_busy(true);
+        let text = path.to_string();
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            let outcome = vpn_worker(&text, &PROD_NET_VPN_OPS, modal::session());
+            let _ = qt_thread.queue(move |mut obj: core::pin::Pin<&mut Self>| {
+                use cxx_qt::CxxQtType;
+                obj.as_mut().rust_mut().vpn_busy = false;
+                obj.as_mut().set_vpn_busy(false);
+                if let Some(line) = outcome {
+                    obj.as_mut()
+                        .set_vpn_result_text(QString::from(&line));
+                }
+                obj.as_mut().tick();
+            });
+        });
+    }
+}
+
+/// Parses the DNS editor payload QML sends (`JSON.stringify` of the
+/// row fields). Entries are trimmed and blanks dropped; anything
+/// unparsable is an honest empty list - the worker's own validation
+/// refuses it before any plan exists.
+pub(crate) fn parse_servers_json(raw: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(raw)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|server| server.trim().to_string())
+        .filter(|server| !server.is_empty())
+        .collect()
+}
+
+/// Injection seam for the DNS path: the exact core entry points the
+/// worker calls, as plain function pointers. Production passes the
+/// real core functions ([`PROD_NET_DNS_OPS`]); unit tests pass fakes
+/// so the validate-plan-confirm-apply sequence is proven without
+/// touching NM (the D-Bus/nmcli contract is the core's tested
+/// territory - the GUI never spawns or edits config itself,
+/// T-06-31).
+pub(crate) struct NetDnsOps {
+    pub validate: fn(&[String]) -> Result<Vec<String>, archel_core::ArchelError>,
+    pub plan: fn(
+        Option<&str>,
+        &[String],
+    ) -> Result<archel_core::network::dns::DnsPlan, archel_core::ArchelError>,
+    pub prompt: fn(&archel_core::network::dns::DnsPlan) -> String,
+    pub apply: fn(
+        &archel_core::network::dns::DnsPlan,
+    ) -> Result<archel_core::network::dns::DnsReport, archel_core::ArchelError>,
+}
+
+/// The production wiring: validate, plan and apply are the
+/// CLI-proven `net dns set` pieces (`run_dns_set` calls the same
+/// three in the same order); the plan targets the active profile
+/// (`None`), exactly as the CLI does without `--profile`.
+pub(crate) const PROD_NET_DNS_OPS: NetDnsOps = NetDnsOps {
+    validate: archel_core::network::dns::validate_dns_servers,
+    plan: archel_core::network::dns::plan_dns_set,
+    prompt: archel_core::network::dns::confirm_dns_prompt,
+    apply: archel_core::network::dns::apply_dns_plan,
+};
+
+/// DNS apply worker body (runs on the blocking pool): the validated
+/// servers plan against the active profile; the question is the
+/// plan's own confirm prompt verbatim; only a yes reaches the apply;
+/// every failure (validation, plan, apply - privilege shapes
+/// included) surfaces as core's readable `message()` in the error
+/// modal (D-17).
+pub(crate) fn dns_worker(
+    servers: &[String],
+    ops: &NetDnsOps,
+    sess: &ModalSession,
+) {
+    let validated = match (ops.validate)(servers) {
+        Ok(validated) => validated,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return;
+        }
+    };
+    let plan = match (ops.plan)(None, &validated) {
+        Ok(plan) => plan,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return;
+        }
+    };
+    let rx = sess.request_confirm(&(ops.prompt)(&plan));
+    if !rx.recv().unwrap_or(false) {
+        return;
+    }
+    if let Err(err) = (ops.apply)(&plan) {
+        sess.open_error(&err.message());
+    }
+}
+
+/// Injection seam for the VPN import path: the exact core entry
+/// points the worker calls. Production ([`PROD_NET_VPN_OPS`]) runs
+/// the stdin-detached import; unit tests pass fakes so the
+/// validate-infer-confirm-import sequence is proven without spawning
+/// nmcli (T-06-32).
+pub(crate) struct NetVpnOps {
+    pub validate_path: fn(&str) -> Result<PathBuf, archel_core::ArchelError>,
+    pub infer: fn(&Path) -> Option<&'static str>,
+    pub prompt: fn(&str, &str) -> String,
+    pub import: fn(&str) -> Result<archel_core::network::vpn::VpnImportReport, archel_core::ArchelError>,
+}
+
+/// The production wiring: path validation, plugin inference and the
+/// import question are the CLI-proven `net vpn import` pieces; the
+/// import itself is the stdin-detached twin of the CLI's call.
+pub(crate) const PROD_NET_VPN_OPS: NetVpnOps = NetVpnOps {
+    validate_path: archel_core::network::vpn::validate_vpn_import_path,
+    infer: archel_core::network::vpn::infer_vpn_type,
+    prompt: archel_core::network::vpn::confirm_vpn_import_prompt,
+    import: archel_core::network::vpn::vpn_import_stdin_null,
+};
+
+/// VPN import worker body (runs on the blocking pool). Returns
+/// `Some(success line)` on success for the banner, `None` on decline
+/// or failure (failures open the error modal with core's message
+/// verbatim - traversal and nonexistent paths never reach a confirm).
+pub(crate) fn vpn_worker(path: &str, ops: &NetVpnOps, sess: &ModalSession) -> Option<String> {
+    let canonical = match (ops.validate_path)(path) {
+        Ok(canonical) => canonical,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return None;
+        }
+    };
+    let vpn_type = match (ops.infer)(&canonical) {
+        Some(vpn_type) => vpn_type,
+        None => {
+            sess.open_error(
+                &archel_core::ArchelError::VpnPathInvalid {
+                    path: path.to_string(),
+                }
+                .message(),
+            );
+            return None;
+        }
+    };
+    let rx = sess.request_confirm(&(ops.prompt)(path, vpn_type));
+    if !rx.recv().unwrap_or(false) {
+        return None;
+    }
+    match (ops.import)(path) {
+        Ok(report) => Some(vpn_success_line(&report)),
+        Err(err) => {
+            sess.open_error(&err.message());
+            None
+        }
+    }
+}
+
+/// Success banner line for an imported tunnel: ASCII only (D-07) -
+/// QML renders the surrounding French sentence from its own copy.
+/// Carries the inferred plugin plus the connection name nmcli
+/// reported, so the user can find the new tunnel in the list.
+pub(crate) fn vpn_success_line(report: &archel_core::network::vpn::VpnImportReport) -> String {
+    match &report.connection_name {
+        Some(name) => format!("{} ({})", name, report.vpn_type),
+        None => format!("import ok ({})", report.vpn_type),
+    }
 }
 
 #[cfg(test)]
@@ -313,5 +559,254 @@ mod tests {
         assert_eq!(opt_or_na(Some("")), NOT_AVAILABLE);
         assert_eq!(opt_or_na(Some("  ")), NOT_AVAILABLE);
         assert_eq!(opt_or_na(Some("wlan0")), "wlan0");
+    }
+
+    // -- Write-path choreography (plan 06-07, Task 2) --
+    //
+    // The fakes below replace only the `NetDnsOps`/`NetVpnOps` seams;
+    // the workers themselves run for real against a local
+    // ModalSession, so the validate-plan-confirm-apply and
+    // validate-infer-confirm-import sequences are proven without
+    // touching NM or spawning nmcli.
+
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    use archel_core::network::dns::{DnsPlan, DnsReport};
+    use archel_core::network::vpn::VpnImportReport;
+
+    use crate::gui::modal::{ModalKind, ModalSession};
+
+    fn wait_until(what: &str, cond: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if cond() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("condition never held within 5s: {what}");
+    }
+
+    fn plan_fixture() -> DnsPlan {
+        DnsPlan {
+            profile_name: "home".to_string(),
+            profile_uuid: "uuid-1".to_string(),
+            old_servers: Vec::new(),
+            reset: false,
+            new_servers: vec!["1.1.1.1".to_string()],
+        }
+    }
+
+    fn report_fixture() -> DnsReport {
+        DnsReport {
+            profile_name: "home".to_string(),
+            profile_uuid: "uuid-1".to_string(),
+            old_servers: Vec::new(),
+            new_servers: vec!["1.1.1.1".to_string()],
+            effective_dns: Some(vec!["1.1.1.1".to_string()]),
+            reactivated: true,
+        }
+    }
+
+    #[test]
+    fn invalid_dns_is_rejected_before_any_plan_or_apply() {
+        static PLAN_CALLS: AtomicUsize = AtomicUsize::new(0);
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn validate_rejects(servers: &[String]) -> Result<Vec<String>, archel_core::ArchelError> {
+            assert_eq!(servers, &["999.1.1.1".to_string()]);
+            Err(archel_core::ArchelError::DnsInvalid {
+                server: "999.1.1.1".to_string(),
+            })
+        }
+        fn plan_must_not_run(
+            _profile: Option<&str>,
+            _servers: &[String],
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            PLAN_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(plan_fixture())
+        }
+        fn apply_must_not_run(_plan: &DnsPlan) -> Result<DnsReport, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(report_fixture())
+        }
+        let ops = NetDnsOps {
+            validate: validate_rejects,
+            plan: plan_must_not_run,
+            prompt: archel_core::network::dns::confirm_dns_prompt,
+            apply: apply_must_not_run,
+        };
+        let sess = ModalSession::default();
+        dns_worker(&["999.1.1.1".to_string()], &ops, &sess);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(
+            sess.snapshot_error(),
+            archel_core::ArchelError::DnsInvalid {
+                server: "999.1.1.1".to_string(),
+            }
+            .message()
+        );
+        assert_eq!(PLAN_CALLS.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(APPLY_CALLS.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[test]
+    fn dns_decline_asks_the_plan_question_verbatim_and_never_applies() {
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn validate_echo(servers: &[String]) -> Result<Vec<String>, archel_core::ArchelError> {
+            Ok(servers.to_vec())
+        }
+        fn plan_fixture_fn(
+            _profile: Option<&str>,
+            _servers: &[String],
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            Ok(plan_fixture())
+        }
+        fn apply_must_not_run(_plan: &DnsPlan) -> Result<DnsReport, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(report_fixture())
+        }
+        let ops = NetDnsOps {
+            validate: validate_echo,
+            plan: plan_fixture_fn,
+            prompt: archel_core::network::dns::confirm_dns_prompt,
+            apply: apply_must_not_run,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| dns_worker(&["1.1.1.1".to_string()], &ops, &sess));
+            wait_until("dns confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            assert_eq!(
+                sess.snapshot_question(),
+                archel_core::network::dns::confirm_dns_prompt(&plan_fixture()),
+                "the question comes from the plan verbatim"
+            );
+            sess.resolve_confirm(false);
+        });
+        assert_eq!(APPLY_CALLS.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(sess.snapshot_kind(), ModalKind::None);
+    }
+
+    #[test]
+    fn dns_accept_applies_the_planned_servers() {
+        static APPLIED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+        fn validate_echo(servers: &[String]) -> Result<Vec<String>, archel_core::ArchelError> {
+            Ok(servers.to_vec())
+        }
+        fn plan_fixture_fn(
+            _profile: Option<&str>,
+            _servers: &[String],
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            Ok(plan_fixture())
+        }
+        fn apply_records(plan: &DnsPlan) -> Result<DnsReport, archel_core::ArchelError> {
+            *APPLIED.lock().expect("applied lock") = plan.new_servers.clone();
+            Ok(report_fixture())
+        }
+        let ops = NetDnsOps {
+            validate: validate_echo,
+            plan: plan_fixture_fn,
+            prompt: archel_core::network::dns::confirm_dns_prompt,
+            apply: apply_records,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| dns_worker(&["1.1.1.1".to_string()], &ops, &sess));
+            wait_until("dns confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(true);
+            wait_until("dns apply runs", || {
+                !APPLIED.lock().expect("applied lock").is_empty()
+            });
+        });
+        assert_eq!(
+            *APPLIED.lock().expect("applied lock"),
+            vec!["1.1.1.1".to_string()],
+            "the planned servers reach the apply leg"
+        );
+    }
+
+    #[test]
+    fn vpn_bad_path_is_rejected_with_the_core_message_before_any_spawn() {
+        static IMPORT_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn import_must_not_run(
+            _path: &str,
+        ) -> Result<VpnImportReport, archel_core::ArchelError> {
+            IMPORT_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(VpnImportReport {
+                file: String::new(),
+                vpn_type: String::new(),
+                connection_name: None,
+            })
+        }
+        let ops = NetVpnOps {
+            validate_path: archel_core::network::vpn::validate_vpn_import_path,
+            infer: archel_core::network::vpn::infer_vpn_type,
+            prompt: archel_core::network::vpn::confirm_vpn_import_prompt,
+            import: import_must_not_run,
+        };
+        let sess = ModalSession::default();
+        let outcome = vpn_worker("/tmp/does-not-exist-archel.ovpn", &ops, &sess);
+        assert_eq!(outcome, None);
+        assert_eq!(sess.snapshot_kind(), ModalKind::Error);
+        assert_eq!(
+            sess.snapshot_error(),
+            archel_core::ArchelError::VpnPathInvalid {
+                path: "/tmp/does-not-exist-archel.ovpn".to_string(),
+            }
+            .message(),
+            "traversal/nonexistent paths surface the core message verbatim"
+        );
+        assert_eq!(IMPORT_CALLS.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[test]
+    fn vpn_accept_imports_and_reports_type_plus_name() {
+        static IMPORTED: Mutex<String> = Mutex::new(String::new());
+        fn validate_ok(path: &str) -> Result<PathBuf, archel_core::ArchelError> {
+            Ok(PathBuf::from(path))
+        }
+        fn infer_openvpn(_path: &Path) -> Option<&'static str> {
+            Some("openvpn")
+        }
+        fn import_records(path: &str) -> Result<VpnImportReport, archel_core::ArchelError> {
+            *IMPORTED.lock().expect("imported lock") = path.to_string();
+            Ok(VpnImportReport {
+                file: path.to_string(),
+                vpn_type: "openvpn".to_string(),
+                connection_name: Some("bureau".to_string()),
+            })
+        }
+        let ops = NetVpnOps {
+            validate_path: validate_ok,
+            infer: infer_openvpn,
+            prompt: archel_core::network::vpn::confirm_vpn_import_prompt,
+            import: import_records,
+        };
+        let sess = ModalSession::default();
+        let outcome = std::thread::scope(|s| {
+            let handle = s.spawn(|| vpn_worker("/tmp/bureau.ovpn", &ops, &sess));
+            wait_until("vpn confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            assert_eq!(
+                sess.snapshot_question(),
+                archel_core::network::vpn::confirm_vpn_import_prompt(
+                    "/tmp/bureau.ovpn",
+                    "openvpn"
+                )
+            );
+            sess.resolve_confirm(true);
+            handle.join().expect("worker joins")
+        });
+        assert_eq!(outcome.as_deref(), Some("bureau (openvpn)"));
+        assert_eq!(
+            IMPORTED.lock().expect("imported lock").as_str(),
+            "/tmp/bureau.ovpn"
+        );
     }
 }

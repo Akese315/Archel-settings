@@ -24,6 +24,9 @@ pub mod qobject {
         #[qproperty(QString, conns_json)]
         #[qproperty(QString, vpn_json)]
         #[qproperty(bool, banner_visible)]
+        #[qproperty(bool, dns_busy)]
+        #[qproperty(bool, vpn_busy)]
+        #[qproperty(QString, vpn_result_text)]
         #[namespace = "archel_settings"]
         type NetModel = super::NetModelRust;
 
@@ -34,6 +37,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissBanner"]
         fn dismiss_banner(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "dismissVpnResult"]
+        fn dismiss_vpn_result(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "dnsValidate"]
+        fn dns_validate(self: Pin<&mut Self>, servers_json: QString) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "dnsApply"]
+        fn dns_apply(self: Pin<&mut Self>, servers_json: QString);
+
+        #[qinvokable]
+        #[cxx_name = "vpnImportStart"]
+        fn vpn_import_start(self: Pin<&mut Self>, path: QString);
     }
 
     impl cxx_qt::Threading for NetModel {}
