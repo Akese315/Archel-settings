@@ -462,7 +462,12 @@ pub(crate) fn pair_worker(
     );
     sess.end_pairing();
     if declined.load(Ordering::SeqCst) {
-        let _ = (ops.unpair)(&device);
+        // Decline itself stays silent on success; a failed cleanup must
+        // not: the refused device would stay bonded with zero feedback
+        // (CR-01 — trust-violation shape, fail closed with a modal).
+        if let Err(err) = (ops.unpair)(&device) {
+            sess.open_error(&err.message());
+        }
         return;
     }
     if let Err(err) = result {
@@ -779,6 +784,46 @@ mod tests {
             ModalKind::None,
             "a decline is silent, never an error"
         );
+    }
+
+    #[test]
+    fn pair_decline_with_failing_cleanup_surfaces_the_error() {
+        fn fake_pair(
+            device: &BtDevice,
+            answer: Box<PairAnswer>,
+        ) -> Result<(), archel_core::ArchelError> {
+            fake_handshake(device, answer)
+        }
+        fn unpair_fails(
+            device: &BtDevice,
+        ) -> Result<(), archel_core::ArchelError> {
+            Err(archel_core::ArchelError::Internal(format!(
+                "daemon race removing {}",
+                device.address
+            )))
+        }
+        let ops = BtWriteOps {
+            pair: fake_pair,
+            unpair: unpair_fails,
+            connect: transport_refused,
+            disconnect: transport_refused,
+            set_adapter: |_| {
+                panic!("adapter toggle must never run during a pair");
+            },
+        };
+        let sess: &'static ModalSession = Box::leak(Box::new(ModalSession::default()));
+        std::thread::scope(|s| {
+            s.spawn(|| pair_worker(&known_devices(), "AA:BB:CC:DD:EE:FF", &ops, sess));
+            wait_until("pair intent opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(true);
+            wait_until("pairing modal opens", || sess.snapshot_pairing_active());
+            sess.resolve_pairing(false);
+            wait_until("cleanup error opens", || {
+                sess.snapshot_kind() == ModalKind::Error
+            });
+        });
     }
 
     #[test]

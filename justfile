@@ -27,8 +27,9 @@ gui-build:
     QMAKE=/usr/bin/qmake6 cargo build -p archel --features gui
 
 # qmllint sweep over every QML file; any error fails the recipe.
+# Fails loudly when no qmllint is installed; space-safe via -exec (WR-06).
 lint-qml:
-    for f in $(find crates/archel/src/gui/qml -name '*.qml'); do "$(command -v qmllint-qt6 || command -v qmllint)" "$f" || exit 1; done
+    LINTER="$(command -v qmllint-qt6 || command -v qmllint || true)"; test -n "$LINTER" || { echo "qmllint not found (install qt6-declarative)"; exit 1; }; find crates/archel/src/gui/qml -name '*.qml' -exec "$LINTER" {} +
 
 # Offscreen smoke: the app must stay alive until `timeout` kills it
 # (rc=124). Any other rc means a tab regressed at startup.

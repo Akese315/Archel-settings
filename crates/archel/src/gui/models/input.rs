@@ -672,7 +672,9 @@ pub(crate) fn add_keybind_worker(
 
 /// Keybind-remove worker (INP-02): exact-match miss check first
 /// (typed, before any confirm), then the destructive-toned confirm
-/// question, then live unbind plus the snippet removal.
+/// question, then a post-confirm re-read (external edits during the
+/// confirm window must not be clobbered), then live unbind plus the
+/// snippet removal.
 pub(crate) fn remove_keybind_worker(
     base: &Path,
     mods: &str,
@@ -690,6 +692,26 @@ pub(crate) fn remove_keybind_worker(
             return;
         }
     };
+    // Pre-confirm miss check (typed, before any confirm): a nonexistent
+    // bind never reaches the destructive prompt.
+    let pre = match (ops.read_body)(base) {
+        Ok(body) => body,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return;
+        }
+    };
+    if let Err(err) = core_binds::remove_bind_line(&pre, &target) {
+        sess.open_error(&err.message());
+        return;
+    }
+    if !await_confirm(sess, &core_binds::confirm_bind_remove_prompt(&target)) {
+        return;
+    }
+    // Re-read AFTER the (unbounded) confirm window: external
+    // hyprland.conf edits made while the user thinks must not be
+    // clobbered by a stale pre-confirm snapshot (CR-02). A target that
+    // vanished meanwhile re-fails typed instead of writing.
     let body = match (ops.read_body)(base) {
         Ok(body) => body,
         Err(err) => {
@@ -704,9 +726,6 @@ pub(crate) fn remove_keybind_worker(
             return;
         }
     };
-    if !await_confirm(sess, &core_binds::confirm_bind_remove_prompt(&target)) {
-        return;
-    }
     if let Err(err) = (ops.eval_unbind)(&target) {
         sess.open_error(&err.message());
         return;
@@ -1121,6 +1140,62 @@ mod tests {
         assert!(
             core_binds::parse_snippet_binds(&written).is_empty(),
             "the line is gone, siblings untouched: {written}"
+        );
+    }
+
+    #[test]
+    fn remove_external_edit_during_confirm_is_not_clobbered() {
+        use archel_core::hyprland::binds as core_binds;
+        static READS: AtomicUsize = AtomicUsize::new(0);
+        static WRITES: AtomicUsize = AtomicUsize::new(0);
+        let target = core_binds::plan_bind("SUPER", "T", "exec", Some("kitty")).expect("plans");
+        let fixture = core_binds::add_bind_line("", &target).expect("fixture body");
+        static FIXTURE_BODY: Mutex<String> = Mutex::new(String::new());
+        *FIXTURE_BODY.lock().expect("fixture lock") = fixture;
+        fn vanishing_body(_: &std::path::Path) -> Result<String, archel_core::ArchelError> {
+            // First read (pre-confirm miss check) sees the bind; the
+            // post-confirm re-read finds it gone — an external edit won
+            // the race while the user was thinking.
+            if READS.fetch_add(1, AtomicOrdering::SeqCst) == 0 {
+                Ok(FIXTURE_BODY.lock().expect("fixture lock").clone())
+            } else {
+                Ok(String::new())
+            }
+        }
+        let ops = InputOps {
+            read_body: vanishing_body,
+            write_body: |_, _| {
+                WRITES.fetch_add(1, AtomicOrdering::SeqCst);
+                Ok(())
+            },
+            ..succeeding_input_ops()
+        };
+        let sess = ModalSession::default();
+        let base = test_base("remove-drift");
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                remove_keybind_worker(
+                    &base,
+                    "SUPER",
+                    "T",
+                    "exec",
+                    Some("kitty"),
+                    &ops,
+                    &sess,
+                )
+            });
+            wait_until("remove confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(true);
+            wait_until("drift error opens", || {
+                sess.snapshot_kind() == ModalKind::Error
+            });
+        });
+        assert_eq!(
+            WRITES.load(AtomicOrdering::SeqCst),
+            0,
+            "the stale pre-confirm snapshot is never written"
         );
     }
 }
