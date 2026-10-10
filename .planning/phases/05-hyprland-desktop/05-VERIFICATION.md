@@ -1,11 +1,19 @@
 ---
 phase: 05-hyprland-desktop
 verified: 2026-10-10T18:05:00Z
-status: human_needed
+status: passed
 score: 4/4 goal-backward checks satisfied (0 partial, 0 missing)
 behavior_unverified: 0
 overrides_applied: 0
 covered_files:
+  - .planning/phases/05-hyprland-desktop/05-01-01-PLAN.md
+  - .planning/phases/05-hyprland-desktop/05-01-01-SUMMARY.md
+  - .planning/phases/05-hyprland-desktop/05-02-01-PLAN.md
+  - .planning/phases/05-hyprland-desktop/05-02-01-SUMMARY.md
+  - .planning/phases/05-hyprland-desktop/05-03-01-PLAN.md
+  - .planning/phases/05-hyprland-desktop/05-03-01-SUMMARY.md
+  - .planning/phases/05-hyprland-desktop/05-04-01-PLAN.md
+  - .planning/phases/05-hyprland-desktop/05-04-01-SUMMARY.md
   - crates/archel-core/src/hyprland/mod.rs
   - crates/archel-core/src/hyprland/appearance.rs
   - crates/archel-core/src/hyprland/monitors.rs
@@ -21,7 +29,8 @@ covered_files:
   - crates/archel-core/src/lib.rs
   - crates/archel/src/cmds/mod.rs
   - crates/archel-core/locales/fr.json
-covered_digest: "v3:sha256:ab700a91db8860522c070c7bb7fd7b8f8f6be5d3f75498cf840ba55adcabee17"
+
+covered_digest: "v2:sha256:314b73c7eb22bdc7bb2e045650af6b8ee4fb3748434562c17ac5ce84cb75a8aa"
 human_verification:
   - test: "After `archel appearance wallpaper set <valid-image>`, the desktop background visibly changes (hyprpaper conf-slice rewrite + pkill/respawn end to end). Revert afterwards."
     expected: "Wallpaper visibly changes on the live Hyprland desktop; `wallpaper status` reads back the managed path."
