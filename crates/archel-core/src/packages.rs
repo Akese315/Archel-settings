@@ -88,8 +88,19 @@ pub fn search(query: &str) -> Result<Vec<PackageInfo>, ArchelError> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
+    // WR-05 flag-injection guard: a query starting with '-' would be
+    // consumed as an option (pacman --config=..., yay --... paths).
+    // Reject it typed before any spawn; the '--' terminator below
+    // additionally pins the free-text boundary for pacman only — yay
+    // misparses '--' (its AUR query hangs; verified live), so AUR
+    // relies on the validator alone.
+    if query.trim_start().starts_with('-') {
+        return Err(ArchelError::InvalidPackageName {
+            name: query.trim().to_string(),
+        });
+    }
     let repo_out =
-        run_capped_query("pacman", &["-Ss", query], ArchelError::Internal)?;
+        run_capped_query("pacman", &["-Ss", "--", query], ArchelError::Internal)?;
     let mut hits: Vec<PackageInfo> = parse_search_output(&repo_out)
         .into_iter()
         .map(|(source, name, version)| PackageInfo {
@@ -249,8 +260,17 @@ pub fn package_card(name: &str) -> Result<PackageCard, ArchelError> {
             name: name.to_string(),
         });
     }
+    // WR-05 flag-injection guard: the card path queries by one
+    // user-supplied name; anything outside the strict package-name
+    // charset (leading dash, metacharacters, whitespace) is refused
+    // typed before any spawn — same validator the mutation paths use.
+    if !is_valid_package_name(name) {
+        return Err(ArchelError::InvalidPackageName {
+            name: name.to_string(),
+        });
+    }
     let installed_version = installed_version_of(name)?;
-    let repo_out = run_capped_query("pacman", &["-Si", name], ArchelError::Internal)?;
+    let repo_out = run_capped_query("pacman", &["-Si", "--", name], ArchelError::Internal)?;
     let repo_fields = parse_info_fields(&repo_out);
     if let Some(card) = compose_card(name, &repo_fields, None, installed_version.clone()) {
         return Ok(card);
@@ -503,6 +523,12 @@ pub fn confirm_action(prompt: &str) -> Result<(), ArchelError> {
 /// (piped input refuses before any reader thread starts) and reuses
 /// [`parse_confirm_answer`], so only the window is new. Std-only: one
 /// stdin-reader thread plus `mpsc::recv_timeout`, no new crate.
+/// Contract (WR-06): on timeout the receiver is dropped so a late
+/// reader's send fails and its thread exits once stdin finally
+/// answers; the caller is expected to end the process promptly after
+/// `ConfirmTimeout` (the display orchestration does) — a long-lived
+/// caller leaves the stale reader blocked on stdin, where it could
+/// consume one line from a later prompt.
 pub fn confirm_action_timed(
     prompt: &str,
     window: Duration,
@@ -522,7 +548,14 @@ pub fn confirm_action_timed(
     });
     match rx.recv_timeout(window) {
         Ok(line) => Ok(parse_confirm_answer(&line)),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(ArchelError::ConfirmTimeout),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            // WR-06: explicitly drop the receiving end on the timeout
+            // path, so a reader that wakes late finds its `tx.send`
+            // failed and the thread exits — no thread lingers holding
+            // the channel after the window lapses.
+            drop(rx);
+            Err(ArchelError::ConfirmTimeout)
+        }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(ArchelError::NeedsTty),
     }
 }
@@ -674,6 +707,36 @@ mod tests {
                 search(query).expect("blank query must not fail"),
                 Vec::new(),
                 "blank query renders the honest empty table"
+            );
+        }
+    }
+
+    #[test]
+    fn search_rejects_flag_injection_queries_typed() {
+        // WR-05 regression: a search query is free text heading
+        // straight into 'pacman -Ss' / 'yay -Ss' argv — a leading dash
+        // would be consumed as an option (--config=, --dbpath=...).
+        // Refused typed before any spawn; pacman additionally gets a
+        // '--' terminator (yay misparses '--', so it relies on this
+        // validator alone).
+        for query in ["--config=/tmp/pacman.conf", "-Sy", "--ask", "  --noconfirm"] {
+            let err = search(query).expect_err("flag-like query must be refused");
+            assert!(
+                matches!(err, ArchelError::InvalidPackageName { .. }),
+                "flag-like query {query:?} must be InvalidPackageName: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn package_card_rejects_flag_injection_names_typed() {
+        // WR-05 regression, card path: hostile names never reach
+        // 'pacman -Si' / 'yay -Si' argv.
+        for name in ["--config=/tmp/pacman.conf", "-Sy", "foo bar", "foo/bar", "foo;rm"] {
+            let err = package_card(name).expect_err("flag-like name must be refused");
+            assert!(
+                matches!(err, ArchelError::InvalidPackageName { .. }),
+                "flag-like name {name:?} must be InvalidPackageName: {err:?}"
             );
         }
     }
