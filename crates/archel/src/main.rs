@@ -8,6 +8,10 @@
 mod cmds;
 #[cfg(feature = "gui")]
 mod gui;
+// PLAT-03 thin-view audit lives here (06-09): `#[cfg(test)]`-only,
+// std-only source scan, so it runs in both feature suites.
+#[cfg(test)]
+mod thin_view_audit;
 
 use std::process::ExitCode;
 

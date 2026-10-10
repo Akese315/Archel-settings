@@ -6,8 +6,13 @@
 //! on its tab's model, and no tab implements a system mutation that
 //! is not backed by an `archel-core` call.
 //!
-//! Pure source-text scan — no Qt runtime, no cxx-qt, no D-Bus. It runs
-//! in the plain `--no-default-features` suite so CI gates the
+//! Pure source-text scan — no Qt runtime, no cxx-qt, no D-Bus. It lives
+//! in the binary's unit-test tree (NOT in tests/: this crate is
+//! binary-only, so an integration-test target inherits the build.rs Qt
+//! link set without the bin target's bridge symbols and can never link
+//! under `--features gui`). As a `#[cfg(test)]` module it compiles and
+//! runs in BOTH suites — headless `--no-default-features` and the full
+//! `--features gui` run inside `just gui-check` — so CI gates the
 //! phase-goal criterion "each tab a thin view over CLI-proven core".
 //!
 //! Three gates:
