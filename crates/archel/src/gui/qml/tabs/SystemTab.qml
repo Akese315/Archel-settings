@@ -139,7 +139,9 @@ Item {
                                             width: Math.min(64, 64 * modelData.usage / 100)
                                             height: 4
                                             radius: 2
-                                            color: cpuCard.palette.accent
+                                            color: modelData.usage > 85 ? "#e01b24"
+                                                  : modelData.usage > 50 ? "#ff7800"
+                                                  : cpuCard.palette.accent
                                         }
                                     }
                                     Label {
