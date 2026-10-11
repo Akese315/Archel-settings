@@ -30,6 +30,7 @@
 ## Phase Details
 
 ### Phase 7: GUI Polish Fixes
+
 **Goal**: GUI code-review debt is fixed — tabs behave correctly under polling, pickers handle real paths, confirms are isolated, and the casing convention is settled
 **Depends on**: Phase 6 (v1.0 shipped)
 **Requirements**: GUI-01, GUI-02, GUI-03, GUI-04, GUI-05, GUI-06
@@ -39,10 +40,22 @@
   3. User can trigger confirms in two tabs without one tab's session affecting the other
   4. User can add a keybind and the new combo fires live with no stale snippet line left behind on failure
   5. User can return to automatic DNS from the GUI, or the GUI clearly marks it CLI-only; QML binding convention is applied and the WINDOWS.md gate is closed
-**Plans**: TBD
+
+**Plans**: 4 plans
+
+Plans:
+**Wave 1**
+- [ ] 07-01-PLAN.md — Input draft-state tracer (GUI-01)
+- [ ] 07-02-PLAN.md — Picker decoding + keybind ordering (GUI-02, GUI-04)
+- [ ] 07-03-PLAN.md — Parallel confirm stack (GUI-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 07-04-PLAN.md — Automatique DNS + casing gate (GUI-05, GUI-06)
+
 **UI hint**: yes
 
 ### Phase 8: Repo Hygiene
+
 **Goal**: The repo is clean and stable — clippy is green under `-D warnings`, timing tests don't flake, Nyquist drafts exist, advisories are fixed
 **Depends on**: Phase 7
 **Requirements**: HYG-01, HYG-02, HYG-03, HYG-04
@@ -51,9 +64,11 @@
   2. Maintainer can run the full test suite under heavy parallel load with no `live_*` timing flakes
   3. Reviewer can find Nyquist validation drafts for phases 01–06 covering the deferred validation debt
   4. User gets correct audio read-back (matched on device id), no hardcoded "N/A" in NetTab, and the thin-view audit parses Cargo.toml properly
+
 **Plans**: TBD
 
 ### Phase 9: Live UAT Verification
+
 **Goal**: Every deferred live check is confirmed on the user's real Hyprland session — display, input, appearance, escalation, visual pass, and VPN
 **Depends on**: Phase 8
 **Requirements**: UAT-01, UAT-02, UAT-03, UAT-04, UAT-05, UAT-06, UAT-07
@@ -63,6 +78,7 @@
   3. User confirms an added keybind fires live and edit-rekey leaves only the new chord bound with no restart (UAT-03)
   4. User confirms the timed-confirm reader exits cleanly on a real TTY and the pkexec dialog appears for a helper-gated package operation (UAT-04, UAT-05)
   5. User confirms the GUI visual pass (10 tabs, vertical rail, French strings) and VPN `down` re-test shows the tracking-loss warning with the `vpn import` hint (UAT-06, UAT-07)
+
 **Plans**: TBD
 
 ## Progress
