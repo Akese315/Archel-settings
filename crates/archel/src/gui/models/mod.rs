@@ -14,3 +14,4 @@ pub mod landing;
 pub mod net;
 pub mod power;
 pub mod system;
+pub mod theme;
