@@ -28,16 +28,13 @@ Dialog {
         onActivated: root.dismissed()
     }
 
-    SystemPalette {
-        id: pal
-    }
-
     // Red-accent title via a custom header (UI-SPEC color discipline:
-    // palette role, not a literal hex). `brightText` is NOT a
-    // SystemPalette role (QtQuick's SystemPalette stops at window/
-    // windowText/text/base/mid/...); it lives on the Controls
-    // `palette` every Popup carries, so the header reads the Dialog's
-    // own palette for the semantic warning-ink role.
+    // palette role, not a literal hex). `brightText` lives on the
+    // Controls `palette` every Popup carries, and that palette is
+    // theme-bound: Main.qml sets the window palette from ThemeModel
+    // and Qt propagates it into this Dialog, so the semantic
+    // warning-ink role follows the active theme like every other
+    // control here.
     header: Label {
         text: "Une erreur est survenue"
         font.bold: true
@@ -63,9 +60,9 @@ Dialog {
             readOnly: true
             selectByMouse: true
             selectByKeyboard: true
-            color: pal.windowText
-            selectionColor: pal.highlight
-            selectedTextColor: pal.highlightedText
+            color: root.palette.windowText
+            selectionColor: root.palette.highlight
+            selectedTextColor: root.palette.highlightedText
         }
 
         RowLayout {

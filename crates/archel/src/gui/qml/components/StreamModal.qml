@@ -59,10 +59,6 @@ Dialog {
         }
     }
 
-    SystemPalette {
-        id: pal
-    }
-
     contentHeight: col.implicitHeight
 
     ColumnLayout {
@@ -76,7 +72,7 @@ Dialog {
             Layout.preferredHeight: 240
             clip: true
             background: Rectangle {
-                color: pal.base
+                color: root.palette.base
             }
 
             TextEdit {
@@ -86,8 +82,8 @@ Dialog {
                 wrapMode: TextEdit.WrapAnywhere
                 font.family: "monospace"
                 font.pointSize: 13
-                color: pal.text
-                selectionColor: pal.highlight
+                color: root.palette.text
+                selectionColor: root.palette.highlight
                 // Auto-scroll to the newest line (UI-SPEC streaming-log
                 // overflow row); the buffer is capped core-side, this is
                 // just the viewport follow.
@@ -138,8 +134,8 @@ Dialog {
                         Layout.fillWidth: true
                         Layout.preferredHeight: cardCol.implicitHeight + 20
                         radius: 6
-                        color: pal.base
-                        border.color: pal.mid
+                        color: root.palette.base
+                        border.color: root.palette.mid
                         ColumnLayout {
                             id: cardCol
                             anchors.left: parent.left
@@ -217,7 +213,7 @@ Dialog {
                 clip: true
                 visible: pkgbuildExpander.checked
                 background: Rectangle {
-                    color: pal.base
+                    color: root.palette.base
                 }
                 TextEdit {
                     readOnly: true
@@ -225,8 +221,8 @@ Dialog {
                     wrapMode: TextEdit.WrapAnywhere
                     font.family: "monospace"
                     font.pointSize: 12
-                    color: pal.text
-                    selectionColor: pal.highlight
+                    color: root.palette.text
+                    selectionColor: root.palette.highlight
                     width: trustBlock.width > 0 ? trustBlock.width : 400
                 }
             }
