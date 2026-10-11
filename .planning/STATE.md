@@ -4,18 +4,18 @@ milestone: v1.1
 milestone_name: Debt + Polish
 current_phase: 7
 current_phase_name: gui-polish-fixes
-status: planning
-stopped_at: Phase 7 context gathered
-last_updated: "2026-10-11T18:10:14.398Z"
+status: executing
+stopped_at: Completed 7-01-PLAN.md
+last_updated: "2026-10-11T18:35:21.517Z"
 last_activity: 2026-10-11
-last_activity_desc: v1.1 roadmap created (Phases 7–9)
-state_head: 03bb854f5fd108062cd65d8e8fc7946a4ad21fae
+last_activity_desc: Phase 7 execution started
+state_head: b937fc8f877f216d61f83d9bda24da09c97b73c9
 progress:
   total_phases: 3
   completed_phases: 6
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-11, post-v1.0 evolution review)
 
 **Core value:** One reliable API through which every system setting can be read and changed on Arch + Hyprland — proven via the CLI before the GUI ever draws it.
-**Current focus:** Milestone v1.1 Debt + Polish — Phase 7 ready to plan (GUI Polish Fixes)
+**Current focus:** Phase 7 — gui-polish-fixes
 
 ## Current Position
 
-Phase: 7 (gui-polish-fixes) — READY TO EXECUTE
-Plan: — (ready to plan)
-Status: Ready to plan Phase 7
-Last activity: 2026-10-11 — v1.1 roadmap created (Phases 7–9)
+Phase: 7 (gui-polish-fixes) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-10-11 — Phase 7 execution started
 
-Progress: [░░░░░░░░░░] 0% (v1.1: 0/3 phases)
+Progress: [███░░░░░░░] 25% (v1.1: 0/3 phases)
 
 ## Performance Metrics
 
@@ -59,6 +59,11 @@ Progress: [░░░░░░░░░░] 0% (v1.1: 0/3 phases)
 - Trend: - (new milestone)
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 7 P01 | 2m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +74,9 @@ Recent decisions affecting current work:
 
 - [Roadmap v1.1]: 3 phases continuing numbering at 7 — GUI fixes → hygiene → live UAT (clippy baseline must cover fixed code; live checks verify final code)
 - [Roadmap v1.1]: HYG-04 advisories grouped with hygiene; all 7 UAT items in one terminal verification phase (needs live Hyprland session)
+- [Phase 7]: Validation flags stay lightweight QML guards with the worker authoritative (no new invokable)
+- [Phase 7]: Popup is InputTab-owned with forced choice, never the shared session
+- [Phase 7]: Timer also re-syncs as fallback behind the property-change signals
 
 ### Pending Todos
 
@@ -97,9 +105,9 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-11T17:50:37.167Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-gui-polish-fixes/07-CONTEXT.md
+Last session: 2026-10-11T18:35:21.499Z
+Stopped at: Completed 7-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

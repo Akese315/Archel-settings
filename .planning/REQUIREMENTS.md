@@ -23,7 +23,7 @@ Deferred verifications requiring the user's live Hyprland session.
 
 Code-review follow-ups from waves 6-7 plus the open Windows-gate deviation.
 
-- [ ] **GUI-01**: Input tab edits survive the 1 Hz poll tick — editor state decoupled like NetTab (local state, write on Appliquer) (WR-01)
+- [x] **GUI-01**: Input tab edits survive the 1 Hz poll tick — editor state decoupled like NetTab (local state, write on Appliquer) (WR-01)
 - [ ] **GUI-02**: VPN + wallpaper FileDialog pickers resolve percent-encoded paths via `toLocalFile()` (WR-02)
 - [ ] **GUI-03**: Confirm sessions are per-tab (or generation-tagged) — no cross-tab multiplexing on the single global session (WR-03)
 - [ ] **GUI-04**: Keybind-add persists before (or compensates after) live-eval — no unevaluated snippet line left behind on post-eval persist failure (WR-04)
@@ -66,7 +66,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UAT-05 | Phase 9 | Pending |
 | UAT-06 | Phase 9 | Pending |
 | UAT-07 | Phase 9 | Pending |
-| GUI-01 | Phase 7 | Pending |
+| GUI-01 | Phase 7 | Complete |
 | GUI-02 | Phase 7 | Pending |
 | GUI-03 | Phase 7 | Pending |
 | GUI-04 | Phase 7 | Pending |

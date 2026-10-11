@@ -41,11 +41,11 @@
   4. User can add a keybind and the new combo fires live with no stale snippet line left behind on failure
   5. User can return to automatic DNS from the GUI, or the GUI clearly marks it CLI-only; QML binding convention is applied and the WINDOWS.md gate is closed
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 07-01-PLAN.md — Input draft-state tracer (GUI-01)
+- [x] 07-01-PLAN.md — Input draft-state tracer (GUI-01)
 - [ ] 07-02-PLAN.md — Picker decoding + keybind ordering (GUI-02, GUI-04)
 - [ ] 07-03-PLAN.md — Parallel confirm stack (GUI-03)
 
@@ -94,6 +94,6 @@ Phases execute in numeric order: 7 → 8 → 9
 | 4. Connectivity & Devices | v1.0 | 5/5 | Complete | 2026-10-07 |
 | 5. Hyprland Desktop | v1.0 | 4/4 | Complete | 2026-10-08 |
 | 6. GUI Shell & Tabs | v1.0 | 9/9 | Complete | 2026-10-10 |
-| 7. GUI Polish Fixes | v1.1 | 0/TBD | Not started | - |
+| 7. GUI Polish Fixes | v1.1 | 1/4 | In Progress|  |
 | 8. Repo Hygiene | v1.1 | 0/TBD | Not started | - |
 | 9. Live UAT Verification | v1.1 | 0/TBD | Not started | - |
