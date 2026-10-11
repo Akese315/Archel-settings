@@ -1,5 +1,5 @@
 ---
-status: investigating
+status: resolved
 trigger: ./target/debug/archel settings fails at startup — QQmlApplicationEngine failed to load component (invalidOverride duplicate signals in 3 modals + CountdownModal defaultButton)
 created: 2026-10-11
 updated: 2026-10-11
