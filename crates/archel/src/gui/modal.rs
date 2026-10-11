@@ -15,12 +15,27 @@
 //! All user-visible wording produced here is plain ASCII (D-07:
 //! French copy lives in QML or the catalog, never in `.rs` files).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 /// Hard cap on streamed lines kept in memory (T-06-30: a runaway
 /// child cannot grow the modal buffer without bound).
 pub const MAX_STREAM_LINES: usize = 10_000;
+
+/// Hard cap on stacked confirms (GUI-03 fixed two-modal rendering,
+/// D-05/D-06). A request arriving past the cap is declined immediately
+/// through the standard decline path: its worker sees `false`, writes
+/// nothing, shows nothing.
+pub const MAX_STACKED_CONFIRMS: usize = 2;
+
+/// One pending confirm: a generation-tagged stack entry (D-05). Each
+/// waiter keeps its own receiver until its own entry resolves, so a
+/// second tab confirm never orphans the first waiter (WR-03).
+struct PendingConfirm {
+    generation: u64,
+    question: String,
+    tx: std::sync::mpsc::Sender<bool>,
+}
 
 /// Modal kinds, mirrored by `ShellModel.modal_kind` and the three
 /// root modals in Main.qml.
@@ -128,7 +143,19 @@ pub struct ModalSession {
     aur_name: Mutex<String>,
     result: Mutex<EndState>,
     exit_code: Mutex<Option<i32>>,
-    confirm_tx: Mutex<Option<std::sync::mpsc::Sender<bool>>>,
+    // -- Pending-confirm stack (plan 07-03, D-05/D-06/D-08) --
+    //
+    // Parallel per-tab confirms: `request_confirm` pushes a
+    // generation-tagged entry and never resets siblings, so a second
+    // tab confirm no longer orphans the first waiter (WR-03). Each
+    // waiter keeps its own receiver until its own entry resolves;
+    // `resolve_confirm` removes exactly the newest entry (top-only,
+    // D-08) while older entries stay pending. The `question` field
+    // mirrors index 0 for the existing single-ConfirmModal binding;
+    // the top entry is mirrored separately (see
+    // `snapshot_question_top`).
+    confirm_stack: Mutex<Vec<PendingConfirm>>,
+    confirm_generation: AtomicU64,
     // -- Bluetooth pairing session (plan 06-07, D-21) --
     //
     // Fully independent from the confirm/error/stream fields above:
@@ -160,7 +187,8 @@ impl Default for ModalSession {
             aur_name: Mutex::new(String::new()),
             result: Mutex::new(EndState::Completed),
             exit_code: Mutex::new(None),
-            confirm_tx: Mutex::new(None),
+            confirm_stack: Mutex::new(Vec::new()),
+            confirm_generation: AtomicU64::new(0),
             pairing_active: Mutex::new(false),
             pairing_address: Mutex::new(String::new()),
             pairing_name: Mutex::new(String::new()),
@@ -179,13 +207,34 @@ impl Default for ModalSession {
 impl ModalSession {
     /// Opens a confirmation and returns the receiver the worker
     /// blocks on. QML resolves it through `confirm_accepted` /
-    /// `confirm_declined`. Any previous session is reset first.
+    /// `confirm_declined`. The entry is pushed onto the pending stack
+    /// and never resets siblings: two tabs may each hold a pending
+    /// confirm at the same time (D-05).
     pub fn request_confirm(&self, question: &str) -> std::sync::mpsc::Receiver<bool> {
-        self.reset();
-        *self.question.lock().expect("question lock") = question.to_string();
-        *self.kind.lock().expect("kind lock") = ModalKind::Confirm;
         let (tx, rx) = std::sync::mpsc::channel();
-        *self.confirm_tx.lock().expect("confirm lock") = Some(tx);
+        let base_question = {
+            let mut stack = self.confirm_stack.lock().expect("confirm lock");
+            if stack.len() >= MAX_STACKED_CONFIRMS {
+                // Overflow past the fixed two-modal rendering: decline
+                // the newest through the standard decline path (the
+                // worker sees `false`, writes nothing, shows nothing).
+                let _ = tx.send(false);
+                return rx;
+            }
+            let generation = self
+                .confirm_generation
+                .fetch_add(1, Ordering::SeqCst)
+                .wrapping_add(1);
+            stack.push(PendingConfirm {
+                generation,
+                question: question.to_string(),
+                tx,
+            });
+            // modal_question keeps index 0 for the existing binding.
+            stack[0].question.clone()
+        };
+        *self.question.lock().expect("question lock") = base_question;
+        *self.kind.lock().expect("kind lock") = ModalKind::Confirm;
         rx
     }
 
@@ -195,13 +244,30 @@ impl ModalSession {
         let _ = self.request_confirm(question);
     }
 
-    /// Resolves a pending confirmation. No waiter (direct QML use)
-    /// makes this a harmless no-op.
+    /// Resolves a pending confirmation (top-only, D-08): removes
+    /// exactly the newest stack entry and releases its waiter, while
+    /// older entries stay pending. No waiter (direct QML use) makes
+    /// this a harmless no-op.
     pub fn resolve_confirm(&self, accepted: bool) {
-        if let Some(tx) = self.confirm_tx.lock().expect("confirm lock").take() {
-            let _ = tx.send(accepted);
+        let remaining_base = {
+            let mut stack = self.confirm_stack.lock().expect("confirm lock");
+            match stack.pop() {
+                Some(entry) => {
+                    let _ = entry.tx.send(accepted);
+                }
+                None => return,
+            }
+            stack.first().map(|entry| entry.question.clone())
+        };
+        match remaining_base {
+            Some(base) => {
+                *self.question.lock().expect("question lock") = base;
+            }
+            None => {
+                *self.question.lock().expect("question lock") = String::new();
+                *self.kind.lock().expect("kind lock") = ModalKind::None;
+            }
         }
-        *self.kind.lock().expect("kind lock") = ModalKind::None;
     }
 
     /// Opens the error modal with core-produced readable text
@@ -254,7 +320,11 @@ impl ModalSession {
         *self.aur_name.lock().expect("aur lock") = String::new();
         *self.result.lock().expect("result lock") = EndState::Completed;
         *self.exit_code.lock().expect("exit lock") = None;
-        *self.confirm_tx.lock().expect("confirm lock") = None;
+        // Draining the stack drops every pending sender, so each
+        // waiter observes the same decline it saw under the old
+        // single-slot reset (recv Err -> unwrap_or(false)). The error
+        // path that calls reset() is therefore byte-identical (D-07).
+        self.confirm_stack.lock().expect("confirm lock").clear();
     }
 
     /// Starts a new AUR review: the only place that clears the
@@ -375,6 +445,22 @@ impl ModalSession {
     pub fn snapshot_question(&self) -> String {
         self.question.lock().expect("question lock").clone()
     }
+    /// Newest (top) stack entry question, mirrored beside
+    /// `snapshot_question` (index 0) for the stacked second modal
+    /// (D-06). Empty when no confirm is pending.
+    pub fn snapshot_question_top(&self) -> String {
+        self.confirm_stack
+            .lock()
+            .expect("confirm lock")
+            .last()
+            .map(|entry| entry.question.clone())
+            .unwrap_or_default()
+    }
+    /// Number of pending confirms (0, 1, or capped at 2). Drives the
+    /// stacked modal visibility beside `snapshot_kind`.
+    pub fn snapshot_confirm_count(&self) -> usize {
+        self.confirm_stack.lock().expect("confirm lock").len()
+    }
     pub fn snapshot_lines_joined(&self) -> String {
         self.lines.lock().expect("lines lock").join("\n")
     }
@@ -492,6 +578,75 @@ mod tests {
         let rx = session.request_confirm("Supprimer bar ?");
         session.resolve_confirm(false);
         assert!(!rx.recv().expect("waiter resolves"));
+    }
+
+    #[test]
+    fn two_concurrent_confirms_coexist() {
+        let session = fresh();
+        let first = session.request_confirm("Appliquer DNS ?");
+        let second = session.request_confirm("Ajouter cle ?");
+        // Neither waiter is silently declined by its sibling.
+        assert!(first.try_recv().is_err(), "first waiter stays pending");
+        assert!(second.try_recv().is_err(), "second waiter stays pending");
+        assert_eq!(session.snapshot_confirm_count(), 2);
+        // Index 0 keeps the oldest question for the existing binding;
+        // the top entry is mirrored beside it.
+        assert_eq!(session.snapshot_question(), "Appliquer DNS ?");
+        assert_eq!(session.snapshot_question_top(), "Ajouter cle ?");
+        // Generation tags are distinct and increasing (T-7-04).
+        let stack = session.confirm_stack.lock().expect("confirm lock");
+        assert_eq!(stack.len(), 2);
+        assert!(
+            stack[0].generation < stack[1].generation,
+            "entries carry increasing generation tags"
+        );
+    }
+
+    #[test]
+    fn top_only_resolve_leaves_the_older_pending() {
+        let session = fresh();
+        let first = session.request_confirm("Appliquer DNS ?");
+        let second = session.request_confirm("Ajouter cle ?");
+        session.resolve_confirm(true);
+        // Exactly the newest entry resolves; the older stays pending.
+        assert!(second.recv().expect("top waiter resolves"));
+        assert!(first.try_recv().is_err(), "older waiter stays pending");
+        assert_eq!(session.snapshot_confirm_count(), 1);
+        assert_eq!(session.snapshot_kind(), ModalKind::Confirm);
+        assert_eq!(session.snapshot_question(), "Appliquer DNS ?");
+        assert_eq!(session.snapshot_question_top(), "Appliquer DNS ?");
+        // Resolving the last entry closes the session.
+        session.resolve_confirm(true);
+        assert!(first.recv().expect("older waiter resolves"));
+        assert_eq!(session.snapshot_confirm_count(), 0);
+        assert_eq!(session.snapshot_kind(), ModalKind::None);
+    }
+
+    #[test]
+    fn stacked_decline_resolves_top_false_and_keeps_the_older() {
+        let session = fresh();
+        let first = session.request_confirm("Appliquer DNS ?");
+        let second = session.request_confirm("Ajouter cle ?");
+        session.resolve_confirm(false);
+        assert!(!second.recv().expect("top waiter resolves"));
+        assert!(first.try_recv().is_err(), "older waiter stays pending");
+        assert_eq!(session.snapshot_confirm_count(), 1);
+        assert_eq!(session.snapshot_kind(), ModalKind::Confirm);
+    }
+
+    #[test]
+    fn confirm_overflow_past_two_declines_the_newest() {
+        let session = fresh();
+        let first = session.request_confirm("Premiere question ?");
+        let second = session.request_confirm("Deuxieme question ?");
+        // Past the fixed two-modal cap the newest is declined through
+        // the standard path: the worker sees false immediately.
+        let third = session.request_confirm("Troisieme question ?");
+        assert!(!third.recv().expect("overflow waiter resolves"));
+        assert_eq!(session.snapshot_confirm_count(), 2);
+        assert!(first.try_recv().is_err(), "first waiter stays pending");
+        assert!(second.try_recv().is_err(), "second waiter stays pending");
+        assert_eq!(session.snapshot_question_top(), "Deuxieme question ?");
     }
 
     #[test]
