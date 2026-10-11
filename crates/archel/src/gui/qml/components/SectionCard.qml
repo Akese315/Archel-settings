@@ -21,5 +21,9 @@ GroupBox {
         font.bold: true
         font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.95)
         opacity: 0.85
+        x: root.leftPadding
+        width: root.availableWidth
+        elide: Text.ElideRight
+        y: Math.round((root.topPadding - implicitHeight) / 2)
     }
 }

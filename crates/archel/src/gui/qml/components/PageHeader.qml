@@ -15,8 +15,6 @@ Control {
     padding: 0
     background: null
 
-    implicitHeight: headerCol.implicitHeight
-
     contentItem: ColumnLayout {
         id: headerCol
         spacing: 2
