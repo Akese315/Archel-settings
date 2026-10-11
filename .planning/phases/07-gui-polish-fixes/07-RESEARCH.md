@@ -391,22 +391,25 @@ Note the remove worker already models the safe shape: post-confirm re-read befor
 
 **If this table is empty:** n/a — five assumptions above need planner/executor confirmation.
 
-## Open Questions
+## Open Questions (RESOLVED — all three answered by the plans, resolutions inline below)
 
-1. **Confirm-stack rendering shape**
+1. **Confirm-stack rendering shape (RESOLVED: fixed two-modal)**
    - What we know: `sync_session` mirrors one question; Main.qml binds one `ConfirmModal` to `shell.modal_kind === "confirm"`. D-05/D-06/D-08 require N parallel + stacked + top-only-cancel.
    - What's unclear: Whether to mirror `modal_questions_json` (QML Repeater/Instantitor of ConfirmModal) vs. fixed `modal_question` + `modal_question_2` properties (two static modals, second with higher z). Former scales, latter is simpler and D-05 only ever needs two in practice.
    - Recommendation: Fixed two-modal shape (question + question_top) unless the planner foresees >2 concurrent confirms; cap the stack at 2–3 with a defined overflow (oldest auto-declined with error-modal note, or refuse newest with inline busy — planner decides, must stay D-12-compliant).
+   - **Resolution (RESOLVED):** Fixed two-modal shape adopted — plan 07-03 renders a second static `ConfirmModal` with higher `z` bound to the top stack entry; stack capped with a defined D-12-compliant overflow.
 
-2. **D-04 popup trigger mechanics**
+2. **D-04 popup trigger mechanics (RESOLVED: dedicated InputTab-owned Dialog)**
    - What we know: Draft lives on the InputTab root; "returning" = `stack.currentIndex` changing to the Input index with a dirty draft.
    - What's unclear: Exact signal wiring (Main.qml `onCurrentIndexChanged` vs. InputTab visibility listener) and whether the popup is a new `Dialog` component or reuses `ConfirmModal` via the session (reusing the global session would collide with GUI-03 pending confirms).
    - Recommendation: Dedicated lightweight `Dialog`/`Popup` owned by InputTab (not the shared session) offering Appliquer/Abandonner; planner specifies.
+   - **Resolution (RESOLVED):** Dedicated lightweight `Dialog` owned by the InputTab root (not the shared ModalSession) offering Appliquer/Abandonner — implemented in plan 07-01, avoiding collision with GUI-03 pending confirms.
 
-3. **"Automatique" visual shape in the DNS group**
+3. **"Automatique" visual shape in the DNS group (RESOLVED: cheapest button-row shape)**
    - What we know: D-09…D-12 fix behavior (reset leg, confirm, session memory, active profile only). No visual reference (CONTEXT specifics: "no specific visual references").
    - What's unclear: Radio "Automatique / Manuel" vs. "Automatique" toggle-button vs. combobox above the server rows.
    - Recommendation: Planner picks the cheapest shape consistent with the existing button row (Réinitialiser/Appliquer); behavior contract is fully locked so any shape works.
+   - **Resolution (RESOLVED):** Cheapest shape consistent with the existing Ajouter/button row in the Serveurs DNS GroupBox — implemented in plan 07-04; behavior contract D-09 through D-12 fully locked regardless of shape.
 
 ## Environment Availability
 
