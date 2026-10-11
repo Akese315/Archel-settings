@@ -289,6 +289,8 @@ impl crate::gui::bridge_theme::qobject::ThemeModel {
     /// setters that emit the notify signals.
     pub fn set_dark(mut self: core::pin::Pin<&mut Self>, dark: bool) {
         use cxx_qt::CxxQtType;
+        // Unchanged mode is a no-op: skips a redundant persist and
+        // closes the Switch toggled() re-entry loop.
         if self.as_mut().rust_mut().dark_mode == dark {
             return;
         }
@@ -303,6 +305,9 @@ impl crate::gui::bridge_theme::qobject::ThemeModel {
     pub fn set_accent(mut self: core::pin::Pin<&mut Self>, key: QString) {
         use cxx_qt::CxxQtType;
         let key = key.to_string();
+        if self.as_mut().rust_mut().accent_key.to_string() == key {
+            return;
+        }
         if !ACCENT_KEYS.contains(&key.as_str()) {
             return;
         }

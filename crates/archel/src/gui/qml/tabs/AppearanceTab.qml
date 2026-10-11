@@ -113,14 +113,24 @@ Item {
                                 required property string name
                                 implicitWidth: 28
                                 implicitHeight: 28
+                                Accessible.role: Accessible.Button
+                                Accessible.name: swatch.name
 
                                 background: Rectangle {
-                                    radius: 14
+                                    radius: swatch.width / 2
                                     color: swatch.hex
                                     border.width: root.theme.accentKey === swatch.key ? 3 : 1
                                     border.color: root.theme.accentKey === swatch.key
                                         ? root.theme.colorBrightText
                                         : root.palette.mid
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: -3
+                                        radius: swatch.width / 2 + 3
+                                        border.width: 2
+                                        border.color: root.palette.accent
+                                        visible: swatch.activeFocus
+                                    }
                                 }
                                 ToolTip.text: swatch.name
                                 ToolTip.visible: hovered
