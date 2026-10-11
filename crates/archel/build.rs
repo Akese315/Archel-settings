@@ -71,6 +71,7 @@ fn main() {
         "src/gui/bridge_input.rs",
         "src/gui/bridge_pkg.rs",
         "src/gui/bridge_system.rs",
+        "src/gui/bridge_theme.rs",
         "src/gui/bridge_landing.rs",
         "src/gui/bridge_net.rs",
         "src/gui/bridge_power.rs",

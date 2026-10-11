@@ -1,12 +1,13 @@
 //! Theme view-model: derivation of the 12 QPalette token sets (2 modes
 //! x 6 accents) plus theme.json persistence (spec 2026-10-11).
 //!
-//! Pure core on purpose: Token-based derivation needs no Qt types, so
-//! contrast and completeness are unit-testable headless. QColor
-//! conversion happens only in the ThemeModel invokables.
+//! Pure derivation core (no Qt types) so contrast and completeness are
+//! unit-testable headless; QColor conversion and the ThemeModel
+//! qobject live at the bottom of the file.
 
 use std::path::{Path, PathBuf};
 
+use cxx_qt_lib::{QColor, QString};
 use serde::{Deserialize, Serialize};
 
 /// Save file name, beside window-geometry.json in ~/.config/archel/.
@@ -96,6 +97,11 @@ pub(crate) struct ThemePalette {
 /// Derives the token set for one mode/accent combination. Direction C
 /// (spec): near-black base with white-alpha surfaces in dark mode,
 /// latte-style light surfaces otherwise.
+///
+/// Selection contrast: `highlighted_text` over the composited
+/// `highlight` tint is consciously accepted at ~3.9-4.4:1 in light
+/// mode (selected rows also carry the filled accent indicator), so
+/// no composite-aware test is asserted.
 pub(crate) fn palette(dark: bool, key: &str) -> ThemePalette {
     let acc = accent(key);
     if dark {
@@ -209,23 +215,126 @@ impl ThemePrefs {
     }
 }
 
+// ── ThemeModel (CXX-Qt qobject backing) ───────────────────────────
+
+/// Saved theme, loaded once in `run_settings()` before `engine.load()`
+/// so the model is correct the moment QML instantiates it (geometry.rs
+/// STARTUP pattern).
+pub(crate) static STARTUP: std::sync::OnceLock<Option<ThemePrefs>> =
+    std::sync::OnceLock::new();
+
+/// Converts a pure token into a QColor (f32 components, QColor's API).
+fn to_qcolor(t: Token) -> QColor {
+    QColor::from_rgba_f(
+        t.r as f32 / 255.0,
+        t.g as f32 / 255.0,
+        t.b as f32 / 255.0,
+        t.a as f32 / 255.0,
+    )
+}
+
+/// Backing struct: current state plus the 11 derived palette colors.
+/// All mutation flows through `apply_prefs()`; the generated setters
+/// emit the notify signals that make every QML palette binding
+/// re-evaluate.
+pub struct ThemeModelRust {
+    pub(crate) dark_mode: bool,
+    pub(crate) accent_key: QString,
+    pub(crate) color_window: QColor,
+    pub(crate) color_base: QColor,
+    pub(crate) color_alternate_base: QColor,
+    pub(crate) color_mid: QColor,
+    pub(crate) color_button: QColor,
+    pub(crate) color_text: QColor,
+    pub(crate) color_bright_text: QColor,
+    pub(crate) color_placeholder_text: QColor,
+    pub(crate) color_accent: QColor,
+    pub(crate) color_highlight: QColor,
+    pub(crate) color_highlighted_text: QColor,
+}
+
+impl Default for ThemeModelRust {
+    fn default() -> Self {
+        let prefs = STARTUP.get().and_then(|p| p.clone()).unwrap_or_default();
+        Self::from_prefs(prefs.dark, &prefs.accent)
+    }
+}
+
+impl ThemeModelRust {
+    fn from_prefs(dark: bool, key: &str) -> Self {
+        let p = palette(dark, key);
+        Self {
+            dark_mode: dark,
+            accent_key: QString::from(key),
+            color_window: to_qcolor(p.window),
+            color_base: to_qcolor(p.base),
+            color_alternate_base: to_qcolor(p.alternate_base),
+            color_mid: to_qcolor(p.mid),
+            color_button: to_qcolor(p.button),
+            color_text: to_qcolor(p.text),
+            color_bright_text: to_qcolor(p.bright_text),
+            color_placeholder_text: to_qcolor(p.placeholder_text),
+            color_accent: to_qcolor(p.accent),
+            color_highlight: to_qcolor(p.highlight),
+            color_highlighted_text: to_qcolor(p.highlighted_text),
+        }
+    }
+}
+
+impl crate::gui::bridge_theme::qobject::ThemeModel {
+    /// Applies the mode switch: recompute + notify + persist.
+    /// Runs entirely on the Qt thread (pure property work, no spawn).
+    /// Property reads go through `rust_mut()` — the proven models
+    /// pattern (net.rs `dns_busy`) — writes through the generated
+    /// setters that emit the notify signals.
+    pub fn set_dark(mut self: core::pin::Pin<&mut Self>, dark: bool) {
+        use cxx_qt::CxxQtType;
+        let key = self.as_mut().rust_mut().accent_key.to_string();
+        apply_prefs(self.as_mut(), dark, key);
+    }
+
+    /// Applies the accent switch: recompute + notify + persist.
+    pub fn set_accent(mut self: core::pin::Pin<&mut Self>, key: QString) {
+        use cxx_qt::CxxQtType;
+        let key = key.to_string();
+        let dark = self.as_mut().rust_mut().dark_mode;
+        apply_prefs(self.as_mut(), dark, key);
+    }
+}
+
+/// Shared write path: setters emit the generated notifies, the prefs
+/// file is rewritten best-effort (write failure is cosmetic, log-free
+/// like geometry.rs).
+fn apply_prefs(mut obj: core::pin::Pin<&mut crate::gui::bridge_theme::qobject::ThemeModel>, dark: bool, key: String) {
+    let fresh = ThemeModelRust::from_prefs(dark, &key);
+    obj.as_mut().set_dark_mode(dark);
+    obj.as_mut().set_accent_key(QString::from(key.as_str()));
+    obj.as_mut().set_color_window(fresh.color_window);
+    obj.as_mut().set_color_base(fresh.color_base);
+    obj.as_mut().set_color_alternate_base(fresh.color_alternate_base);
+    obj.as_mut().set_color_mid(fresh.color_mid);
+    obj.as_mut().set_color_button(fresh.color_button);
+    obj.as_mut().set_color_text(fresh.color_text);
+    obj.as_mut().set_color_bright_text(fresh.color_bright_text);
+    obj.as_mut().set_color_placeholder_text(fresh.color_placeholder_text);
+    obj.as_mut().set_color_accent(fresh.color_accent);
+    obj.as_mut().set_color_highlight(fresh.color_highlight);
+    obj.as_mut().set_color_highlighted_text(fresh.color_highlighted_text);
+    let prefs = ThemePrefs { dark, accent: key };
+    save(&path(), &prefs);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every role of every combination is explicitly defined.
+    /// window/text stay opaque in every combination; the tints carry
+    /// the alpha.
     #[test]
-    fn every_role_is_defined_for_all_twelve_combinations() {
+    fn window_and_text_are_opaque_in_all_twelve_combinations() {
         for dark in [true, false] {
             for key in ACCENT_KEYS {
                 let p = palette(dark, key);
-                let roles = [
-                    p.window, p.base, p.alternate_base, p.mid, p.button,
-                    p.text, p.bright_text, p.placeholder_text,
-                    p.accent, p.highlight, p.highlighted_text,
-                ];
-                assert!(roles.len() == 11);
-                // window/text must be opaque; tints carry the alpha.
                 assert_eq!(p.window.a, 255, "window must be opaque ({key})");
                 assert_eq!(p.text.a, 255, "text must be opaque ({key})");
             }

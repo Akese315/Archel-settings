@@ -14,6 +14,7 @@ mod bridge_landing;
 mod bridge_net;
 mod bridge_power;
 mod bridge_system;
+mod bridge_theme;
 mod geometry;
 mod modal;
 mod models;
@@ -72,6 +73,10 @@ pub fn run_settings() -> Result<(), ArchelError> {
     // The Option-guards below stay (spike-proven): a refused Qt start (no
     // display, missing platform plugin) yields None rather than a crash,
     // and exec() is simply skipped.
+
+    // Theme: load the saved prefs before QML so ThemeModel instantiates
+    // with the right palette from the first frame (geometry.rs pattern).
+    let _ = models::theme::STARTUP.set(models::theme::load(&models::theme::path()));
     let _ = geometry::STARTUP.set(geometry::load(&geometry::path()));
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();
