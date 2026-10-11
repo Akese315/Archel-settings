@@ -50,10 +50,20 @@ Dialog {
         width: parent.width
         spacing: 16
 
-        SelectableLabel {
+        // Selectable error body: read-only TextEdit styled as a label
+        // (Label has no text selection; no SelectableLabel component
+        // exists in this codebase).
+        TextEdit {
             Layout.fillWidth: true
             text: root.errorText
-            wrapMode: Label.WrapAnywhere
+            wrapMode: TextEdit.Wrap
+            readOnly: true
+            selectByMouse: true
+            selectByKeyboard: true
+            color: pal.windowText
+            selectionColor: pal.highlight
+            selectedTextColor: pal.highlightedText
+            background: null
         }
 
         RowLayout {
