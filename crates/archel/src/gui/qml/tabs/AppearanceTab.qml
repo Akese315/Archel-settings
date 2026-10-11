@@ -29,7 +29,11 @@ Item {
         id: wallpaperPicker
         title: "Choisir un fond d'écran"
         nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"]
-        onAccepted: wallpaperField.text = selectedFile.toString().replace("file://", "")
+        onAccepted: {
+            var local = selectedFile.toLocalFile()
+            if (local !== "")
+                wallpaperField.text = local
+        }
     }
 
     ScrollView {

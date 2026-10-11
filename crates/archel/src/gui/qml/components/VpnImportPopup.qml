@@ -30,7 +30,11 @@ Popup {
         id: filePicker
         title: "Importer une configuration VPN"
         nameFilters: ["Configs VPN (*.ovpn *.conf)", "OpenVPN (*.ovpn)", "WireGuard (*.conf)"]
-        onAccepted: pathField.text = selectedFile.toString().replace("file://", "")
+        onAccepted: {
+            var local = selectedFile.toLocalFile()
+            if (local !== "")
+                pathField.text = local
+        }
     }
 
     ColumnLayout {
