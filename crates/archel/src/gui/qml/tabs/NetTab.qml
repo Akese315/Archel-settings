@@ -30,6 +30,14 @@ Item {
     property string dnsError: ""
     property bool dnsValid: false
 
+    // Automatic-DNS session memory (D-11, plan 07-04): the last
+    // manual servers entered this session, pre-filled back into the
+    // editors when switching from automatic to manual. dnsAutomatic
+    // tracks the requested mode; any manual row edit flips it back
+    // to manual (including after a declined reset confirm).
+    property var lastManualServers: []
+    property bool dnsAutomatic: false
+
     NetModel {
         id: net
     }
@@ -165,6 +173,50 @@ Item {
                     anchors.fill: parent
                     spacing: 8
 
+                    // DNS mode (D-09, plan 07-04): Automatique maps to
+                    // the CLI reset leg through the standard confirm
+                    // modal (D-10) on the active profile only (D-12);
+                    // Manuel restores the session-memory servers (D-11).
+                    RowLayout {
+                        spacing: 8
+
+                        Label {
+                            text: "Mode :"
+                        }
+                        RadioButton {
+                            text: "Automatique"
+                            checked: dnsAutomatic
+                            enabled: !net.dnsBusy
+                            onClicked: {
+                                if (!dnsAutomatic) {
+                                    var current = dnsArray()
+                                    if (current.length > 0) {
+                                        lastManualServers = current
+                                    }
+                                    dnsAutomatic = true
+                                    net.dnsReset()
+                                }
+                            }
+                        }
+                        RadioButton {
+                            text: "Manuel"
+                            checked: !dnsAutomatic
+                            enabled: !net.dnsBusy
+                            onClicked: {
+                                if (dnsAutomatic) {
+                                    dnsAutomatic = false
+                                    if (lastManualServers.length > 0) {
+                                        dnsRows.clear()
+                                        for (var i = 0; i < lastManualServers.length; i++) {
+                                            dnsRows.append({ server: lastManualServers[i] })
+                                        }
+                                        refreshDnsState()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Repeater {
                         model: dnsRows
                         delegate: RowLayout {
@@ -177,6 +229,7 @@ Item {
                                 text: model.server
                                 placeholderText: "1.1.1.1"
                                 onTextEdited: {
+                                    dnsAutomatic = false
                                     dnsRows.setProperty(index, "server", text)
                                     refreshDnsState()
                                 }
@@ -185,6 +238,7 @@ Item {
                                 text: "Retirer"
                                 enabled: !net.dnsBusy && dnsRows.count > 1
                                 onClicked: {
+                                    dnsAutomatic = false
                                     dnsRows.remove(index)
                                     refreshDnsState()
                                 }
@@ -206,6 +260,7 @@ Item {
                             text: "Ajouter"
                             enabled: !net.dnsBusy
                             onClicked: {
+                                dnsAutomatic = false
                                 dnsRows.append({ server: "" })
                                 refreshDnsState()
                             }
@@ -213,7 +268,10 @@ Item {
                         Button {
                             text: "Réinitialiser"
                             enabled: !net.dnsBusy
-                            onClicked: syncDnsFromCurrent()
+                            onClicked: {
+                                dnsAutomatic = false
+                                syncDnsFromCurrent()
+                            }
                         }
                         Button {
                             text: "Appliquer"
