@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 0
 waived_count: 0
-fixed_count: 0
+fixed_count: 1
 total_count: 1
-last_updated: 2026-10-09T23:54:52.628Z
+last_updated: 2026-10-11T18:47:39.949Z
 ---
 
 # Broken Windows Ledger
@@ -15,7 +15,7 @@ last_updated: 2026-10-09T23:54:52.628Z
 
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
-| 1 | 06 | deviation | crates/archel/src/gui/qml/tabs/PkgTab.qml |  | Tab QML files bind model properties in camelCase while bridge qproperties are snake_case; debt spans ~8 tab QML files, deferred to a dedicated cleanup plan | open |  | 2026-10-09T23:54:52.628Z |  |
+| 1 | 06 | deviation | crates/archel/src/gui/qml/tabs/PkgTab.qml |  | Tab QML files bind model properties in camelCase while bridge qproperties are snake_case; debt spans ~8 tab QML files, deferred to a dedicated cleanup plan | fixed |  | 2026-10-09T23:54:52.628Z | 2026-10-11T18:47:39.949Z |
 
 ````json
 [
@@ -26,10 +26,10 @@ last_updated: 2026-10-09T23:54:52.628Z
     "file": "crates/archel/src/gui/qml/tabs/PkgTab.qml",
     "line": null,
     "description": "Tab QML files bind model properties in camelCase while bridge qproperties are snake_case; debt spans ~8 tab QML files, deferred to a dedicated cleanup plan",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-09T23:54:52.628Z",
-    "resolved_at": null,
+    "resolved_at": "2026-10-11T18:47:39.949Z",
     "milestone": null
   }
 ]

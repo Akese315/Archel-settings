@@ -5,9 +5,9 @@
 // directly. The confirm/stream/error choreography lives in the shared
 // modal session (Main.qml layer, D-12/D-13/D-15).
 //
-// cxx-qt registers qproperties verbatim, so every model binding below
-// uses the snake_case names from bridge_pkg.rs (the invokables keep
-// their camelCase cxx_name).
+// Convention (D-13): QML binds camelCase while the bridge qproperties
+// stay snake_case in bridge_pkg.rs - Qt case-folding resolves them
+// (the invokables keep their camelCase cxx_name).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -73,7 +73,7 @@ Item {
             }
 
             PollBanner {
-                bannerVisible: pkg.banner_visible
+                bannerVisible: pkg.bannerVisible
                 onDismissRequested: pkg.dismissBanner()
             }
 
@@ -96,8 +96,8 @@ Item {
                     }
 
                     BusyIndicator {
-                        running: pkg.search_busy
-                        visible: pkg.search_busy
+                        running: pkg.searchBusy
+                        visible: pkg.searchBusy
                         Layout.alignment: Qt.AlignHCenter
                     }
 
@@ -108,11 +108,11 @@ Item {
                         interactive: false
                         clip: true
                         model: {
-                            if (pkg.search_json !== "")
-                                return JSON.parse(pkg.search_json);
-                            if (pkg.installed_json === "")
+                            if (pkg.searchJson !== "")
+                                return JSON.parse(pkg.searchJson);
+                            if (pkg.installedJson === "")
                                 return [];
-                            return JSON.parse(pkg.installed_json);
+                            return JSON.parse(pkg.installedJson);
                         }
                         delegate: ItemDelegate {
                             width: pkgList.width
@@ -144,7 +144,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        visible: pkg.zero_hit
+                        visible: pkg.zeroHit
 
                         Label {
                             text: "Aucun paquet trouvé"
@@ -175,7 +175,7 @@ Item {
                     text: "Installer"
                     highlighted: true
                     Layout.minimumWidth: 110
-                    enabled: !pkg.operation_busy && root.selectedNames.length > 0
+                    enabled: !pkg.operationBusy && root.selectedNames.length > 0
                     onClicked: {
                         pkg.installStart(JSON.stringify(root.selectedNames));
                         root.clearSelection();
@@ -184,13 +184,13 @@ Item {
                 Button {
                     text: "Mettre à jour"
                     Layout.minimumWidth: 130
-                    enabled: !pkg.operation_busy
+                    enabled: !pkg.operationBusy
                     onClicked: pkg.upgradeStart()
                 }
                 Button {
                     text: "Supprimer"
                     Layout.minimumWidth: 110
-                    enabled: !pkg.operation_busy && root.selectedNames.length > 0
+                    enabled: !pkg.operationBusy && root.selectedNames.length > 0
                     onClicked: {
                         pkg.removeStart(JSON.stringify(root.selectedNames));
                         root.clearSelection();
@@ -204,7 +204,7 @@ Item {
                 Button {
                     text: "Installer depuis AUR"
                     Layout.minimumWidth: 170
-                    enabled: !pkg.operation_busy && root.selectedNames.length === 1
+                    enabled: !pkg.operationBusy && root.selectedNames.length === 1
                     onClicked: {
                         pkg.aurReviewStart(root.selectedNames[0]);
                         root.clearSelection();
@@ -212,17 +212,17 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 BusyIndicator {
-                    running: pkg.operation_busy
-                    visible: pkg.operation_busy
+                    running: pkg.operationBusy
+                    visible: pkg.operationBusy
                     implicitHeight: implicitIndicatorSize
                 }
                 Label {
-                    visible: pkg.operation_busy
-                    text: pkg.operation_kind === "install" ? "Installation en cours…"
-                          : pkg.operation_kind === "remove" ? "Suppression en cours…"
-                          : pkg.operation_kind === "upgrade" ? "Mise à jour en cours…"
-                          : pkg.operation_kind === "aur" ? "Revue AUR en cours…"
-                          : pkg.operation_kind === "aur-build" ? "Compilation AUR en cours…"
+                    visible: pkg.operationBusy
+                    text: pkg.operationKind === "install" ? "Installation en cours…"
+                          : pkg.operationKind === "remove" ? "Suppression en cours…"
+                          : pkg.operationKind === "upgrade" ? "Mise à jour en cours…"
+                          : pkg.operationKind === "aur" ? "Revue AUR en cours…"
+                          : pkg.operationKind === "aur-build" ? "Compilation AUR en cours…"
                           : "Opération en cours…"
                 }
             }
@@ -230,7 +230,7 @@ Item {
             GroupBox {
                 title: "Fiche paquet"
                 Layout.fillWidth: true
-                visible: pkg.card_json !== ""
+                visible: pkg.cardJson !== ""
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -239,32 +239,32 @@ Item {
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Paquet"
-                        fieldValue: pkg.card_json === "" ? "" : JSON.parse(pkg.card_json).name
+                        fieldValue: pkg.cardJson === "" ? "" : JSON.parse(pkg.cardJson).name
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Version candidate"
-                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).candidate_version)
+                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).candidate_version)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Version installée"
-                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).installed_version)
+                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).installed_version)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Source"
-                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).source)
+                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).source)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Taille de téléchargement"
-                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).download_size)
+                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).download_size)
                     }
                     StatField {
                         Layout.fillWidth: true
                         fieldLabel: "Taille installée"
-                        fieldValue: pkg.card_json === "" ? "" : String(JSON.parse(pkg.card_json).installed_size)
+                        fieldValue: pkg.cardJson === "" ? "" : String(JSON.parse(pkg.cardJson).installed_size)
                     }
                 }
             }

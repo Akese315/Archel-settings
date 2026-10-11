@@ -14,6 +14,7 @@
 #   cargo test -p archel-core --no-default-features && cargo test -p archel --no-default-features
 #   QMAKE=/usr/bin/qmake6 cargo build -p archel --features gui
 #   for f in $(find crates/archel/src/gui/qml -name '*.qml'); do "$(command -v qmllint-qt6 || command -v qmllint)" "$f" || exit 1; done
+#   ! grep -rEn '(pkg|net|input|display|power|bt|audio|appearance|landing|system)\.[a-z]+_[a-z]' crates/archel/src/gui/qml/tabs/ | grep -v 'cxx_name'
 #   QT_QPA_PLATFORM=offscreen timeout 10 ./target/debug/archel settings; test $? -eq 124
 #   QMAKE=/usr/bin/qmake6 cargo test -p archel --features gui
 
@@ -30,6 +31,10 @@ gui-build:
 # Fails loudly when no qmllint is installed; space-safe via -exec (WR-06).
 lint-qml:
     LINTER="$(command -v qmllint-qt6 || command -v qmllint || true)"; test -n "$LINTER" || { echo "qmllint not found (install qt6-declarative)"; exit 1; }; find crates/archel/src/gui/qml -name '*.qml' -exec "$LINTER" {} +
+    # D-15 binding-spell check (plan 07-04): fails on snake_case
+    # model-property bindings (model prefix + dot + snake); cxx_name
+    # comment lines are excluded. A violation blocks merge.
+    ! grep -rEn '(pkg|net|input|display|power|bt|audio|appearance|landing|system)\.[a-z]+_[a-z]' crates/archel/src/gui/qml/tabs/ | grep -v 'cxx_name'
 
 # Offscreen smoke: the app must stay alive until `timeout` kills it
 # (rc=124). Any other rc means a tab regressed at startup.
