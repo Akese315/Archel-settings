@@ -31,7 +31,7 @@ fn main() {
 
     // Every .qml on disk must be registered here in the same commit it
     // appears (Pitfall 2): an unregistered file compiles fine and fails
-    // only at runtime with a qrc load error. All 10 tab pages and all 9
+    // only at runtime with a qrc load error. All 10 tab pages and all 12
     // shared components are pre-registered as placeholders now, so later
     // GUI plans fill content without ever touching this file.
     //
@@ -64,6 +64,7 @@ fn main() {
             "src/gui/qml/components/VpnImportPopup.qml",
             "src/gui/qml/components/SectionCard.qml",
             "src/gui/qml/components/PageHeader.qml",
+            "src/gui/qml/components/RailTab.qml",
         ]),
     )
     .files([

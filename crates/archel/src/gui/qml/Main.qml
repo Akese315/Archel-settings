@@ -27,11 +27,33 @@ ApplicationWindow {
     minimumHeight: 480
     title: "Archel Réglages"
     visibility: shell.launchMaximized ? Window.Maximized : Window.Auto
+    color: theme.colorWindow
+    palette.window: theme.colorWindow
+    palette.base: theme.colorBase
+    palette.alternateBase: theme.colorAlternateBase
+    palette.mid: theme.colorMid
+    palette.button: theme.colorButton
+    palette.buttonText: theme.colorText
+    palette.text: theme.colorText
+    palette.windowText: theme.colorText
+    palette.brightText: theme.colorBrightText
+    palette.placeholderText: theme.colorPlaceholderText
+    palette.accent: theme.colorAccent
+    palette.highlight: theme.colorHighlight
+    palette.highlightedText: theme.colorHighlightedText
 
     // Geometry bridge (bridge.rs). Defaults mirror the retired QML
     // literals, so the window is correct even before validation runs.
     ShellModel {
         id: shell
+    }
+
+    // Global theme: every palette role of the window binds to the
+    // ThemeModel, and Qt propagates the palette to all controls and
+    // popups (spec 2026-10-11). A mode/accent change is one Rust
+    // property write; every binding below re-evaluates.
+    ThemeModel {
+        id: theme
     }
 
     // Validate the saved frame against the real screens as soon as the
@@ -55,6 +77,8 @@ ApplicationWindow {
         spacing: 0
 
         // Rail: fixed 200px, scrolling its own Flickable (UI-SPEC rail).
+        // Style C (spec): active tab tinted with the accent, hover uses
+        // the elevated surface, rounded 8px, 36px tall.
         Flickable {
             Layout.preferredWidth: 200
             Layout.fillHeight: true
@@ -67,227 +91,16 @@ ApplicationWindow {
                 width: 200
                 spacing: 4
 
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    checked: true
-                    onClicked: stack.currentIndex = 0
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/home.svg"
-                        }
-                        Label {
-                            text: "Accueil"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 1
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/network.svg"
-                        }
-                        Label {
-                            text: "Réseau"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 2
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/power.svg"
-                        }
-                        Label {
-                            text: "Alimentation"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 3
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/bluetooth.svg"
-                        }
-                        Label {
-                            text: "Bluetooth"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 4
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/appearance.svg"
-                        }
-                        Label {
-                            text: "Apparence"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 5
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/sound.svg"
-                        }
-                        Label {
-                            text: "Son"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 6
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/apps.svg"
-                        }
-                        Label {
-                            text: "Applications"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 7
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/display.svg"
-                        }
-                        Label {
-                            text: "Affichage"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 8
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/input.svg"
-                        }
-                        Label {
-                            text: "Périphériques"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-                TabButton {
-                    width: rail.width
-                    height: 32
-                    checkable: true
-                    autoExclusive: true
-                    onClicked: stack.currentIndex = 9
-                    contentItem: RowLayout {
-                        spacing: 4
-                        Image {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            sourceSize.width: 16
-                            sourceSize.height: 16
-                            source: "images/system.svg"
-                        }
-                        Label {
-                            text: "Système"
-                            Layout.fillWidth: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
+                RailTab { icon: "images/home.svg";      label: "Accueil";       checked: true; onClicked: stack.currentIndex = 0 }
+                RailTab { icon: "images/network.svg";   label: "Réseau";         onClicked: stack.currentIndex = 1 }
+                RailTab { icon: "images/power.svg";     label: "Alimentation";   onClicked: stack.currentIndex = 2 }
+                RailTab { icon: "images/bluetooth.svg";  label: "Bluetooth";     onClicked: stack.currentIndex = 3 }
+                RailTab { icon: "images/appearance.svg"; label: "Apparence";     onClicked: stack.currentIndex = 4 }
+                RailTab { icon: "images/sound.svg";      label: "Son";            onClicked: stack.currentIndex = 5 }
+                RailTab { icon: "images/apps.svg";       label: "Applications";   onClicked: stack.currentIndex = 6 }
+                RailTab { icon: "images/display.svg";    label: "Affichage";      onClicked: stack.currentIndex = 7 }
+                RailTab { icon: "images/input.svg";      label: "Périphériques";  onClicked: stack.currentIndex = 8 }
+                RailTab { icon: "images/system.svg";     label: "Système";        onClicked: stack.currentIndex = 9 }
             }
         }
 
@@ -306,7 +119,7 @@ ApplicationWindow {
             }
             PowerTab {}
             BtTab {}
-            AppearanceTab {}
+            AppearanceTab { id: appearanceTab; theme: theme }
             AudioTab {}
             PkgTab { id: pkgTab }
             DisplayTab {}
