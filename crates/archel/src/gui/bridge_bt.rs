@@ -11,6 +11,8 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
+    // auto_cxx_name: generated Q_PROPERTY/notify names surface camelCase in QML (explicit cxx_name invokables unaffected).
+    #[auto_cxx_name]
     extern "RustQt" {
         #[qobject]
         #[qml_element]
@@ -52,7 +54,9 @@ pub mod qobject {
         fn disconnect(self: Pin<&mut Self>, address: QString);
 
         #[qinvokable]
-        #[cxx_name = "setAdapterOn"]
+        // cxx_name avoids the Q_PROPERTY adapter_on's generated setter
+        // (setAdapterOn) - same bool signature, a hard C++ clash.
+        #[cxx_name = "applyAdapterOn"]
         fn set_adapter_powered(self: Pin<&mut Self>, on: bool);
     }
 

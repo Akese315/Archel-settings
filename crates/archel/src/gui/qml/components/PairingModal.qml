@@ -5,7 +5,7 @@
 //
 // Pure view over the ShellModel pairing session (plan 06-07): it owns
 // no state and never closes itself (NoAutoClose keeps the Main.qml
-// `visible: shell.pairing_active` binding alive - a Dialog that closed
+// `visible: shell.pairingActive` binding alive - a Dialog that closed
 // imperatively would permanently break that binding). The worker's
 // agent callback publishes the device name plus the zero-padded code
 // (core format_passkey output, large monospace); Confirmer releases

@@ -72,7 +72,7 @@ Item {
                     Switch {
                         checked: bt.adapterOn
                         enabled: !bt.operationBusy
-                        onClicked: bt.setAdapterOn(checked)
+                        onClicked: bt.applyAdapterOn(checked)
                     }
                 }
             }

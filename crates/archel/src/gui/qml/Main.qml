@@ -19,14 +19,14 @@ import org.archel.settings
 ApplicationWindow {
     id: window
     visible: true
-    x: shell.launch_x
-    y: shell.launch_y
-    width: shell.launch_width
-    height: shell.launch_height
+    x: shell.launchX
+    y: shell.launchY
+    width: shell.launchWidth
+    height: shell.launchHeight
     minimumWidth: 720
     minimumHeight: 480
     title: "Archel Réglages"
-    visibility: shell.launch_maximized ? Window.Maximized : Window.Auto
+    visibility: shell.launchMaximized ? Window.Maximized : Window.Auto
 
     // Geometry bridge (bridge.rs). Defaults mirror the retired QML
     // literals, so the window is correct even before validation runs.
@@ -322,8 +322,8 @@ ApplicationWindow {
     // so the session and the view stay in lockstep (D-14/D-15).
 
     ConfirmModal {
-        question: shell.modal_question
-        visible: shell.modal_kind === "confirm"
+        question: shell.modalQuestion
+        visible: shell.modalKind === "confirm"
         onConfirmed: shell.confirmAccepted()
         onDeclined: shell.confirmDeclined()
         z: 100
@@ -343,22 +343,22 @@ ApplicationWindow {
     }
 
     ErrorModal {
-        errorText: shell.modal_error
-        visible: shell.modal_kind === "error"
+        errorText: shell.modalError
+        visible: shell.modalKind === "error"
         onDismissed: shell.closeModal()
         z: 101
     }
 
     StreamModal {
-        lines: shell.modal_lines
-        done: shell.modal_done
-        operationResult: shell.modal_result
-        trustNeeded: shell.modal_trust_needed
-        trustSummary: shell.modal_trust_summary
-        pkgbuild: shell.modal_pkgbuild
-        pkgbuildSeen: shell.modal_pkgbuild_seen
-        trustConfirmed: shell.modal_trust_confirmed
-        visible: shell.modal_kind === "stream"
+        lines: shell.modalLines
+        done: shell.modalDone
+        operationResult: shell.modalResult
+        trustNeeded: shell.modalTrustNeeded
+        trustSummary: shell.modalTrustSummary
+        pkgbuild: shell.modalPkgbuild
+        pkgbuildSeen: shell.modalPkgbuildSeen
+        trustConfirmed: shell.modalTrustConfirmed
+        visible: shell.modalKind === "stream"
         // During an AUR trust review the stream already ended: Annuler must
         // dismiss the review (close), not signal a worker cancellation (D-19).
         onCancelRequested: shell.cancelStream()
@@ -394,10 +394,10 @@ ApplicationWindow {
     // is the core-formatted passkey, and Confirmer/Refuser resolve
     // the waiting agent callback - never auto-accept.
     PairingModal {
-        deviceName: shell.pairing_device_name
-        address: shell.pairing_address
-        passkey: shell.pairing_passkey
-        visible: shell.pairing_active
+        deviceName: shell.pairingDeviceName
+        address: shell.pairingAddress
+        passkey: shell.pairingPasskey
+        visible: shell.pairingActive
         onConfirmed: shell.pairingAccepted()
         onDeclined: shell.pairingDeclined()
         z: 104

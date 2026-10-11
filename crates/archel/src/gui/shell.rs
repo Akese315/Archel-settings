@@ -16,6 +16,8 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
+    // auto_cxx_name: generated Q_PROPERTY/notify names surface camelCase in QML (explicit cxx_name invokables unaffected).
+    #[auto_cxx_name]
     extern "RustQt" {
         #[qobject]
         #[qml_element]

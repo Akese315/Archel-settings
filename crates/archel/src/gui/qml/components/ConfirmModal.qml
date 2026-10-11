@@ -1,7 +1,7 @@
 // ConfirmModal (D-12): every write opens this first - no exceptions.
 // Pure view over the ShellModel modal session (plan 06-06): it owns no
 // state and never closes itself (NoAutoClose keeps the Main.qml
-// `visible: shell.modal_kind === "confirm"` binding alive - a Dialog that
+// `visible: shell.modalKind === "confirm"` binding alive - a Dialog that
 // closed imperatively would permanently break that binding). Main.qml
 // wires confirmed()/declined() to shell.confirmAccepted()/confirmDeclined().
 // Fermer is a first-class decline (releases a waiting worker with false),
