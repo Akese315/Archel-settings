@@ -8,6 +8,16 @@ A system settings suite for a personal Arch Linux (Hyprland) distro, built in Ru
 
 One reliable API through which every system setting (network, power, bluetooth, appearance, audio, packages, display, input, system stats) can be read and changed on Arch + Hyprland — proven via the CLI before the GUI ever draws it.
 
+## Current Milestone: v1.1 Debt + Polish
+
+**Goal:** Clear the acknowledged v1.0 debt so every deferred item is verified-fixed or re-acknowledged, with zero new features.
+
+**Target features:**
+- Live-session UAT confirmations on the user's Hyprland session (deferred display/input/appearance checks, pkexec dialog, GUI visual pass, VPN `down` re-test)
+- GUI polish fixes WR-01–WR-05 plus the QML casing convention (close the WINDOWS.md gate)
+- Hygiene: clean `-D warnings` clippy baseline, stable `live_*` timing tests, Nyquist draft debt cleared
+- Advisory fixes IN-01–IN-03
+
 ## Requirements
 
 ### Validated
@@ -109,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-11 after v1.0 milestone completion (full section review)*
+*Last updated: 2026-10-11 after v1.1 milestone start*

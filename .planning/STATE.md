@@ -1,18 +1,16 @@
 ---
 gsd_state_version: "1.0"
-status: Awaiting next milestone
-stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-10T23:11:32.786Z"
+milestone: v1.1
+milestone_name: Debt + Polish
+status: planning
+last_updated: "2026-10-11T16:59:39.316Z"
 last_activity: 2026-10-11
-last_activity_desc: Milestone v1.0 completed and archived
-state_head: 5579fe5082daa052c423d8a400061d6400e99825
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 28
-  completed_plans: 28
-  percent: 100
-current_phase: 04
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -22,14 +20,14 @@ current_phase: 04
 See: .planning/PROJECT.md (updated 2026-10-11, post-v1.0 evolution review)
 
 **Core value:** One reliable API through which every system setting can be read and changed on Arch + Hyprland — proven via the CLI before the GUI ever draws it.
-**Current focus:** Planning next milestone (v1.1 candidates in PROJECT.md Active)
+**Current focus:** Milestone v1.1 Debt + Polish (defining requirements)
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-10-11 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-10-11 — Milestone v1.1 started
 
 ## Performance Metrics
 
@@ -112,8 +110,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-10 (resumed)
-Stopped at: Phase 04 complete — all phases complete
+Last session: 2026-10-11 (resumed)
+Stopped at: Session resumed, awaiting next-milestone decision
 Resume file: none
 Executor note from 06-06: camelCase tab-binding debt + flaky core live_* tests + clippy baseline recorded in .planning/WINDOWS.md.
 
