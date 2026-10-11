@@ -26,6 +26,8 @@ pub mod qobject {
         #[qproperty(bool, launch_maximized)]
         #[qproperty(QString, modal_kind)]
         #[qproperty(QString, modal_question)]
+        #[qproperty(QString, modal_question_top)]
+        #[qproperty(i32, modal_confirm_count)]
         #[qproperty(QString, modal_lines)]
         #[qproperty(QString, modal_error)]
         #[qproperty(bool, modal_done)]
@@ -95,6 +97,14 @@ pub mod qobject {
         fn confirm_declined(self: Pin<&mut Self>);
 
         #[qinvokable]
+        #[cxx_name = "confirmTopAccepted"]
+        fn confirm_top_accepted(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "confirmTopDeclined"]
+        fn confirm_top_declined(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "notePkgbuildSeen"]
         fn note_pkgbuild_seen(self: Pin<&mut Self>);
 
@@ -126,6 +136,8 @@ use super::modal::{self, ModalSession};
 struct ModalSnapshot {
     kind: String,
     question: String,
+    question_top: String,
+    confirm_count: usize,
     lines: String,
     error: String,
     done: bool,
@@ -143,6 +155,8 @@ impl ModalSnapshot {
         Self {
             kind: session.snapshot_kind().as_str().to_string(),
             question: session.snapshot_question(),
+            question_top: session.snapshot_question_top(),
+            confirm_count: session.snapshot_confirm_count(),
             lines: session.snapshot_lines_joined(),
             error: session.snapshot_error(),
             done: session.snapshot_done(),
@@ -193,6 +207,8 @@ pub struct ShellModelRust {
     // Modal property fields (names must match the qproperty declarations).
     modal_kind: QString,
     modal_question: QString,
+    modal_question_top: QString,
+    modal_confirm_count: i32,
     modal_lines: QString,
     modal_error: QString,
     modal_done: bool,
@@ -221,6 +237,8 @@ impl Default for ShellModelRust {
             launch_maximized: false,
             modal_kind: QString::from(""),
             modal_question: QString::from(""),
+            modal_question_top: QString::from(""),
+            modal_confirm_count: 0,
             modal_lines: QString::from(""),
             modal_error: QString::from(""),
             modal_done: false,
@@ -303,6 +321,10 @@ impl qobject::ShellModel {
         self.as_mut()
             .set_modal_question(QString::from(&next.question));
         self.as_mut()
+            .set_modal_question_top(QString::from(&next.question_top));
+        self.as_mut()
+            .set_modal_confirm_count(next.confirm_count as i32);
+        self.as_mut()
             .set_modal_lines(QString::from(&next.lines));
         self.as_mut()
             .set_modal_error(QString::from(&next.error));
@@ -369,6 +391,20 @@ impl qobject::ShellModel {
     /// Fermer on the confirm modal: releases a waiting worker with
     /// `false` (decline is a first-class answer, not an error).
     pub fn confirm_declined(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_confirm(false);
+    }
+
+    /// Confirmer on the stacked top modal: releases the newest waiter
+    /// with `true`. Resolution is top-only (D-08), so the base-modal
+    /// `confirm_accepted` and this variant share the same session
+    /// path; the separate call site documents which modal resolved.
+    pub fn confirm_top_accepted(self: core::pin::Pin<&mut Self>) {
+        modal::session().resolve_confirm(true);
+    }
+
+    /// Fermer on the stacked top modal: releases the newest waiter
+    /// with `false`, leaving older pending confirms stacked (D-08).
+    pub fn confirm_top_declined(self: core::pin::Pin<&mut Self>) {
         modal::session().resolve_confirm(false);
     }
 

@@ -329,6 +329,19 @@ ApplicationWindow {
         z: 100
     }
 
+    // Stacked second confirm (D-06/D-08, plan 07-03): renders the top
+    // stack entry above the base confirm; each resolves independently
+    // through the top-resolving invokables, and cancelling the top
+    // leaves older pending confirms stacked. Visibility derives only
+    // from mirrored state (same NoAutoClose rule as the base modal).
+    ConfirmModal {
+        question: shell.modalQuestionTop
+        visible: shell.modalKind === "confirm" && shell.modalConfirmCount > 1
+        onAccepted: shell.confirmTopAccepted()
+        onDeclined: shell.confirmTopDeclined()
+        z: 105
+    }
+
     ErrorModal {
         errorText: shell.modal_error
         visible: shell.modal_kind === "error"
