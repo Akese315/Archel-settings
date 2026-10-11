@@ -62,6 +62,8 @@ fn main() {
             "src/gui/qml/components/PollBanner.qml",
             "src/gui/qml/components/Sparkline.qml",
             "src/gui/qml/components/VpnImportPopup.qml",
+            "src/gui/qml/components/SectionCard.qml",
+            "src/gui/qml/components/PageHeader.qml",
         ]),
     )
     .files([
