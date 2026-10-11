@@ -27,6 +27,12 @@ Item {
     property string accelBase: ""
     property string accelDraft: ""
 
+    // D-03 : la validation de fond reste l'affaire du pont
+    // (plan_input_set_at dans le worker, coquilles vers ErrorModal) ;
+    // ces gardes éclairent seulement le bouton, comme dnsValid pour NetTab.
+    property bool sensValid: sensDraft !== "" && !isNaN(parseFloat(sensDraft))
+    property bool accelValid: accelDraft.trim() !== ""
+
     function sensValueOf(text) {
         if (text === "") {
             return 0;
@@ -69,6 +75,24 @@ Item {
         }
     }
 
+    function inputDirty() {
+        return sensDraft !== sensBase || accelDraft !== accelBase;
+    }
+
+    function applyDirtyDrafts() {
+        if (sensDraft !== sensBase && sensValid) {
+            input.setSensitivity(sensValueOf(sensDraft).toFixed(2));
+        }
+        if (accelDraft !== accelBase && accelValid) {
+            input.setAccelerate(accelDraft);
+        }
+    }
+
+    function discardDrafts() {
+        resetSensDraft();
+        resetAccelDraft();
+    }
+
     Connections {
         target: input
         function onSensitivityTextChanged() {
@@ -93,6 +117,62 @@ Item {
         input.tick();
         syncSensFromLive();
         syncAccelFromLive();
+    }
+
+    // D-04 : retour sur l'onglet avec un brouillon sale — le brouillon
+    // n'est ni effacé ni gardé en silence : ce dialogue, possédé par
+    // l'onglet lui-même, propose Appliquer ou Abandonner.
+    onVisibleChanged: {
+        if (visible && !input.operationBusy && inputDirty()) {
+            draftDialog.open();
+        }
+    }
+
+    Dialog {
+        id: draftDialog
+        title: "Modifications non appliquées"
+        modal: true
+        width: 420
+        padding: 16
+        closePolicy: Popup.NoAutoClose
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentHeight: draftCol.implicitHeight
+
+        ColumnLayout {
+            id: draftCol
+            width: parent.width
+            spacing: 16
+
+            Label {
+                Layout.fillWidth: true
+                text: "Des réglages ont été modifiés sans être appliqués. Appliquer maintenant ou abandonner ces modifications ?"
+                wrapMode: Label.WrapAnywhere
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 8
+
+                Button {
+                    text: "Abandonner"
+                    Layout.minimumWidth: 96
+                    onClicked: {
+                        discardDrafts();
+                        draftDialog.close();
+                    }
+                }
+                Button {
+                    text: "Appliquer"
+                    Layout.minimumWidth: 96
+                    highlighted: true
+                    onClicked: {
+                        applyDirtyDrafts();
+                        draftDialog.close();
+                    }
+                }
+            }
+        }
     }
 
     ScrollView {
@@ -157,7 +237,7 @@ Item {
                     }
                     Button {
                         text: "Appliquer"
-                        enabled: !input.operationBusy
+                        enabled: sensDraft !== sensBase && sensValid && !input.operationBusy
                         onClicked: input.setSensitivity(sensValueOf(sensDraft).toFixed(2))
                     }
 
@@ -199,7 +279,7 @@ Item {
                     }
                     Button {
                         text: "Appliquer"
-                        enabled: !input.operationBusy && accelerateField.text !== ""
+                        enabled: accelDraft !== accelBase && accelValid && !input.operationBusy
                         onClicked: input.setAccelerate(accelDraft)
                     }
                 }
