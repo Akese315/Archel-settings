@@ -4,18 +4,18 @@ milestone: v1.1
 milestone_name: Debt + Polish
 current_phase: 7
 current_phase_name: gui-polish-fixes
-status: executing
-stopped_at: Completed 7-03-PLAN.md
-last_updated: "2026-10-11T18:43:56.951Z"
+status: verifying
+stopped_at: Completed 7-04-PLAN.md
+last_updated: "2026-10-11T18:48:49.903Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 7 execution started
-state_head: e0a96c594d39345a012fdb30fd9e763751d669a6
+state_head: ae9d147bf33198cd4571942111d998b16ffedeba
 progress:
   total_phases: 3
   completed_phases: 6
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -31,10 +31,10 @@ See: .planning/PROJECT.md (updated 2026-10-11, post-v1.0 evolution review)
 
 Phase: 7 (gui-polish-fixes) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-11 — Phase 7 execution started
 
-Progress: [████████░░] 75% (v1.1: 0/3 phases)
+Progress: [██████████] 100% (v1.1: 0/3 phases)
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [████████░░] 75% (v1.1: 0/3 phases)
 | Phase 7 P01 | 2m | 2 tasks | 1 files |
 | Phase 7 P02 | 3m | 2 tasks | 3 files |
 | Phase 7-gui-polish-fixes P03 | 5m | 2 tasks | 3 files |
+| Phase 7-gui-polish-fixes P04 | 4m | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 7]: Persist-then-eval lean for keybind-add (no compensating unbind); core add_bind_line dedupes repeat adds
 - [Phase 7-gui-polish-fixes]: Fixed two-modal rendering with cap of 2 stacked confirms; overflow declines the newest via the standard false path
 - [Phase 7-gui-polish-fixes]: New QML bindings use camelCase per D-13; pre-existing snake_case base-modal bindings left for the 07-04 casing pass
+- [Phase 7]: Automatique DNS shape is an Automatique/Manuel radio pair; manual edits flip mode back so a declined confirm self-heals
+- [Phase 7]: Main.qml shell.modal_* bindings left untouched (outside D-15 model-prefix gate scope); casing gate covers tab model prefixes only
 
 ### Pending Todos
 
@@ -111,8 +114,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-11T18:43:56.932Z
-Stopped at: Completed 7-03-PLAN.md
+Last session: 2026-10-11T18:48:49.884Z
+Stopped at: Completed 7-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
