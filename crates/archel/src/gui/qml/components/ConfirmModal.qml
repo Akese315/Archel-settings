@@ -25,7 +25,14 @@ Dialog {
     closePolicy: Popup.NoAutoClose
     // Esc acts as Fermer (UI-SPEC keyboard row); the binding-driven
     // visibility never changes here, only the session decision does.
-    onEscPressed: root.declined()
+    // Popup/Dialog has no onEscPressed (and Keys only attaches to
+    // Items, not to Popup) - a window-context Shortcut carries the
+    // key instead; NoAutoClose still blocks any implicit close.
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: root.declined()
+    }
 
     contentHeight: col.implicitHeight
 

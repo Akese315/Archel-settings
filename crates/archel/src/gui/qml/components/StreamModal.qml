@@ -45,10 +45,17 @@ Dialog {
     padding: 16
     closePolicy: Popup.NoAutoClose
     // D-15: Esc cannot dismiss a running operation; once done it acts
-    // as Fermer.
-    onEscPressed: {
-        if (root.done) {
-            root.dismissed();
+    // as Fermer. Popup/Dialog has no onEscPressed (and Keys only
+    // attaches to Items, not to Popup) - a window-context Shortcut
+    // carries the key instead; NoAutoClose still blocks any implicit
+    // close.
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: {
+            if (root.done) {
+                root.dismissed();
+            }
         }
     }
 

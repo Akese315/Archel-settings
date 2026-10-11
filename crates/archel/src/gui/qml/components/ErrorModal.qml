@@ -19,7 +19,14 @@ Dialog {
     width: 420
     padding: 16
     closePolicy: Popup.NoAutoClose
-    onEscPressed: root.dismissed()
+    // Popup/Dialog has no onEscPressed (and Keys only attaches to
+    // Items, not to Popup) - a window-context Shortcut carries the
+    // key instead; NoAutoClose still blocks any implicit close.
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: root.dismissed()
+    }
 
     SystemPalette {
         id: pal

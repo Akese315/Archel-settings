@@ -29,7 +29,14 @@ Dialog {
     closePolicy: Popup.NoAutoClose
     // Esc acts as Annuler (UI-SPEC keyboard row); the binding-driven
     // visibility never changes here, only the session decision does.
-    onEscPressed: root.revertRequested()
+    // Popup/Dialog has no onEscPressed (and Keys only attaches to
+    // Items, not to Popup) - a window-context Shortcut carries the
+    // key instead; NoAutoClose still blocks any implicit close.
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: root.revertRequested()
+    }
 
     contentHeight: col.implicitHeight
 
