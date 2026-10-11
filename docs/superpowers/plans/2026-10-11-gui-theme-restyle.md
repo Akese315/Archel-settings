@@ -1323,3 +1323,16 @@ Sinon, aucun commit — la tâche est une vérification.
 - **Pitfall build.rs** : tout nouveau `.qml` DOIT être dans `qml_files` dans le même commit (erreur qrc à l'exécution sinon) ; tout nouveau fichier Rust bridge DOIT être dans `.files()`.
 - **Seuils de contraste** : si un test de contraste échoue, ajuster la couleur dans `ACCENTS`/`palette()`, jamais le seuil (7.0 AAA texte principal, 4.5 AA accent-clair).
 - **Couleurs sémantiques** (rouge d'erreur `#c01c28`/`#c0392b`, vert/orange/rouge de la matrice de cœurs) : intouchables.
+
+## Amendements pendant l'exécution (font foi sur les sections ci-dessus)
+
+Exécution terminée le 2026-10-11, branche `feat/gui-theme-restyle`, 14 commits, toutes les revues passées. Écarts par rapport au texte des tâches, tous approuvés en revue :
+
+1. **Task 1 — tokens de contraste** : `pink.light_text` (176,54,140) et `peach.light_text` (180,72,20) remplacent les valeurs du plan (3.99:1 et 4.15:1 — sous le seuil AA 4.5) ; règle du plan appliquée (token ajusté, seuil intact).
+2. **Task 4 — RailTab en fichier dédié** : qmlcachegen 6.11.2 rejette les inline components (`component X:`) — reproductible sur fichier minimal ; le moteur QML les accepte. RailTab est donc `components/RailTab.qml` enregistré dans `qml_files` (pattern SectionCard/PageHeader), pas une inline component dans Main.qml. Le snippet inline de la Task 4 est historique.
+3. **Task 4 — `iconSource`** : `property string icon` écrase la propriété FINAL `icon` d'AbstractButton (refus de chargement au runtime, invisible pour qmlcachegen) ; renommé `iconSource` + `text: tab.label` sur le root comme nom accessible.
+4. **Task 6 — sous-titre PowerTab** : « Profils d'énergie et batterie » sur-promettait (pas de section batterie) → « Profils d'énergie et pilote ».
+5. **Task 6 — token `mid` renforcé** : sombre alpha 18→28, clair 20→38 — délimitation des entrées imbriquées dans les cartes (TextField/ComboBox Fusion remplissent `palette.base`, comme les cartes).
+6. **Task 7 — barres de charge des tuiles** : ternaire de seuil conservé (rouge >85, orange >50) avec l'accent comme bande normale — les deux règles de la spec réconciliées.
+7. **Task 5/9 — durcissements** : `set_accent` refuse les clés inconnues et sort en no-op sur même clé ; `set_dark` sort en no-op si inchangé ; pastilles avec `Accessible.name` + anneau de focus ; `selectedTextColor` épinglé dans StreamModal ; SystemPalette migré partout (aucune référence restante).
+8. **Accepté consciemment** : contraste sélection 3.9-4.4:1 en mode clair (documenté dans `palette()`) ; rôles tooltip (`toolTipBase/Text`) non liés au thème ; branding « Archel Réglages » absent de l'accueil (le titre de fenêtre le garde).

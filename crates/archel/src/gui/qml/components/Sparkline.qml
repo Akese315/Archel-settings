@@ -1,7 +1,8 @@
 // Sparkline: rolling-window polyline (D-09, UI-SPEC Sparkline contract).
 //
 // Canvas polyline over up to 60 1 Hz samples (bounded Rust-side), 2px
-// stroke, line color passed by the tab (CPU accent, RAM green). QtCharts
+// stroke, line color passed by the tab (theme accent for normal
+// curves). QtCharts
 // is not installed; Canvas keeps zero new system dependencies.
 import QtQuick
 
