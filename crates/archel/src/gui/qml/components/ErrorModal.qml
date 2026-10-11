@@ -63,7 +63,6 @@ Dialog {
             color: pal.windowText
             selectionColor: pal.highlight
             selectedTextColor: pal.highlightedText
-            background: null
         }
 
         RowLayout {
