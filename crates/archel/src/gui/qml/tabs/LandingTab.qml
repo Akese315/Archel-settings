@@ -34,21 +34,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            // Hero block: 2xl/3xl page-level spacing (UI-SPEC Landing row).
-            ColumnLayout {
+            PageHeader {
                 Layout.fillWidth: true
-                Layout.topMargin: 48
-                spacing: 8
-
-                Label {
-                    text: "Accueil"
-                    font.bold: true
-                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.6)
-                }
-                Label {
-                    text: "Archel Réglages"
-                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
-                }
+                pageTitle: "Accueil"
+                pageSubtitle: "État général du système"
             }
 
             PollBanner {
@@ -56,7 +45,7 @@ Item {
                 onDismissRequested: landing.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Mises à jour"
                 Layout.fillWidth: true
 
@@ -79,7 +68,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Système"
                 Layout.fillWidth: true
 

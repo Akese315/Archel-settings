@@ -186,10 +186,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Périphériques"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Périphériques"
+                pageSubtitle: "Clavier, souris et pavé"
             }
 
             PollBanner {
@@ -203,7 +203,7 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Souris"
                 Layout.fillWidth: true
 
@@ -285,7 +285,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Raccourcis clavier"
                 Layout.fillWidth: true
 

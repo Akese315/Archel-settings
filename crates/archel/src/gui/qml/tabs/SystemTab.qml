@@ -25,10 +25,6 @@ Item {
     }
     Component.onCompleted: system.tick()
 
-    SystemPalette {
-        id: sysPalette
-    }
-
     ScrollView {
         id: view
         anchors.fill: parent
@@ -40,10 +36,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Système"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Système"
+                pageSubtitle: "Processeur, mémoire et pilotes"
             }
 
             PollBanner {
@@ -51,7 +47,8 @@ Item {
                 onDismissRequested: system.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
+                id: cpuCard
                 title: "Processeur"
                 Layout.fillWidth: true
 
@@ -62,7 +59,7 @@ Item {
                     Sparkline {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 60
-                        lineColor: sysPalette.highlight
+                        lineColor: cpuCard.palette.accent
                         samples: system.cpuSeries === "" ? [] : JSON.parse(system.cpuSeries)
                     }
                     StatField {
@@ -107,8 +104,8 @@ Item {
                                 width: 92
                                 height: 72
                                 radius: 6
-                                color: sysPalette.alternateBase
-                                border.color: sysPalette.mid
+                                color: cpuCard.palette.alternateBase
+                                border.color: cpuCard.palette.mid
                                 border.width: 1
 
                                 Column {
@@ -128,23 +125,21 @@ Item {
                                         font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
                                         color: modelData.usage > 85 ? "#e01b24"
                                               : modelData.usage > 50 ? "#ff7800"
-                                              : sysPalette.text
+                                              : cpuCard.palette.text
                                     }
                                     Rectangle {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         width: 64
                                         height: 4
                                         radius: 2
-                                        color: sysPalette.mid
+                                        color: cpuCard.palette.mid
                                         Rectangle {
                                             anchors.left: parent.left
                                             anchors.verticalCenter: parent.verticalCenter
                                             width: Math.min(64, 64 * modelData.usage / 100)
                                             height: 4
                                             radius: 2
-                                            color: modelData.usage > 85 ? "#e01b24"
-                                                  : modelData.usage > 50 ? "#ff7800"
-                                                  : "#2ec27e"
+                                            color: cpuCard.palette.accent
                                         }
                                     }
                                     Label {
@@ -160,7 +155,8 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
+                id: memCard
                 title: "Mémoire"
                 Layout.fillWidth: true
 
@@ -171,7 +167,7 @@ Item {
                     Sparkline {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 60
-                        lineColor: "#2ec27e"
+                        lineColor: memCard.palette.accent
                         samples: system.ramSeries === "" ? [] : JSON.parse(system.ramSeries)
                     }
                     StatField {
@@ -182,7 +178,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Disque système"
                 Layout.fillWidth: true
 
@@ -198,7 +194,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Températures"
                 Layout.fillWidth: true
 
@@ -219,7 +215,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Carte graphique"
                 Layout.fillWidth: true
 
@@ -245,7 +241,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Noyau"
                 Layout.fillWidth: true
 

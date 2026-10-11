@@ -55,10 +55,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Affichage"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Affichage"
+                pageSubtitle: "Écrans et disposition"
             }
 
             PollBanner {
@@ -75,7 +75,7 @@ Item {
             Repeater {
                 model: displayModel.monitorsJson === "" ? [] : JSON.parse(displayModel.monitorsJson)
 
-                GroupBox {
+                SectionCard {
                     Layout.fillWidth: true
                     title: modelData.name
 

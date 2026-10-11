@@ -130,10 +130,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Applications"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Applications"
+                pageSubtitle: "Paquets et mises à jour"
             }
 
             PollBanner {
@@ -141,7 +141,7 @@ Item {
                 onDismissRequested: pkg.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Paquets"
                 Layout.fillWidth: true
 
@@ -334,7 +334,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Fiche paquet"
                 Layout.fillWidth: true
                 visible: pkg.cardJson !== ""
