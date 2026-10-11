@@ -312,6 +312,76 @@ pub fn set_default(id: u32) -> Result<(), ArchelError> {
     Ok(())
 }
 
+/// Extracts the stream indices from `pactl list short sink-inputs`
+/// (resp. `source-outputs`) output: one tab-separated row per stream,
+/// index first (`806\t64\t805\tPipeWire\t…`). Pure over the text so
+/// fixtures cover it without PipeWire.
+pub fn parse_stream_indices(stdout: &str) -> Vec<u32> {
+    stdout
+        .lines()
+        .filter_map(|line| line.split('\t').next())
+        .filter_map(|first| first.trim().parse().ok())
+        .collect()
+}
+
+/// Moves every active playback (resp. capture) stream onto the named
+/// device. `wpctl set-default` only retargets NEW streams; apps that
+/// are already playing keep their old sink until moved, so the
+/// "select a device" contract is set-default + this move.
+///
+/// Best effort per stream: a stream pinned by its own app (or a
+/// capture loopback with no matching target) is skipped, never a
+/// global failure. A missing `pactl` (no pipewire-pulse) is also not
+/// an error: the default switch itself already succeeded.
+pub fn move_all_streams(kind: AudioKind, node_name: &str) -> Result<(), ArchelError> {
+    let (list_args, move_verb): (&[&str], &str) = match kind {
+        AudioKind::Sink => (&["list", "short", "sink-inputs"], "move-sink-input"),
+        AudioKind::Source => (&["list", "short", "source-outputs"], "move-source-output"),
+    };
+    let Ok(short) = run_pactl(list_args) else {
+        return Ok(());
+    };
+    for index in parse_stream_indices(&short) {
+        // Per-stream best effort: a refusal (captive stream) skips that
+        // one stream only.
+        let _ = run_pactl(&[move_verb, &index.to_string(), node_name]);
+    }
+    Ok(())
+}
+
+/// Runs one `pactl` query as the user, mirroring the `wpctl` spawn
+/// shape. A missing binary maps to `Err` (the caller decides whether
+/// that is fatal: `move_all_streams` treats it as a soft skip).
+fn run_pactl(args: &[&str]) -> Result<String, ArchelError> {
+    let binary = which::which("pactl").map_err(|err| {
+        ArchelError::audio_unavailable(format!("pactl missing ({err})"))
+    })?;
+    let handle = duct::cmd(&binary, args)
+        .unchecked()
+        .env("LC_ALL", "C")
+        .stdout_capture()
+        .stderr_capture()
+        .start()
+        .map_err(|err| ArchelError::audio_unavailable(format!("cannot run pactl: {err}")))?;
+    let output = match handle.wait_timeout(WPCTL_TIMEOUT).map_err(|err| {
+        ArchelError::audio_unavailable(format!("cannot wait on pactl: {err}"))
+    })? {
+        Some(output) => output.clone(),
+        None => {
+            let _ = handle.kill();
+            return Err(ArchelError::audio_unavailable(
+                "pactl exceeded the query timeout",
+            ));
+        }
+    };
+    match output.status.code() {
+        Some(0) => Ok(String::from_utf8_lossy(&output.stdout).into_owned()),
+        code => Err(ArchelError::audio_unavailable(format!(
+            "pactl failed with exit code {code:?}"
+        ))),
+    }
+}
+
 /// Confirm-then-switch gate for `set-output`: resolves the name
 /// against the just-read snapshot, confirms intent, then runs `set`.
 /// The injectable `confirm`/`set` keep the abort path unit-coverable
@@ -523,6 +593,15 @@ mod tests {
         );
         assert!(parse_inspect_name("id 1, type Foo\n    no node here\n").is_none());
         assert!(parse_inspect_name("node.name = \"\"\n").is_none());
+    }
+
+    /// `pactl list short sink-inputs` shape captured live (2026-10-11):
+    /// tab-separated, stream index first, plus garbage lines to skip.
+    #[test]
+    fn stream_index_parse_reads_first_field_only() {
+        let out = "806\t64\t805\tPipeWire\tfloat32le 2ch 44100Hz\n12\t5\t61\tPipeWire\tfloat32le 2ch 44100Hz\nnot-a-row\n\tleading tab\n";
+        assert_eq!(parse_stream_indices(out), vec![806, 12]);
+        assert_eq!(parse_stream_indices(""), Vec::<u32>::new());
     }
 
     #[test]

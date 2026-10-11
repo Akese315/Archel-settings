@@ -45,7 +45,7 @@ Item {
             Label {
                 text: "Bluetooth"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
@@ -111,12 +111,12 @@ Item {
                                     }
                                     Label {
                                         text: modelData.state
-                                        font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                         opacity: 0.6
                                     }
                                     Label {
                                         text: modelData.signal
-                                        font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                         opacity: 0.6
                                     }
                                     BusyIndicator {

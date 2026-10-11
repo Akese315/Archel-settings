@@ -189,7 +189,7 @@ Item {
             Label {
                 text: "Périphériques"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
@@ -314,7 +314,7 @@ Item {
                                 }
                                 Label {
                                     text: modelData.detail
-                                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                     opacity: 0.6
                                     elide: Text.ElideMiddle
                                     Layout.maximumWidth: parent.width * 0.4

@@ -33,12 +33,15 @@ Dialog {
     }
 
     // Red-accent title via a custom header (UI-SPEC color discipline:
-    // palette role, not a literal hex - brightText is the semantic
-    // warning-ink role of the system palette).
+    // palette role, not a literal hex). `brightText` is NOT a
+    // SystemPalette role (QtQuick's SystemPalette stops at window/
+    // windowText/text/base/mid/...); it lives on the Controls
+    // `palette` every Popup carries, so the header reads the Dialog's
+    // own palette for the semantic warning-ink role.
     header: Label {
         text: "Une erreur est survenue"
         font.bold: true
-        color: pal.brightText
+        color: root.palette.brightText
         padding: 16
         bottomPadding: 0
     }

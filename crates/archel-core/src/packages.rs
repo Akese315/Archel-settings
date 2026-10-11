@@ -66,6 +66,38 @@ pub struct PkgListLabels {
     pub version: String,
 }
 
+/// One installed package with its on-disk footprint, for the GUI
+/// list's size column and size filters. `size_bytes` is alpm's
+/// `isize` verbatim (0 is the DB's own value for e.g. meta
+/// packages, never a guessed fallback).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstalledPkg {
+    pub name: String,
+    pub version: String,
+    pub size_bytes: u64,
+}
+
+/// Reads every installed package with its installed size, sorted by
+/// name ascending (the GUI's default browse order; the descending
+/// version order of [`list_installed`] serves the CLI table only).
+/// Same corrupt-DB typed error contract as [`list_installed`].
+pub fn list_installed_with_sizes() -> Result<Vec<InstalledPkg>, ArchelError> {
+    let alpm = alpm::Alpm::new("/", "/var/lib/pacman").map_err(|err| {
+        ArchelError::Internal(format!("cannot open alpm localdb: {err}"))
+    })?;
+    let local = alpm.localdb();
+    let mut pkgs: Vec<_> = local.pkgs().iter().collect();
+    pkgs.sort_by(|a, b| a.name().cmp(b.name()));
+    Ok(pkgs
+        .iter()
+        .map(|pkg| InstalledPkg {
+            name: pkg.name().to_string(),
+            version: pkg.version().to_string(),
+            size_bytes: pkg.isize().max(0) as u64,
+        })
+        .collect())
+}
+
 /// Collects the three pkg-list table labels in one call.
 pub fn list_table_labels() -> PkgListLabels {
     PkgListLabels {

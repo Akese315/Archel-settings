@@ -61,7 +61,7 @@ Dialog {
             horizontalAlignment: Text.AlignHCenter
             text: root.passkey === "" ? "······" : root.passkey
             font.family: "monospace"
-            font.pixelSize: Math.round(Qt.font({}).pixelSize * 2)
+            font.pixelSize: Math.round(Qt.application.font.pixelSize * 2)
             font.bold: true
         }
 

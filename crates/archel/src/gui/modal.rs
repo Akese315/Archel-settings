@@ -32,6 +32,8 @@ pub const MAX_STACKED_CONFIRMS: usize = 2;
 /// waiter keeps its own receiver until its own entry resolves, so a
 /// second tab confirm never orphans the first waiter (WR-03).
 struct PendingConfirm {
+    #[allow(dead_code)]
+    /// Used in tests to verify generation ordering (T-7-04).
     generation: u64,
     question: String,
     tx: std::sync::mpsc::Sender<bool>,

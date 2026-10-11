@@ -2753,3 +2753,187 @@ pub mod vpn {
         rust_i18n::t!("net.vpn_empty").to_string()
     }
 }
+
+/// Wi-Fi network list and connect/disconnect writes (GUI net tab).
+///
+/// Reads use the same terse-field `nmcli` shape as the status path
+/// (`run_nm_query`); writes go through `run_nm_write` so polkit
+/// denials surface with the standard hint. SSIDs cross from daemon
+/// output into display/argv only - never evaluated, never shelled
+/// (T-4-01). A WPA passphrase travels once through the nmcli argv
+/// (`nmcli` offers no stdin secret path for `device wifi connect`);
+/// that argv is visible to this user's `ps` for the spawn's lifetime,
+/// the accepted trade-off for v1 GUI connects.
+pub mod wifi {
+    use serde::Serialize;
+
+    use crate::error::ArchelError;
+
+    /// One visible Wi-Fi network.
+    ///
+    /// Serialized as-is for `--json` (snake_case v1 schema): `None`
+    /// signal is honest absence (hidden AP row), empty `security`
+    /// means an open network, `in_use` marks the connected SSID.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    pub struct WifiNetwork {
+        pub ssid: String,
+        pub signal: Option<u32>,
+        pub security: String,
+        pub in_use: bool,
+    }
+
+    /// Splits one `nmcli -t` line into fields, honouring nmcli's
+    /// backslash escaping (`\:` inside a value, `\\` for a literal
+    /// backslash). Pure over the text so fixtures cover it.
+    pub fn split_escaped(line: &str) -> Vec<String> {
+        let mut fields = Vec::new();
+        let mut current = String::new();
+        let mut escaped = false;
+        for ch in line.chars() {
+            if escaped {
+                current.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == ':' {
+                fields.push(current.clone());
+                current.clear();
+            } else {
+                current.push(ch);
+            }
+        }
+        fields.push(current);
+        fields
+    }
+
+    /// Parses `nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi
+    /// list` output into networks, strongest signal first (nmcli's
+    /// own order). Blank SSIDs (hidden networks) are skipped: they
+    /// are not connectable by name. Pure over captured stdout.
+    pub fn parse_wifi_list(stdout: &str) -> Vec<WifiNetwork> {
+        stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(split_escaped)
+            .filter_map(|fields| {
+                if fields.len() < 2 {
+                    return None;
+                }
+                let in_use = fields[0].trim() == "yes";
+                let ssid = fields[1].trim().to_string();
+                if ssid.is_empty() {
+                    return None;
+                }
+                let signal = fields
+                    .get(2)
+                    .and_then(|raw| raw.trim().parse::<u32>().ok());
+                let security = fields
+                    .get(3)
+                    .map(|raw| raw.trim().to_string())
+                    .unwrap_or_default();
+                Some(WifiNetwork {
+                    ssid,
+                    signal,
+                    security,
+                    in_use,
+                })
+            })
+            .collect()
+    }
+
+    /// Parses `nmcli -t -f DEVICE,TYPE device status` output for the
+    /// first Wi-Fi interface name. Pure over captured stdout.
+    pub fn parse_wifi_interface(stdout: &str) -> Option<String> {
+        stdout.lines().map(str::trim).find_map(|line| {
+            let fields = split_escaped(line);
+            match fields.as_slice() {
+                [device, kind] if kind.trim() == "wifi" && !device.trim().is_empty() => {
+                    Some(device.trim().to_string())
+                }
+                _ => None,
+            }
+        })
+    }
+
+    /// Lists the visible Wi-Fi networks (terse fields, `C` locale).
+    /// A missing `nmcli` is the typed unavailable hint, never fake
+    /// networks; an empty list is the honest radio-off state.
+    pub fn wifi_list() -> Result<Vec<WifiNetwork>, ArchelError> {
+        let out = super::run_nm_query(
+            "nmcli",
+            &["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"],
+        )?;
+        Ok(parse_wifi_list(&out))
+    }
+
+    /// Connects to one SSID. An empty passphrase targets an open
+    /// network (nmcli refuses a `password` field without a scheme);
+    /// a wrong passphrase surfaces as nmcli's own non-zero exit
+    /// mapped through the standard write-error shape.
+    pub fn wifi_connect(ssid: &str, password: &str) -> Result<(), ArchelError> {
+        let action = format!("connect Wi-Fi '{ssid}'");
+        if password.is_empty() {
+            super::run_nm_write("nmcli", &["device", "wifi", "connect", ssid], &action)?;
+        } else {
+            super::run_nm_write(
+                "nmcli",
+                &["device", "wifi", "connect", ssid, "password", password],
+                &action,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Disconnects the Wi-Fi device (the connection profile stays
+    /// configured, so reconnecting later needs no passphrase re-entry
+    /// unless the passphrase changed). No Wi-Fi device is the typed
+    /// unavailable hint, never a silent ok.
+    pub fn wifi_disconnect() -> Result<(), ArchelError> {
+        let status = super::run_nm_query("nmcli", &["-t", "-f", "DEVICE,TYPE", "device", "status"])?;
+        let Some(interface) = parse_wifi_interface(&status) else {
+            return Err(ArchelError::network_unavailable(
+                "no Wi-Fi device present",
+            ));
+        };
+        let action = format!("disconnect Wi-Fi device '{interface}'");
+        super::run_nm_write("nmcli", &["device", "disconnect", &interface], &action)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Live-shaped `nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device
+        /// wifi list` fixture (C locale, escaped colon in an SSID).
+        #[test]
+        fn wifi_list_parse_reads_rows_and_skips_hidden() {
+            let out = "yes:KLEY Rennes priv\\u{e9}e:82:WPA2 WPA3\nno:Livebox-8456:57:WPA2\nno:eduroam:74:WPA2 802.1X\nno::40:WPA2\nno:Caf\\:e gratuit:22:WPA1 WPA2\nno:Open Guest:66:\n";
+            let rows = parse_wifi_list(out);
+            assert_eq!(rows.len(), 5, "blank-SSID (hidden) row is skipped");
+            assert!(rows[0].in_use);
+            assert_eq!(rows[0].signal, Some(82));
+            assert_eq!(rows[0].security, "WPA2 WPA3");
+            // Escaped colon survives as one SSID, never a field split.
+            assert_eq!(rows[3].ssid, "Caf:e gratuit");
+            // Empty security = open network.
+            assert_eq!(rows[4].security, "");
+            assert_eq!(parse_wifi_list("garbage\n\nnope"), Vec::new());
+        }
+
+        #[test]
+        fn wifi_interface_parse_picks_the_wifi_row() {
+            let out = "wlan0:wifi\nenp5s0:ethernet\nlo:loopback\n";
+            assert_eq!(parse_wifi_interface(out).as_deref(), Some("wlan0"));
+            assert_eq!(parse_wifi_interface("enp5s0:ethernet\n"), None);
+        }
+
+        #[test]
+        fn split_escaped_unescapes_values() {
+            assert_eq!(split_escaped("a:b\\:c:d"), vec!["a", "b:c", "d"]);
+            assert_eq!(split_escaped("plain"), vec!["plain"]);
+            assert_eq!(split_escaped("x\\\\:y"), vec!["x\\", "y"]);
+        }
+    }
+}

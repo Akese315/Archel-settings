@@ -236,6 +236,13 @@ impl crate::gui::bridge_audio::qobject::AudioModel {
 pub(crate) struct AudioWriteOps {
     pub list: fn() -> Result<archel_core::audio::AudioSnapshot, archel_core::ArchelError>,
     pub set_default: fn(u32) -> Result<(), archel_core::ArchelError>,
+    /// Moves the already-playing/capturing streams onto the new
+    /// default (wpctl only retargets new streams); soft-failures are
+    /// core's own contract.
+    pub move_all: fn(
+        archel_core::audio::AudioKind,
+        &str,
+    ) -> Result<(), archel_core::ArchelError>,
 }
 
 /// The production wiring: every field is the CLI-proven core
@@ -243,6 +250,7 @@ pub(crate) struct AudioWriteOps {
 pub(crate) const PROD_AUDIO_WRITE_OPS: AudioWriteOps = AudioWriteOps {
     list: archel_core::audio::audio_list,
     set_default: archel_core::audio::set_default,
+    move_all: archel_core::audio::move_all_streams,
 };
 
 /// Sink-switch worker body (runs on the blocking pool). Returns
@@ -259,6 +267,7 @@ pub(crate) fn output_worker(
         name,
         ops,
         sess,
+        archel_core::audio::AudioKind::Sink,
         archel_core::audio::resolve_sink_id,
         |snapshot, id| {
             snapshot
@@ -286,6 +295,7 @@ pub(crate) fn input_worker(
         name,
         ops,
         sess,
+        archel_core::audio::AudioKind::Source,
         archel_core::audio::resolve_source_id,
         |snapshot, id| {
             snapshot
@@ -306,12 +316,15 @@ pub(crate) fn input_worker(
 /// Shared resolve-confirm-switch-read-back body. `resolve` maps the
 /// picker name to the session id (pure core fn); `prompt` builds the
 /// confirm question for that id; `stuck` proves the read-back shows
-/// the new default. Every core error surfaces through its readable
-/// `message()`, unmodified.
+/// the new default. After `set-default` lands, every active stream is
+/// moved onto the picked device so already-running apps follow it
+/// (best effort by core contract). Every core error surfaces through
+/// its readable `message()`, unmodified.
 fn switch_worker(
     name: &str,
     ops: &AudioWriteOps,
     sess: &ModalSession,
+    kind: archel_core::audio::AudioKind,
     resolve: fn(
         &archel_core::audio::AudioSnapshot,
         &str,
@@ -343,6 +356,12 @@ fn switch_worker(
         return None;
     }
     if let Err(err) = (ops.set_default)(id) {
+        return Some(err.message());
+    }
+    // Already-running apps keep their old device through a bare
+    // set-default: move them onto the picked device (soft-failing by
+    // core contract - a pinned stream never fails the switch).
+    if let Err(err) = (ops.move_all)(kind, name) {
         return Some(err.message());
     }
     match (ops.list)() {
@@ -442,6 +461,15 @@ mod tests {
 
     use crate::gui::modal::{ModalKind, ModalSession};
 
+    /// Soft no-op move leg for fake ops (the move contract is the
+    /// core's tested territory).
+    fn fake_move_ok(
+        _kind: archel_core::audio::AudioKind,
+        _name: &str,
+    ) -> Result<(), archel_core::ArchelError> {
+        Ok(())
+    }
+
     fn wait_until(what: &str, cond: impl Fn() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
@@ -467,6 +495,7 @@ mod tests {
         let ops = AudioWriteOps {
             list: fake_list,
             set_default: set_must_not_run,
+            move_all: fake_move_ok,
         };
         let sess = ModalSession::default();
         let outcome = output_worker("no-such-sink", &ops, &sess);
@@ -498,6 +527,7 @@ mod tests {
         let ops = AudioWriteOps {
             list: fake_list,
             set_default: set_must_not_run,
+            move_all: fake_move_ok,
         };
         let sess = ModalSession::default();
         let outcome = std::thread::scope(|s| {
@@ -516,6 +546,7 @@ mod tests {
     fn accept_switches_and_proves_the_read_back() {
         use archel_core::audio::AudioSnapshot;
         static SET_ID: Mutex<Option<u32>> = Mutex::new(None);
+        static MOVED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
         fn fake_list() -> Result<AudioSnapshot, archel_core::ArchelError> {
             let picked = *SET_ID.lock().expect("set lock");
             let mut snap = ready_snapshot();
@@ -528,10 +559,22 @@ mod tests {
             *SET_ID.lock().expect("set lock") = Some(id);
             Ok(())
         }
+        fn recording_move(
+            kind: archel_core::audio::AudioKind,
+            name: &str,
+        ) -> Result<(), archel_core::ArchelError> {
+            MOVED.lock().expect("moved lock").push((
+                format!("{kind:?}"),
+                name.to_string(),
+            ));
+            Ok(())
+        }
         *SET_ID.lock().expect("set lock") = None;
+        MOVED.lock().expect("moved lock").clear();
         let ops = AudioWriteOps {
             list: fake_list,
             set_default: fake_set,
+            move_all: recording_move,
         };
         let sess = ModalSession::default();
         let outcome = std::thread::scope(|s| {
@@ -550,6 +593,11 @@ mod tests {
             Some(59),
             "the resolved session id reaches wpctl"
         );
+        assert_eq!(
+            *MOVED.lock().expect("moved lock"),
+            vec![("Sink".to_string(), "alsa_output.pci-hdmi".to_string())],
+            "accepted switch moves active streams onto the picked device"
+        );
     }
 
     #[test]
@@ -566,6 +614,7 @@ mod tests {
         let ops = AudioWriteOps {
             list: fake_list,
             set_default: failing_set,
+            move_all: fake_move_ok,
         };
         let sess = ModalSession::default();
         let outcome = std::thread::scope(|s| {

@@ -13,8 +13,11 @@ import QtQuick.Layouts
 import org.archel.settings
 
 Item {
+    // Id named `displayModel`, never `display`: AbstractButton's own
+    // `display` enum property (value 2 = TextBesideIcon) shadows any
+    // unqualified `display` lookup inside the Apply Button below.
     DisplayModel {
-        id: display
+        id: displayModel
     }
 
     Timer {
@@ -22,22 +25,22 @@ Item {
         running: true
         repeat: true
         onTriggered: {
-            display.tick();
-            display.countdownTick();
+            displayModel.tick();
+            displayModel.countdownTick();
         }
     }
     Component.onCompleted: {
-        display.tick();
-        display.countdownTick();
+        displayModel.tick();
+        displayModel.countdownTick();
     }
 
     CountdownModal {
-        monitorName: display.countdownMonitor
-        secondsLeft: display.countdownSeconds
+        monitorName: displayModel.countdownMonitor
+        secondsLeft: displayModel.countdownSeconds
         totalSeconds: 15
-        visible: display.countdownVisible
-        onKeepRequested: display.keepChange()
-        onRevertRequested: display.revertChange()
+        visible: displayModel.countdownVisible
+        onKeepRequested: displayModel.keepChange()
+        onRevertRequested: displayModel.revertChange()
         z: 100
     }
 
@@ -55,22 +58,22 @@ Item {
             Label {
                 text: "Affichage"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
-                bannerVisible: display.bannerVisible
-                onDismissRequested: display.dismissBanner()
+                bannerVisible: displayModel.bannerVisible
+                onDismissRequested: displayModel.dismissBanner()
             }
 
             BusyIndicator {
-                running: display.operationBusy
-                visible: display.operationBusy
+                running: displayModel.operationBusy
+                visible: displayModel.operationBusy
                 Layout.alignment: Qt.AlignHCenter
             }
 
             Repeater {
-                model: display.monitorsJson === "" ? [] : JSON.parse(display.monitorsJson)
+                model: displayModel.monitorsJson === "" ? [] : JSON.parse(displayModel.monitorsJson)
 
                 GroupBox {
                     Layout.fillWidth: true
@@ -98,7 +101,7 @@ Item {
                                 id: modeBox
                                 Layout.fillWidth: true
                                 model: modelData.available_modes
-                                enabled: !display.operationBusy
+                                enabled: !displayModel.operationBusy
                             }
                         }
 
@@ -114,7 +117,7 @@ Item {
                                 id: scaleField
                                 Layout.fillWidth: true
                                 placeholderText: modelData.scale === undefined ? "1.0" : String(modelData.scale)
-                                enabled: !display.operationBusy
+                                enabled: !displayModel.operationBusy
                             }
                         }
                         StatField {
@@ -124,13 +127,13 @@ Item {
                         }
                         Button {
                             text: "Appliquer"
-                            enabled: !display.operationBusy
+                            enabled: !displayModel.operationBusy
                             onClicked: {
                                 var mode = modeBox.currentText !== undefined ? modeBox.currentText : "";
                                 var at = mode.indexOf("@");
                                 var resolution = at < 0 ? mode : mode.substring(0, at);
                                 var refresh = at < 0 ? "" : mode.substring(at + 1).replace("Hz", "");
-                                display.planChange(modelData.name, resolution, refresh, scaleField.text);
+                                displayModel.planChange(modelData.name, resolution, refresh, scaleField.text);
                             }
                         }
                     }

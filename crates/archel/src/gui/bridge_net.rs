@@ -25,10 +25,13 @@ pub mod qobject {
         #[qproperty(QString, profile_text)]
         #[qproperty(QString, conns_json)]
         #[qproperty(QString, vpn_json)]
+        #[qproperty(QString, wifi_json)]
         #[qproperty(bool, banner_visible)]
         #[qproperty(bool, dns_busy)]
         #[qproperty(bool, vpn_busy)]
+        #[qproperty(bool, wifi_busy)]
         #[qproperty(QString, vpn_result_text)]
+        #[qproperty(QString, wifi_error_text)]
         #[namespace = "archel_settings"]
         type NetModel = super::NetModelRust;
 
@@ -59,6 +62,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "vpnImportStart"]
         fn vpn_import_start(self: Pin<&mut Self>, path: QString);
+
+        #[qinvokable]
+        #[cxx_name = "wifiConnect"]
+        fn wifi_connect(self: Pin<&mut Self>, ssid: QString, password: QString);
+
+        #[qinvokable]
+        #[cxx_name = "wifiDisconnect"]
+        fn wifi_disconnect(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for NetModel {}

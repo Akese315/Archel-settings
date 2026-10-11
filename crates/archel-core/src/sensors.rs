@@ -310,6 +310,118 @@ pub fn power_snapshot() -> PowerSnapshot {
     Sensors::new().power()
 }
 
+/// CPU/GPU driver identity for the System tab: CPU model plus
+/// microcode revision, GPU kernel-module driver plus its version,
+/// and the NVIDIA CUDA runtime version when nvidia-smi reports one.
+/// Every field is `Option`: absence renders N/A downstream, never a
+/// guessed value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DriverInfo {
+    pub cpu_model: Option<String>,
+    pub cpu_microcode: Option<String>,
+    /// Kernel module name (`nvidia`, `amdgpu`, `i915`, ...) plus its
+    /// sysfs version when the module exports one.
+    pub gpu_driver: Option<String>,
+    pub gpu_driver_version: Option<String>,
+    pub cuda_version: Option<String>,
+}
+
+/// Extracts the first `key\t: value` (or `key : value`) row from
+/// `/proc/cpuinfo` content. Pure over the text so fixtures cover it.
+pub fn parse_cpuinfo_field(cpuinfo: &str, key: &str) -> Option<String> {
+    cpuinfo.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        if name.trim() != key {
+            return None;
+        }
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// Extracts the `CUDA Version: 13.0` token from `nvidia-smi` output
+/// (the plain table banner line). Pure over the text so fixtures
+/// cover it without a GPU.
+pub fn parse_cuda_version(nvidia_smi_out: &str) -> Option<String> {
+    const MARKER: &str = "CUDA Version";
+    nvidia_smi_out.lines().find_map(|line| {
+        let at = line.find(MARKER)?;
+        let rest = line[at + MARKER.len()..].trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+        let version = rest.split_whitespace().next()?;
+        // Reject nmcli-style empty and non-version tokens.
+        version
+            .chars()
+            .any(|c| c.is_ascii_digit())
+            .then(|| version.to_string())
+    })
+}
+
+/// GPU driver modules probed in order via `/sys/module/<m>`; the
+/// first present module wins (a hybrid i915+nvidia box still names
+/// nvidia first: the discrete card owns the tab).
+const GPU_MODULE_PROBE: [&str; 5] = ["nvidia", "amdgpu", "i915", "xe", "nouveau"];
+
+/// Reads the module version exposed at `/sys/module/<m>/version`
+/// (nvidia always writes one; amdgpu/i915 often do not - absence is
+/// honest `None`).
+fn module_version(sys_module_dir: &Path, module: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(sys_module_dir.join(module).join("version")).ok()?;
+    let trimmed = raw.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// Collects the driver identity. One-shot reads only; `nvidia-smi`
+/// is which-gated and its absence reads CUDA as `None`, never an
+/// error (the rest of the snapshot still renders).
+pub fn driver_info() -> DriverInfo {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok();
+    let (cpu_model, cpu_microcode) = match cpuinfo.as_deref() {
+        Some(text) => (
+            parse_cpuinfo_field(text, "model name"),
+            parse_cpuinfo_field(text, "microcode"),
+        ),
+        None => (None, None),
+    };
+    let sys_modules = Path::new("/sys/module");
+    let mut gpu_driver = None;
+    let mut gpu_driver_version = None;
+    for module in GPU_MODULE_PROBE {
+        if sys_modules.join(module).is_dir() {
+            gpu_driver = Some(module.to_string());
+            gpu_driver_version = module_version(sys_modules, module);
+            break;
+        }
+    }
+    // CUDA rides the plain `nvidia-smi` banner (the `--query`
+    // vocabulary has no CUDA field). which-gated: no binary, no CUDA
+    // (never an error - the rest of the snapshot still renders).
+    let cuda_version = which::which("nvidia-smi").ok().and_then(|binary| {
+        let handle = duct::cmd(&binary, Vec::<&str>::new())
+            .unchecked()
+            .env("LC_ALL", "C")
+            .stdout_capture()
+            .stderr_capture()
+            .start()
+            .ok()?;
+        let output = handle
+            .wait_timeout(Duration::from_secs(5))
+            .ok()
+            .flatten()?
+        .clone();
+        if output.status.code() != Some(0) {
+            return None;
+        }
+        parse_cuda_version(&String::from_utf8_lossy(&output.stdout))
+    });
+    DriverInfo {
+        cpu_model,
+        cpu_microcode,
+        gpu_driver,
+        gpu_driver_version,
+        cuda_version,
+    }
+}
+
 fn snapshot_from_backend(backend: &impl GpuBackend) -> GpuSnapshot {
     GpuSnapshot {
         name: backend.name(),
@@ -796,5 +908,57 @@ mod tests {
         let units = sensor_unit_labels();
         assert!(!units.celsius.trim().is_empty());
         assert!(!units.watt.trim().is_empty());
+    }
+
+    /// `/proc/cpuinfo` shape captured live (AMD Zen 3, 2026-10-11):
+    /// the FIRST `model name`/`microcode` rows win, later per-core
+    /// repeats are ignored.
+    #[test]
+    fn cpuinfo_parse_reads_first_model_and_microcode_rows() {
+        const CPUINFO: &str = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 7 5800X 8-Core Processor\nmicrocode\t: 0xa201211\nprocessor\t: 1\nmodel name\t: repeated row must be ignored\n";
+        assert_eq!(
+            parse_cpuinfo_field(CPUINFO, "model name").as_deref(),
+            Some("AMD Ryzen 7 5800X 8-Core Processor")
+        );
+        assert_eq!(
+            parse_cpuinfo_field(CPUINFO, "microcode").as_deref(),
+            Some("0xa201211")
+        );
+        assert_eq!(parse_cpuinfo_field(CPUINFO, "missing_key"), None);
+        assert_eq!(parse_cpuinfo_field("model name\t:  \n", "model name"), None);
+    }
+
+    #[test]
+    fn cuda_parse_reads_the_banner_token_and_rejects_garbage() {
+        // Banner line shape captured live (driver 580.178.04, CUDA 13.0).
+        const SMI: &str =
+            "| NVIDIA-SMI 580.178.04   Driver Version: 580.178.04   CUDA Version: 13.0     |\n";
+        assert_eq!(parse_cuda_version(SMI).as_deref(), Some("13.0"));
+        assert_eq!(parse_cuda_version("CUDA Version:  \n"), None);
+        assert_eq!(parse_cuda_version("no banner at all\n"), None);
+    }
+
+    #[test]
+    fn live_driver_info_names_the_real_drivers() {
+        let info = driver_info();
+        assert!(
+            info.cpu_model.as_deref().is_some_and(|m| !m.trim().is_empty()),
+            "live cpuinfo must carry a model name"
+        );
+        assert!(
+            info.cpu_microcode.as_deref().is_some_and(|m| !m.trim().is_empty()),
+            "live cpuinfo must carry a microcode revision"
+        );
+        assert!(
+            info.gpu_driver.is_some(),
+            "this machine has a GPU driver module loaded"
+        );
+        if info.gpu_driver.as_deref() == Some("nvidia") {
+            assert!(
+                info.gpu_driver_version.is_some(),
+                "nvidia always exports /sys/module/nvidia/version"
+            );
+            assert!(info.cuda_version.is_some(), "nvidia-smi reports CUDA");
+        }
     }
 }

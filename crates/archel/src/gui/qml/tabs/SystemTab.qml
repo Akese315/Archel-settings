@@ -43,7 +43,7 @@ Item {
             Label {
                 text: "Système"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
@@ -75,22 +75,85 @@ Item {
                         fieldLabel: "Horloge"
                         fieldValue: system.clockText
                     }
+                    StatField {
+                        Layout.fillWidth: true
+                        fieldLabel: "Modèle"
+                        fieldValue: system.cpuModelText
+                    }
+                    StatField {
+                        Layout.fillWidth: true
+                        fieldLabel: "Microcode"
+                        fieldValue: system.cpuDriverText
+                    }
                     Button {
                         id: coresToggle
                         text: "Cœurs"
                         checkable: true
                         visible: system.coreCount !== 1
                     }
-                    ColumnLayout {
+                    // Per-core matrix: one compact tile per core with
+                    // its live percentage, frequency and a load bar.
+                    // Flow wraps the tiles as the window allows; with
+                    // 16 logical cores the matrix stays readable where
+                    // a one-row-per-core list needed a full screen.
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
                         visible: coresToggle.checked && system.coreCount > 1
-                        spacing: 8
 
                         Repeater {
                             model: system.coresJson === "" ? [] : JSON.parse(system.coresJson)
-                            delegate: StatField {
-                                Layout.fillWidth: true
-                                fieldLabel: modelData.name
-                                fieldValue: modelData.usage.toFixed(1) + " % · " + modelData.freq + " MHz"
+                            delegate: Rectangle {
+                                width: 92
+                                height: 72
+                                radius: 6
+                                color: sysPalette.alternateBase
+                                border.color: sysPalette.mid
+                                border.width: 1
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 2
+
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.name
+                                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
+                                        opacity: 0.7
+                                    }
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.usage.toFixed(0) + " %"
+                                        font.bold: true
+                                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+                                        color: modelData.usage > 85 ? "#e01b24"
+                                              : modelData.usage > 50 ? "#ff7800"
+                                              : sysPalette.text
+                                    }
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 64
+                                        height: 4
+                                        radius: 2
+                                        color: sysPalette.mid
+                                        Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: Math.min(64, 64 * modelData.usage / 100)
+                                            height: 4
+                                            radius: 2
+                                            color: modelData.usage > 85 ? "#e01b24"
+                                                  : modelData.usage > 50 ? "#ff7800"
+                                                  : "#2ec27e"
+                                        }
+                                    }
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.freq + " MHz"
+                                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.7)
+                                        opacity: 0.6
+                                    }
+                                }
                             }
                         }
                     }
@@ -168,6 +231,16 @@ Item {
                         Layout.fillWidth: true
                         fieldLabel: "Modèle / VRAM"
                         fieldValue: system.gpuText
+                    }
+                    StatField {
+                        Layout.fillWidth: true
+                        fieldLabel: "Pilote"
+                        fieldValue: system.gpuDriverText
+                    }
+                    StatField {
+                        Layout.fillWidth: true
+                        fieldLabel: "CUDA"
+                        fieldValue: system.cudaText
                     }
                 }
             }

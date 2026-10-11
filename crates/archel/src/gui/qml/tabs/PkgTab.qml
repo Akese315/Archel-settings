@@ -47,6 +47,70 @@ Item {
         root.selectionRev += 1;
     }
 
+    // ── Installed-list browsing (filters by name and size) ────────
+    // Remote search results keep precedence exactly as before; the
+    // name/size filters and sorts only apply to the installed list.
+
+    // Live parsed rows: search hits first (name/version/source), the
+    // installed list otherwise (name/version/size).
+    readonly property var allRows: {
+        if (pkg.searchJson !== "")
+            return JSON.parse(pkg.searchJson);
+        if (pkg.installedJson === "")
+            return [];
+        return JSON.parse(pkg.installedJson);
+    }
+
+    property int sortMode: 0   // 0 nom ↑, 1 nom ↓, 2 taille ↑, 3 taille ↓
+    property int sizeFilter: 0 // 0 toutes, 1 ≥100 Mo, 2 ≥1 Go, 3 ≤10 Mo
+
+    function filteredRows() {
+        var rows = root.allRows;
+        var searching = pkg.searchJson !== "";
+        var query = filterField.text.trim().toLowerCase();
+        var out = [];
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (query !== "" && row.name.toLowerCase().indexOf(query) < 0)
+                continue;
+            if (!searching) {
+                var size = row.size || 0;
+                if (root.sizeFilter === 1 && size < 100 * 1024 * 1024)
+                    continue;
+                if (root.sizeFilter === 2 && size < 1024 * 1024 * 1024)
+                    continue;
+                if (root.sizeFilter === 3 && size > 10 * 1024 * 1024)
+                    continue;
+            }
+            out.push(row);
+        }
+        if (!searching) {
+            if (root.sortMode === 0)
+                out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+            else if (root.sortMode === 1)
+                out.sort(function (a, b) { return b.name.localeCompare(a.name); });
+            else if (root.sortMode === 2)
+                out.sort(function (a, b) { return (a.size || 0) - (b.size || 0); });
+            else
+                out.sort(function (a, b) { return (b.size || 0) - (a.size || 0); });
+        }
+        return out;
+    }
+
+    // Human-readable size for the installed rows (search rows carry
+    // no size: rendered blank, never a fake 0).
+    function formatBytes(n) {
+        if (n === null || n === undefined)
+            return "";
+        if (n < 1024)
+            return n + " o";
+        if (n < 1024 * 1024)
+            return (n / 1024).toFixed(1) + " Kio";
+        if (n < 1024 * 1024 * 1024)
+            return (n / 1024 / 1024).toFixed(1) + " Mio";
+        return (n / 1024 / 1024 / 1024).toFixed(2) + " Gio";
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -69,7 +133,7 @@ Item {
             Label {
                 text: "Applications"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
@@ -88,7 +152,7 @@ Item {
                     TextField {
                         id: searchField
                         Layout.fillWidth: true
-                        placeholderText: "Rechercher un paquet…"
+                        placeholderText: "Rechercher un paquet à installer…"
                         onAccepted: {
                             root.clearSelection();
                             pkg.search(text);
@@ -101,19 +165,112 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                     }
 
+                    // Name filter + size filter + sort over the
+                    // installed list (client-side; the 1 Hz refresh
+                    // keeps the same filter alive).
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: filterField
+                            Layout.fillWidth: true
+                            placeholderText: "Filtrer la liste installée…"
+                            selectByMouse: true
+                        }
+                        Label { text: "Taille" }
+                        ComboBox {
+                            id: sizeFilterBox
+                            Layout.preferredWidth: 130
+                            model: ["Toutes", "≥ 100 Mo", "≥ 1 Go", "≤ 10 Mo"]
+                            onActivated: function (index) { root.sizeFilter = index }
+                        }
+                        Label { text: "Tri" }
+                        ComboBox {
+                            id: sortBox
+                            Layout.preferredWidth: 170
+                            model: ["Nom (A→Z)", "Nom (Z→A)", "Taille (croissante)", "Taille (décroissante)"]
+                            onActivated: function (index) { root.sortMode = index }
+                        }
+                    }
+
+                    // Write toolbar (D-12/D-15): sits ABOVE the list so
+                    // it stays reachable with a thousand rows loaded.
+                    // While a modal session is open every button is
+                    // disabled and the busy label names the running
+                    // transaction.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Button {
+                            text: "Installer"
+                            highlighted: true
+                            Layout.minimumWidth: 110
+                            enabled: !pkg.operationBusy && root.selectedNames.length > 0
+                            onClicked: {
+                                pkg.installStart(JSON.stringify(root.selectedNames));
+                                root.clearSelection();
+                            }
+                        }
+                        Button {
+                            text: "Mettre à jour"
+                            Layout.minimumWidth: 130
+                            enabled: !pkg.operationBusy
+                            onClicked: pkg.upgradeStart()
+                        }
+                        Button {
+                            text: "Supprimer"
+                            Layout.minimumWidth: 110
+                            enabled: !pkg.operationBusy && root.selectedNames.length > 0
+                            onClicked: {
+                                pkg.removeStart(JSON.stringify(root.selectedNames));
+                                root.clearSelection();
+                            }
+                        }
+                        // AUR is a reviewed single-package path (D-19): one
+                        // checked row, core review, trust block, then the
+                        // cancellable yay build. Repository rows stay on the
+                        // Installer button (the review redirects them with
+                        // core's own hint).
+                        Button {
+                            text: "Installer depuis AUR"
+                            Layout.minimumWidth: 170
+                            enabled: !pkg.operationBusy && root.selectedNames.length === 1
+                            onClicked: {
+                                pkg.aurReviewStart(root.selectedNames[0]);
+                                root.clearSelection();
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        BusyIndicator {
+                            // Explicit size: BusyIndicator exposes no
+                            // implicitIndicatorSize property (that name
+                            // was a ReferenceError); 24 px keeps the
+                            // toolbar row at button height.
+                            implicitWidth: 24
+                            implicitHeight: 24
+                            running: pkg.operationBusy
+                            visible: pkg.operationBusy
+                        }
+                        Label {
+                            visible: pkg.operationBusy
+                            text: pkg.operationKind === "install" ? "Installation en cours…"
+                                  : pkg.operationKind === "remove" ? "Suppression en cours…"
+                                  : pkg.operationKind === "upgrade" ? "Mise à jour en cours…"
+                                  : pkg.operationKind === "aur" ? "Revue AUR en cours…"
+                                  : pkg.operationKind === "aur-build" ? "Compilation AUR en cours…"
+                                  : "Opération en cours…"
+                        }
+                    }
+
                     ListView {
                         id: pkgList
                         Layout.fillWidth: true
-                        Layout.preferredHeight: contentHeight
-                        interactive: false
+                        Layout.preferredHeight: Math.min(contentHeight, 320)
+                        interactive: contentHeight > 320
                         clip: true
-                        model: {
-                            if (pkg.searchJson !== "")
-                                return JSON.parse(pkg.searchJson);
-                            if (pkg.installedJson === "")
-                                return [];
-                            return JSON.parse(pkg.installedJson);
-                        }
+                        model: root.filteredRows()
                         delegate: ItemDelegate {
                             width: pkgList.width
                             hoverEnabled: true
@@ -132,13 +289,28 @@ Item {
                                     elide: Text.ElideMiddle
                                 }
                                 Label {
+                                    text: root.formatBytes(modelData.size)
+                                    Layout.preferredWidth: 80
+                                    horizontalAlignment: Text.AlignRight
+                                    opacity: 0.6
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
+                                }
+                                Label {
                                     text: modelData.version
-                                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                     opacity: 0.6
                                 }
                             }
                             onClicked: pkg.select(modelData.name)
                         }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: pkg.searchJson === ""
+                        opacity: 0.6
+                        text: root.filteredRows().length + " paquet(s) affiché(s)"
+                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                     }
 
                     ColumnLayout {
@@ -159,71 +331,6 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                         }
                     }
-                }
-            }
-
-            // Write toolbar (D-12/D-15): while a modal session is open
-            // every button is disabled and the busy label names the
-            // running transaction. The plan's "Mettre à jour ({n})"
-            // count is not in the read model - honest label, no invented
-            // count (documented deviation).
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Button {
-                    text: "Installer"
-                    highlighted: true
-                    Layout.minimumWidth: 110
-                    enabled: !pkg.operationBusy && root.selectedNames.length > 0
-                    onClicked: {
-                        pkg.installStart(JSON.stringify(root.selectedNames));
-                        root.clearSelection();
-                    }
-                }
-                Button {
-                    text: "Mettre à jour"
-                    Layout.minimumWidth: 130
-                    enabled: !pkg.operationBusy
-                    onClicked: pkg.upgradeStart()
-                }
-                Button {
-                    text: "Supprimer"
-                    Layout.minimumWidth: 110
-                    enabled: !pkg.operationBusy && root.selectedNames.length > 0
-                    onClicked: {
-                        pkg.removeStart(JSON.stringify(root.selectedNames));
-                        root.clearSelection();
-                    }
-                }
-                // AUR is a reviewed single-package path (D-19): one
-                // checked row, core review, trust block, then the
-                // cancellable yay build. Repository rows stay on the
-                // Installer button (the review redirects them with
-                // core's own hint).
-                Button {
-                    text: "Installer depuis AUR"
-                    Layout.minimumWidth: 170
-                    enabled: !pkg.operationBusy && root.selectedNames.length === 1
-                    onClicked: {
-                        pkg.aurReviewStart(root.selectedNames[0]);
-                        root.clearSelection();
-                    }
-                }
-                Item { Layout.fillWidth: true }
-                BusyIndicator {
-                    running: pkg.operationBusy
-                    visible: pkg.operationBusy
-                    implicitHeight: implicitIndicatorSize
-                }
-                Label {
-                    visible: pkg.operationBusy
-                    text: pkg.operationKind === "install" ? "Installation en cours…"
-                          : pkg.operationKind === "remove" ? "Suppression en cours…"
-                          : pkg.operationKind === "upgrade" ? "Mise à jour en cours…"
-                          : pkg.operationKind === "aur" ? "Revue AUR en cours…"
-                          : pkg.operationKind === "aur-build" ? "Compilation AUR en cours…"
-                          : "Opération en cours…"
                 }
             }
 

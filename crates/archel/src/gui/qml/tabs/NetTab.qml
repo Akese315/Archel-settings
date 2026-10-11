@@ -69,6 +69,35 @@ Item {
         return out
     }
 
+    // Picked Wi-Fi row ("" = none). SSIDs are keys, never indexes:
+    // the 1 Hz refresh re-sorts the list at will.
+    property string wifiPicked: ""
+
+    // Live parsed Wi-Fi rows (single JSON.parse per tick, reused by
+    // every consumer below instead of one parse per binding).
+    readonly property var wifiRows: net.wifiJson === "" ? [] : JSON.parse(net.wifiJson)
+
+    // True when the picked network requires a passphrase.
+    readonly property bool securePicked: {
+        for (var i = 0; i < root.wifiRows.length; i++) {
+            if (root.wifiRows[i].ssid === root.wifiPicked) {
+                return root.wifiRows[i].security !== ""
+            }
+        }
+        return false
+    }
+
+    // True when any Wi-Fi network is currently connected (drives the
+    // Déconnecter button; never guessed from the SSID stat field).
+    readonly property bool wifiConnected: {
+        for (var j = 0; j < root.wifiRows.length; j++) {
+            if (root.wifiRows[j].in_use) {
+                return true
+            }
+        }
+        return false
+    }
+
     // Re-runs the core validator over the editor rows; drives the
     // inline error and the Appliquer enablement.
     function refreshDnsState() {
@@ -111,7 +140,7 @@ Item {
             Label {
                 text: "Réseau"
                 font.bold: true
-                font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
             }
 
             PollBanner {
@@ -161,6 +190,106 @@ Item {
                         Layout.fillWidth: true
                         fieldLabel: "Profil"
                         fieldValue: net.profileText
+                    }
+                }
+            }
+
+            GroupBox {
+                title: "Wi-Fi"
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    ListView {
+                        id: wifiList
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(contentHeight, 240)
+                        interactive: contentHeight > 240
+                        clip: true
+                        model: root.wifiRows
+                        delegate: ItemDelegate {
+                            width: wifiList.width
+                            checkable: false
+                            checked: root.wifiPicked === modelData.ssid
+                            highlighted: modelData.in_use
+                            onClicked: {
+                                root.wifiPicked = modelData.in_use ? "" : modelData.ssid
+                                wifiPassword.text = ""
+                            }
+                            contentItem: RowLayout {
+                                spacing: 8
+
+                                Label {
+                                    text: (modelData.in_use ? "● " : "") + modelData.ssid
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideMiddle
+                                    font.bold: modelData.in_use
+                                }
+                                Label {
+                                    text: modelData.security === "" ? "ouvert"
+                                          : modelData.security
+                                    opacity: 0.6
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
+                                }
+                                Label {
+                                    text: modelData.signal === null ? ""
+                                          : modelData.signal + " %"
+                                    Layout.preferredWidth: 48
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: net.wifiJson !== "" && root.wifiRows.length === 0
+                        text: "Aucun réseau Wi-Fi visible."
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: wifiPassword
+                            Layout.fillWidth: true
+                            enabled: root.wifiPicked !== "" && !net.wifiBusy
+                            echoMode: TextInput.Password
+                            placeholderText: root.wifiPicked === ""
+                                ? "Choisissez un réseau…"
+                                : (root.securePicked ? "Mot de passe…" : "Réseau ouvert")
+                            onAccepted: {
+                                if (root.wifiPicked !== "") {
+                                    net.wifiConnect(root.wifiPicked, text)
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Connecter"
+                            highlighted: true
+                            enabled: root.wifiPicked !== "" && !net.wifiBusy
+                            onClicked: net.wifiConnect(root.wifiPicked, wifiPassword.text)
+                        }
+                        Button {
+                            text: "Déconnecter"
+                            enabled: !net.wifiBusy && root.wifiConnected
+                            onClicked: net.wifiDisconnect()
+                        }
+                        BusyIndicator {
+                            visible: net.wifiBusy
+                            running: net.wifiBusy
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: net.wifiErrorText !== ""
+                        text: net.wifiErrorText
+                        wrapMode: Label.WrapAnywhere
                     }
                 }
             }
@@ -316,12 +445,12 @@ Item {
                                 }
                                 Label {
                                     text: modelData.vpn_type
-                                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                     opacity: 0.6
                                 }
                                 Label {
                                     text: modelData.active ? "Actif" : ""
-                                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                                 }
                             }
                         }

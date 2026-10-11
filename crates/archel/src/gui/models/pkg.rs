@@ -393,16 +393,18 @@ impl Default for PkgModelRust {
     }
 }
 
-/// Installed rows as QML-ready JSON: `[{name,version}]` in the order
-/// the core list returns (its `render_list_table` twin chooses the
-/// same columns).
-pub(crate) fn installed_json_for(pkgs: &[archel_core::packages::PackageInfo]) -> String {
+/// Installed rows as QML-ready JSON: `[{name,version,size}]` in
+/// name-ascending order (the core read's own order) - `size` is the
+/// alpm installed size in bytes; QML renders it and drives the size
+/// filters off it.
+pub(crate) fn installed_json_for(pkgs: &[archel_core::packages::InstalledPkg]) -> String {
     let rows: Vec<serde_json::Value> = pkgs
         .iter()
         .map(|pkg| {
             serde_json::json!({
                 "name": pkg.name,
                 "version": pkg.version,
+                "size": pkg.size_bytes,
             })
         })
         .collect();
@@ -453,7 +455,7 @@ impl PkgModelRust {
     /// once-per-episode banner.
     fn apply_list(
         &mut self,
-        outcome: Result<Vec<archel_core::packages::PackageInfo>, archel_core::ArchelError>,
+        outcome: Result<Vec<archel_core::packages::InstalledPkg>, archel_core::ArchelError>,
     ) -> AppliedPkgList {
         match outcome {
             Ok(pkgs) => {
@@ -530,7 +532,7 @@ impl crate::gui::bridge_pkg::qobject::PkgModel {
             .get()
             .expect("gui runtime is set before Qt starts");
         runtime.spawn_blocking(move || {
-            let outcome = archel_core::packages::list_installed();
+            let outcome = archel_core::packages::list_installed_with_sizes();
             let _ = qt_thread.queue(
                 move |mut obj: core::pin::Pin<&mut Self>| {
                     let applied = {
@@ -796,17 +798,17 @@ mod tests {
     use super::*;
     use archel_core::packages::{PackageCard, PackageInfo};
 
-    fn installed_fixture() -> Vec<PackageInfo> {
+    fn installed_fixture() -> Vec<archel_core::packages::InstalledPkg> {
         vec![
-            PackageInfo {
+            archel_core::packages::InstalledPkg {
                 name: "linux".to_string(),
                 version: "6.16.1-1".to_string(),
-                source: None,
+                size_bytes: 180_000_000,
             },
-            PackageInfo {
+            archel_core::packages::InstalledPkg {
                 name: "neovim".to_string(),
                 version: "0.11.3-1".to_string(),
-                source: None,
+                size_bytes: 6_000_000,
             },
         ]
     }
@@ -910,10 +912,13 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["name"], "linux");
         assert!(rows[0].get("version").is_some());
-        let err: Result<Vec<PackageInfo>, archel_core::ArchelError> =
-            Err(archel_core::ArchelError::Internal(
-                "alpm unavailable in test".to_string(),
-            ));
+        assert_eq!(rows[0]["size"], 180_000_000, "size column must survive");
+        let err: Result<
+            Vec<archel_core::packages::InstalledPkg>,
+            archel_core::ArchelError,
+        > = Err(archel_core::ArchelError::Internal(
+            "alpm unavailable in test".to_string(),
+        ));
         let failed = model.apply_list(err);
         assert_eq!(failed.installed_json, "[]");
         assert!(failed.banner_visible, "first failure shows the banner");

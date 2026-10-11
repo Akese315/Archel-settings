@@ -14,7 +14,7 @@ RowLayout {
 
     Label {
         text: fieldLabel
-        font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
         Layout.preferredWidth: 140
         elide: Text.ElideRight
     }

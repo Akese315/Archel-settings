@@ -30,6 +30,7 @@ pub(crate) struct AppliedNet {
     pub profile_text: String,
     pub conns_json: String,
     pub vpn_json: String,
+    pub wifi_json: String,
     pub banner_visible: bool,
 }
 
@@ -45,10 +46,13 @@ pub struct NetModelRust {
     pub(crate) profile_text: QString,
     pub(crate) conns_json: QString,
     pub(crate) vpn_json: QString,
+    pub(crate) wifi_json: QString,
     pub(crate) banner_visible: bool,
     pub(crate) dns_busy: bool,
     pub(crate) vpn_busy: bool,
+    pub(crate) wifi_busy: bool,
     pub(crate) vpn_result_text: QString,
+    pub(crate) wifi_error_text: QString,
     guard: PollGuard,
     banner: BannerPolicy,
 }
@@ -65,10 +69,13 @@ impl Default for NetModelRust {
             profile_text: QString::from(""),
             conns_json: QString::from(""),
             vpn_json: QString::from(""),
+            wifi_json: QString::from(""),
             banner_visible: false,
             dns_busy: false,
             vpn_busy: false,
+            wifi_busy: false,
             vpn_result_text: QString::from(""),
+            wifi_error_text: QString::from(""),
             guard: PollGuard::new(),
             banner: BannerPolicy::new(),
         }
@@ -103,6 +110,13 @@ pub(crate) fn vpn_json_for(
     serde_json::to_string(conns).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Wi-Fi rows as QML-ready JSON: `[{ssid,signal,security,in_use}]`,
+/// the serializable `WifiNetwork` fields verbatim (never re-derived
+/// here), strongest first as nmcli returns them.
+pub(crate) fn wifi_json_for(networks: &[archel_core::network::wifi::WifiNetwork]) -> String {
+    serde_json::to_string(networks).unwrap_or_else(|_| "[]".to_string())
+}
+
 impl NetModelRust {
     /// Applies a finished worker outcome on the Qt thread. A failed
     /// `net_status` reads N/A everywhere plus the once-per-episode
@@ -112,6 +126,7 @@ impl NetModelRust {
         &mut self,
         net: Result<archel_core::network::NetStatus, archel_core::ArchelError>,
         vpn: Result<Vec<archel_core::network::vpn::VpnConnection>, archel_core::ArchelError>,
+        wifi: Result<Vec<archel_core::network::wifi::WifiNetwork>, archel_core::ArchelError>,
     ) -> AppliedNet {
         match net {
             Ok(status) => {
@@ -132,6 +147,9 @@ impl NetModelRust {
                     vpn_json: vpn
                         .map(|conns| vpn_json_for(&conns))
                         .unwrap_or_else(|_| "[]".to_string()),
+                    wifi_json: wifi
+                        .map(|networks| wifi_json_for(&networks))
+                        .unwrap_or_else(|_| "[]".to_string()),
                     banner_visible: false,
                 }
             }
@@ -147,6 +165,9 @@ impl NetModelRust {
                     profile_text: NOT_AVAILABLE.to_string(),
                     conns_json: "[]".to_string(),
                     vpn_json: "[]".to_string(),
+                    wifi_json: wifi
+                        .map(|networks| wifi_json_for(&networks))
+                        .unwrap_or_else(|_| "[]".to_string()),
                     banner_visible: self.banner.wants_visible(),
                 }
             }
@@ -177,6 +198,13 @@ impl crate::gui::bridge_net::qobject::NetModel {
                         "vpn list task failed: {err}"
                     )))
                 });
+            let wifi = tokio::task::spawn_blocking(archel_core::network::wifi::wifi_list)
+                .await
+                .unwrap_or_else(|err| {
+                    Err(archel_core::ArchelError::Internal(format!(
+                        "wifi list task failed: {err}"
+                    )))
+                });
             let _ = qt_thread.queue(
                 move |mut obj: core::pin::Pin<&mut Self>| {
                     let applied = {
@@ -186,7 +214,7 @@ impl crate::gui::bridge_net::qobject::NetModel {
                             return;
                         }
                         rust.guard.finish();
-                        rust.apply_outcome(net, vpn)
+                        rust.apply_outcome(net, vpn, wifi)
                     };
                     obj.as_mut()
                         .set_status_text(QString::from(&applied.status_text));
@@ -206,6 +234,8 @@ impl crate::gui::bridge_net::qobject::NetModel {
                         .set_conns_json(QString::from(&applied.conns_json));
                     obj.as_mut()
                         .set_vpn_json(QString::from(&applied.vpn_json));
+                    obj.as_mut()
+                        .set_wifi_json(QString::from(&applied.wifi_json));
                     obj.as_mut().set_banner_visible(applied.banner_visible);
                 },
             );
@@ -221,7 +251,6 @@ impl crate::gui::bridge_net::qobject::NetModel {
 
     /// Dismisses the VPN import success banner.
     pub fn dismiss_vpn_result(mut self: core::pin::Pin<&mut Self>) {
-        use cxx_qt::CxxQtType;
         self.as_mut()
             .set_vpn_result_text(QString::from(""));
     }
@@ -334,6 +363,77 @@ impl crate::gui::bridge_net::qobject::NetModel {
                 if let Some(line) = outcome {
                     obj.as_mut()
                         .set_vpn_result_text(QString::from(&line));
+                }
+                obj.as_mut().tick();
+            });
+        });
+    }
+
+    /// Connects to one Wi-Fi network (no confirm modal: entering the
+    /// passphrase IS the intent gate, matching every desktop
+    /// network panel). An empty passphrase targets an open network.
+    /// Runs `wifi_connect` on the blocking pool; failures surface
+    /// inline under the list (never a modal - the list stays
+    /// clickable for the retry); success refreshes so the connected
+    /// row reads back.
+    pub fn wifi_connect(mut self: core::pin::Pin<&mut Self>, ssid: QString, password: QString) {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().wifi_busy {
+            return;
+        }
+        self.as_mut().rust_mut().wifi_busy = true;
+        self.as_mut().set_wifi_busy(true);
+        self.as_mut().set_wifi_error_text(QString::from(""));
+        let ssid_text = ssid.to_string();
+        let password_text = password.to_string();
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            let outcome = (PROD_NET_WIFI_OPS.connect)(&ssid_text, &password_text);
+            let _ = qt_thread.queue(move |mut obj: core::pin::Pin<&mut Self>| {
+                use cxx_qt::CxxQtType;
+                obj.as_mut().rust_mut().wifi_busy = false;
+                obj.as_mut().set_wifi_busy(false);
+                if let Err(err) = outcome {
+                    obj.as_mut()
+                        .set_wifi_error_text(QString::from(&err.message()));
+                }
+                obj.as_mut().tick();
+            });
+        });
+    }
+
+    /// Disconnects the Wi-Fi device (the profile stays configured).
+    /// Same inline-error shape as the connect path.
+    pub fn wifi_disconnect(mut self: core::pin::Pin<&mut Self>) {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().wifi_busy {
+            return;
+        }
+        self.as_mut().rust_mut().wifi_busy = true;
+        self.as_mut().set_wifi_busy(true);
+        self.as_mut().set_wifi_error_text(QString::from(""));
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            let outcome = (PROD_NET_WIFI_OPS.disconnect)();
+            let _ = qt_thread.queue(move |mut obj: core::pin::Pin<&mut Self>| {
+                use cxx_qt::CxxQtType;
+                obj.as_mut().rust_mut().wifi_busy = false;
+                obj.as_mut().set_wifi_busy(false);
+                if let Err(err) = outcome {
+                    obj.as_mut()
+                        .set_wifi_error_text(QString::from(&err.message()));
                 }
                 obj.as_mut().tick();
             });
@@ -469,6 +569,23 @@ pub(crate) const PROD_NET_VPN_OPS: NetVpnOps = NetVpnOps {
     import: archel_core::network::vpn::vpn_import_stdin_null,
 };
 
+/// Injection seam for the Wi-Fi path: the exact core entry points
+/// the connect/disconnect legs call, as plain function pointers.
+/// Production passes the real core functions
+/// ([`PROD_NET_WIFI_OPS`]); unit tests pass fakes so the busy/
+/// inline-error choreography is proven without spawning nmcli.
+pub(crate) struct NetWifiOps {
+    pub connect: fn(&str, &str) -> Result<(), archel_core::ArchelError>,
+    pub disconnect: fn() -> Result<(), archel_core::ArchelError>,
+}
+
+/// The production wiring: both legs are the CLI-shaped core
+/// functions (thin-view contract; PLAT-03).
+pub(crate) const PROD_NET_WIFI_OPS: NetWifiOps = NetWifiOps {
+    connect: archel_core::network::wifi::wifi_connect,
+    disconnect: archel_core::network::wifi::wifi_disconnect,
+};
+
 /// VPN import worker body (runs on the blocking pool). Returns
 /// `Some(success line)` on success for the banner, `None` on decline
 /// or failure (failures open the error modal with core's message
@@ -549,6 +666,7 @@ mod tests {
         let first = model.apply_outcome(
             failed_net(),
             Ok(Vec::new()),
+            Ok(Vec::new()),
         );
         for text in [
             &first.status_text,
@@ -563,7 +681,7 @@ mod tests {
         }
         assert_eq!(first.vpn_json, "[]");
         assert!(first.banner_visible, "first failure shows the banner");
-        let second = model.apply_outcome(failed_net(), Ok(Vec::new()));
+        let second = model.apply_outcome(failed_net(), Ok(Vec::new()), Ok(Vec::new()));
         assert!(
             second.banner_visible,
             "consecutive failures keep the banner without re-signalling"
@@ -573,7 +691,7 @@ mod tests {
     #[test]
     fn success_fills_fields_and_vpn_row_shape() {
         let mut model = NetModelRust::default();
-        let _ = model.apply_outcome(failed_net(), Ok(Vec::new()));
+        let _ = model.apply_outcome(failed_net(), Ok(Vec::new()), Ok(Vec::new()));
         let vpn = archel_core::network::vpn::VpnConnection {
             name: "bureau".to_string(),
             uuid: "uuid-vpn-1".to_string(),
@@ -581,7 +699,7 @@ mod tests {
             active: true,
             persistent: true,
         };
-        let applied = model.apply_outcome(Ok(ready_status()), Ok(vec![vpn]));
+        let applied = model.apply_outcome(Ok(ready_status()), Ok(vec![vpn]), Ok(Vec::new()));
         assert!(!applied.banner_visible, "success hides the banner");
         assert_eq!(applied.iface_text, "wlan0");
         assert_eq!(applied.ssid_text, "home-wifi");
@@ -608,9 +726,44 @@ mod tests {
         > = Err(archel_core::ArchelError::network_unavailable(
             "nmcli missing",
         ));
-        let applied = model.apply_outcome(Ok(ready_status()), vpn_err);
+        let applied = model.apply_outcome(Ok(ready_status()), vpn_err, Ok(Vec::new()));
         assert_eq!(applied.iface_text, "wlan0", "net fields stay live");
         assert_eq!(applied.vpn_json, "[]", "vpn degrades to empty list");
+    }
+
+    #[test]
+    fn wifi_rows_carry_the_core_fields_and_degrade_to_empty() {
+        let mut model = NetModelRust::default();
+        let networks = vec![
+            archel_core::network::wifi::WifiNetwork {
+                ssid: "home-wifi".to_string(),
+                signal: Some(82),
+                security: "WPA2".to_string(),
+                in_use: true,
+            },
+            archel_core::network::wifi::WifiNetwork {
+                ssid: "guest".to_string(),
+                signal: Some(40),
+                security: String::new(),
+                in_use: false,
+            },
+        ];
+        let applied = model.apply_outcome(Ok(ready_status()), Ok(Vec::new()), Ok(networks));
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&applied.wifi_json).expect("wifi list must be JSON");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["ssid"], "home-wifi");
+        assert_eq!(rows[0]["in_use"], true);
+        assert_eq!(rows[1]["security"], "", "open network carries empty security");
+        let wifi_err: Result<
+            Vec<archel_core::network::wifi::WifiNetwork>,
+            archel_core::ArchelError,
+        > = Err(archel_core::ArchelError::network_unavailable(
+            "radio off",
+        ));
+        let degraded =
+            model.apply_outcome(Ok(ready_status()), Ok(Vec::new()), wifi_err);
+        assert_eq!(degraded.wifi_json, "[]", "wifi failure reads the honest empty list");
     }
 
     #[test]

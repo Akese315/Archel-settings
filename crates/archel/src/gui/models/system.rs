@@ -46,6 +46,47 @@ pub(crate) struct SystemTick {
     pub gpu_name: Option<String>,
     pub gpu_vram_gib: Option<(f64, f64)>,
     pub kernel: String,
+    pub drivers: DriverStrings,
+}
+
+/// Driver identity strings, pre-formatted off the Qt thread (N/A for
+/// every absent field, D-04).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DriverStrings {
+    pub cpu_model: String,
+    pub cpu_microcode: String,
+    pub gpu_driver: String,
+    pub cuda: String,
+}
+
+/// Driver identity never changes at runtime, and `driver_info()`
+/// spawns nvidia-smi: read it once for the process, reuse forever.
+static DRIVERS: std::sync::OnceLock<DriverStrings> = std::sync::OnceLock::new();
+
+/// Collects and caches the driver strings (first caller pays the
+/// nvidia-smi spawn, every later tick reuses the snapshot).
+pub(crate) fn driver_strings() -> DriverStrings {
+    DRIVERS
+        .get_or_init(|| {
+            let info = archel_core::sensors::driver_info();
+            DriverStrings {
+                cpu_model: info
+                    .cpu_model
+                    .unwrap_or_else(|| NOT_AVAILABLE.to_string()),
+                cpu_microcode: info
+                    .cpu_microcode
+                    .unwrap_or_else(|| NOT_AVAILABLE.to_string()),
+                gpu_driver: match (&info.gpu_driver, &info.gpu_driver_version) {
+                    (Some(name), Some(version)) => format!("{name} {version}"),
+                    (Some(name), None) => name.clone(),
+                    (None, _) => NOT_AVAILABLE.to_string(),
+                },
+                cuda: info
+                    .cuda_version
+                    .unwrap_or_else(|| NOT_AVAILABLE.to_string()),
+            }
+        })
+        .clone()
 }
 
 /// A tick either carries a full payload or reports the core snapshot
@@ -71,6 +112,10 @@ pub struct SystemModelRust {
     pub(crate) temp_gpu_text: QString,
     pub(crate) gpu_text: QString,
     pub(crate) kernel_text: QString,
+    pub(crate) cpu_model_text: QString,
+    pub(crate) cpu_driver_text: QString,
+    pub(crate) gpu_driver_text: QString,
+    pub(crate) cuda_text: QString,
     pub(crate) cores_json: QString,
     pub(crate) core_count: i32,
     pub(crate) banner_visible: bool,
@@ -95,6 +140,10 @@ impl Default for SystemModelRust {
             temp_gpu_text: QString::from(""),
             gpu_text: QString::from(""),
             kernel_text: QString::from(""),
+            cpu_model_text: QString::from(""),
+            cpu_driver_text: QString::from(""),
+            gpu_driver_text: QString::from(""),
+            cuda_text: QString::from(""),
             cores_json: QString::from(""),
             core_count: 0,
             banner_visible: false,
@@ -123,6 +172,7 @@ pub(crate) fn series_json(history: &VecDeque<f32>) -> String {
 
 /// Zero-one-many row (D-10): a 1-core CPU hides the per-core expander.
 /// Pre-first-tick (`0`) keeps it visible so loading still shows layout.
+#[allow(dead_code)]
 pub(crate) fn show_core_expander(core_count: usize) -> bool {
     core_count != 1
 }
@@ -207,6 +257,7 @@ pub(crate) fn collect_tick(
             _ => None,
         },
         kernel,
+        drivers: driver_strings(),
     })
 }
 
@@ -225,6 +276,10 @@ pub(crate) struct AppliedTick {
     pub temp_gpu_text: String,
     pub gpu_text: String,
     pub kernel_text: String,
+    pub cpu_model_text: String,
+    pub cpu_driver_text: String,
+    pub gpu_driver_text: String,
+    pub cuda_text: String,
     pub cores_json: String,
     pub core_count: i32,
     pub banner_visible: bool,
@@ -296,6 +351,10 @@ impl SystemModelRust {
                     temp_gpu_text: format_opt_celsius(tick.temp_gpu, &celsius),
                     gpu_text,
                     kernel_text: tick.kernel,
+                    cpu_model_text: tick.drivers.cpu_model,
+                    cpu_driver_text: tick.drivers.cpu_microcode,
+                    gpu_driver_text: tick.drivers.gpu_driver,
+                    cuda_text: tick.drivers.cuda,
                     cores_json: serde_json::to_string(&rows)
                         .unwrap_or_else(|_| "[]".to_string()),
                     core_count: tick.cores.len() as i32,
@@ -304,17 +363,22 @@ impl SystemModelRust {
             }
             TickOutcome::Unavailable => {
                 self.banner.on_failure();
+                let na = NOT_AVAILABLE.to_string();
                 AppliedTick {
-                    cpu_text: NOT_AVAILABLE.to_string(),
-                    clock_text: NOT_AVAILABLE.to_string(),
+                    cpu_text: na.clone(),
+                    clock_text: na.clone(),
                     cpu_series: series_json(&self.cpu_history),
-                    ram_text: NOT_AVAILABLE.to_string(),
+                    ram_text: na.clone(),
                     ram_series: series_json(&self.ram_history),
-                    disk_text: NOT_AVAILABLE.to_string(),
-                    temp_cpu_text: NOT_AVAILABLE.to_string(),
-                    temp_gpu_text: NOT_AVAILABLE.to_string(),
-                    gpu_text: NOT_AVAILABLE.to_string(),
-                    kernel_text: NOT_AVAILABLE.to_string(),
+                    disk_text: na.clone(),
+                    temp_cpu_text: na.clone(),
+                    temp_gpu_text: na.clone(),
+                    gpu_text: na.clone(),
+                    kernel_text: na.clone(),
+                    cpu_model_text: na.clone(),
+                    cpu_driver_text: na.clone(),
+                    gpu_driver_text: na.clone(),
+                    cuda_text: na,
                     cores_json: "[]".to_string(),
                     core_count: 0,
                     banner_visible: self.banner.wants_visible(),
@@ -373,6 +437,14 @@ impl crate::gui::bridge_system::qobject::SystemModel {
                     obj.as_mut()
                         .set_kernel_text(QString::from(&applied.kernel_text));
                     obj.as_mut()
+                        .set_cpu_model_text(QString::from(&applied.cpu_model_text));
+                    obj.as_mut()
+                        .set_cpu_driver_text(QString::from(&applied.cpu_driver_text));
+                    obj.as_mut()
+                        .set_gpu_driver_text(QString::from(&applied.gpu_driver_text));
+                    obj.as_mut()
+                        .set_cuda_text(QString::from(&applied.cuda_text));
+                    obj.as_mut()
                         .set_cores_json(QString::from(&applied.cores_json));
                     obj.as_mut().set_core_count(applied.core_count);
                     obj.as_mut().set_banner_visible(applied.banner_visible);
@@ -414,6 +486,12 @@ mod tests {
             gpu_name: None,
             gpu_vram_gib: None,
             kernel: "6.18-test".to_string(),
+            drivers: DriverStrings {
+                cpu_model: "AMD Ryzen 7 5800X 8-Core Processor".to_string(),
+                cpu_microcode: "0xa201211".to_string(),
+                gpu_driver: "nvidia 580.178.04".to_string(),
+                cuda: "13.0".to_string(),
+            },
         })
     }
 
@@ -474,6 +552,11 @@ mod tests {
         assert!(show_core_expander(4), "multi-core shows the expander");
         assert!(!show_core_expander(1), "1-core hides the expander");
         assert!(show_core_expander(0), "pre-first-tick keeps layout");
+        // Driver strings pass through verbatim, N/A for none (D-04).
+        assert_eq!(applied.cpu_model_text, "AMD Ryzen 7 5800X 8-Core Processor");
+        assert_eq!(applied.cpu_driver_text, "0xa201211");
+        assert_eq!(applied.gpu_driver_text, "nvidia 580.178.04");
+        assert_eq!(applied.cuda_text, "13.0");
     }
 
     #[test]

@@ -49,7 +49,7 @@ Dialog {
             Layout.fillWidth: true
             text: "Conserver ces paramètres ?"
             font.bold: true
-            font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.25)
+            font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
         }
 
         Label {
@@ -61,7 +61,7 @@ Dialog {
         Label {
             Layout.fillWidth: true
             text: "Annulation automatique dans " + secondsLeft + " s."
-            font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.6)
+            font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.6)
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
         }

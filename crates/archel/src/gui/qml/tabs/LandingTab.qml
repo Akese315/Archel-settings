@@ -43,11 +43,11 @@ Item {
                 Label {
                     text: "Accueil"
                     font.bold: true
-                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 1.6)
+                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.6)
                 }
                 Label {
                     text: "Archel Réglages"
-                    font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                    font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                 }
             }
 
@@ -72,7 +72,7 @@ Item {
                     Label {
                         visible: landing.notesText !== ""
                         text: landing.notesText
-                        font.pixelSize: Math.round(Qt.font({}).pixelSize * 0.85)
+                        font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.85)
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
                     }
