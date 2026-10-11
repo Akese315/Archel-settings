@@ -289,14 +289,23 @@ impl crate::gui::bridge_theme::qobject::ThemeModel {
     /// setters that emit the notify signals.
     pub fn set_dark(mut self: core::pin::Pin<&mut Self>, dark: bool) {
         use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().dark_mode == dark {
+            return;
+        }
         let key = self.as_mut().rust_mut().accent_key.to_string();
         apply_prefs(self.as_mut(), dark, key);
     }
 
     /// Applies the accent switch: recompute + notify + persist.
+    /// Unknown keys are refused: the load path rejects them, so the
+    /// write path must too (a persisted raw key would reset the whole
+    /// prefs — dark flag included — on the next load's sanitize pass).
     pub fn set_accent(mut self: core::pin::Pin<&mut Self>, key: QString) {
         use cxx_qt::CxxQtType;
         let key = key.to_string();
+        if !ACCENT_KEYS.contains(&key.as_str()) {
+            return;
+        }
         let dark = self.as_mut().rust_mut().dark_mode;
         apply_prefs(self.as_mut(), dark, key);
     }

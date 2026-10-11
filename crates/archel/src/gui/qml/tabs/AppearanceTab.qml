@@ -13,6 +13,25 @@ import QtQuick.Layouts
 import org.archel.settings
 
 Item {
+    id: root
+
+    // Singleton-free wiring (spec): instantiated once in Main.qml,
+    // passed to this tab only — the other tabs read the palette.
+    property ThemeModel theme
+
+    // The six catppuccin accents (accent-color.html mockup). Keys match
+    // models/theme.rs ACCENTS; hex = the dark-mode full color used for
+    // the swatch fill (display only, the real palette comes from Rust).
+    ListModel {
+        id: accentModel
+        ListElement { key: "blue";  name: "Bleu";     hex: "#89b4fa" }
+        ListElement { key: "mauve"; name: "Mauve";    hex: "#cba6f7" }
+        ListElement { key: "green"; name: "Vert";     hex: "#a6e3a1" }
+        ListElement { key: "teal";  name: "Sarcelle"; hex: "#94e2d5" }
+        ListElement { key: "pink";  name: "Rose";     hex: "#f5c2e7" }
+        ListElement { key: "peach"; name: "Pêche";    hex: "#fab387" }
+    }
+
     AppearanceModel {
         id: appearance
     }
@@ -47,10 +66,79 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Apparence"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Apparence"
+                pageSubtitle: "Effets, fond d'écran et police"
+            }
+
+            SectionCard {
+                title: "Thème"
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            text: "Mode sombre"
+                            Layout.fillWidth: true
+                        }
+                        Switch {
+                            checked: root.theme.darkMode
+                            onToggled: root.theme.setDark(checked)
+                        }
+                    }
+
+                    Label {
+                        text: "Accent"
+                        color: root.palette.placeholderText
+                        Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Repeater {
+                            model: accentModel
+
+                            AbstractButton {
+                                id: swatch
+                                required property string key
+                                required property string hex
+                                required property string name
+                                implicitWidth: 28
+                                implicitHeight: 28
+
+                                background: Rectangle {
+                                    radius: 14
+                                    color: swatch.hex
+                                    border.width: root.theme.accentKey === swatch.key ? 3 : 1
+                                    border.color: root.theme.accentKey === swatch.key
+                                        ? root.theme.colorBrightText
+                                        : root.palette.mid
+                                }
+                                ToolTip.text: swatch.name
+                                ToolTip.visible: hovered
+                                onClicked: root.theme.setAccent(swatch.key)
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                        Label {
+                            text: {
+                                var names = { blue: "Bleu", mauve: "Mauve", green: "Vert",
+                                              teal: "Sarcelle", pink: "Rose", peach: "Pêche" };
+                                return names[root.theme.accentKey] || root.theme.accentKey;
+                            }
+                            color: root.palette.placeholderText
+                        }
+                    }
+                }
             }
 
             PollBanner {
@@ -64,7 +152,7 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Effets"
                 Layout.fillWidth: true
 
@@ -145,7 +233,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Fond d'écran"
                 Layout.fillWidth: true
 
@@ -190,7 +278,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Police"
                 Layout.fillWidth: true
 
