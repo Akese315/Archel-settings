@@ -13,17 +13,87 @@ import QtQuick.Layouts
 import org.archel.settings
 
 Item {
+    id: root
+
     InputModel {
         id: input
+    }
+
+    // Brouillon local (D-01) : les éditeurs écrivent ici, le tick
+    // ne rafraîchit que les affichages StatField et les instantanés
+    // de base ci-dessous.
+    property string sensBase: ""
+    property string sensDraft: ""
+    property string accelBase: ""
+    property string accelDraft: ""
+
+    function sensValueOf(text) {
+        if (text === "") {
+            return 0;
+        }
+        var v = parseFloat(text);
+        return isNaN(v) ? 0 : v;
+    }
+
+    function readSensLive() {
+        return input.sensitivityText === "N/A" ? "" : input.sensitivityText;
+    }
+
+    function readAccelLive() {
+        return input.scrollText === "N/A" ? "" : input.scrollText;
+    }
+
+    function resetSensDraft() {
+        sensBase = readSensLive();
+        sensDraft = sensBase;
+        sensitivitySlider.value = sensValueOf(sensDraft);
+    }
+
+    function resetAccelDraft() {
+        accelBase = readAccelLive();
+        accelDraft = accelBase;
+        accelerateField.text = accelDraft;
+    }
+
+    // D-02 : la valeur extérieure gagne — si le pont a bougé depuis
+    // l'instantané, le brouillon est remplacé, jamais fusionné.
+    function syncSensFromLive() {
+        if (readSensLive() !== sensBase) {
+            resetSensDraft();
+        }
+    }
+
+    function syncAccelFromLive() {
+        if (readAccelLive() !== accelBase) {
+            resetAccelDraft();
+        }
+    }
+
+    Connections {
+        target: input
+        function onSensitivityTextChanged() {
+            root.syncSensFromLive();
+        }
+        function onScrollTextChanged() {
+            root.syncAccelFromLive();
+        }
     }
 
     Timer {
         interval: 1000
         running: true
         repeat: true
-        onTriggered: input.tick()
+        onTriggered: {
+            input.tick();
+            syncSensFromLive();
+            syncAccelFromLive();
+        }
     }
-    Component.onCompleted: input.tick()
+    Component.onCompleted: {
+        input.tick();
+        syncSensFromLive();
+        syncAccelFromLive();
+    }
 
     ScrollView {
         id: view
@@ -75,12 +145,8 @@ Item {
                             from: -1
                             to: 1
                             stepSize: 0.01
-                            value: {
-                                if (input.sensitivityText === "")
-                                    return 0;
-                                var v = parseFloat(input.sensitivityText);
-                                return isNaN(v) ? 0 : v;
-                            }
+                            value: sensValueOf(sensDraft)
+                            onMoved: sensDraft = value.toFixed(2)
                             enabled: !input.operationBusy
                         }
                     }
@@ -92,7 +158,7 @@ Item {
                     Button {
                         text: "Appliquer"
                         enabled: !input.operationBusy
-                        onClicked: input.setSensitivity(sensitivitySlider.value.toFixed(2))
+                        onClicked: input.setSensitivity(sensValueOf(sensDraft).toFixed(2))
                     }
 
                     RowLayout {
@@ -121,7 +187,8 @@ Item {
                             id: accelerateField
                             Layout.fillWidth: true
                             placeholderText: "Facteur (ex. 1.50)"
-                            text: input.scrollText === "N/A" ? "" : input.scrollText
+                            text: accelDraft
+                            onTextEdited: accelDraft = text
                             enabled: !input.operationBusy
                         }
                     }
@@ -133,7 +200,7 @@ Item {
                     Button {
                         text: "Appliquer"
                         enabled: !input.operationBusy && accelerateField.text !== ""
-                        onClicked: input.setAccelerate(accelerateField.text)
+                        onClicked: input.setAccelerate(accelDraft)
                     }
                 }
             }
