@@ -51,6 +51,10 @@ pub mod qobject {
         fn dns_apply(self: Pin<&mut Self>, servers_json: QString);
 
         #[qinvokable]
+        #[cxx_name = "dnsReset"]
+        fn dns_reset(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "vpnImportStart"]
         fn vpn_import_start(self: Pin<&mut Self>, path: QString);
     }

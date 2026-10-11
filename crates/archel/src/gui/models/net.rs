@@ -244,8 +244,7 @@ impl crate::gui::bridge_net::qobject::NetModel {
     /// then apply via `spawn_blocking` with a spinner on the apply
     /// button (D-15). Failures surface in the error modal (D-17);
     /// success refreshes the tab so the DNS row reads back.
-    pub fn dns_apply(mut self: core::pin::Pin<&mut Self>, servers_json: QString) {
-        use cxx_qt::CxxQtType;
+    pub fn dns_apply(mut self: core::pin::Pin<&mut Self>, servers_json: QString) {        use cxx_qt::CxxQtType;
         if self.as_mut().rust_mut().dns_busy {
             return;
         }
@@ -261,6 +260,38 @@ impl crate::gui::bridge_net::qobject::NetModel {
             .expect("gui runtime is set before Qt starts");
         runtime.spawn_blocking(move || {
             dns_worker(&servers, &PROD_NET_DNS_OPS, modal::session());
+            let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
+                use cxx_qt::CxxQtType;
+                obj.as_mut().rust_mut().dns_busy = false;
+                obj.as_mut().set_dns_busy(false);
+                obj.as_mut().tick();
+            });
+        });
+    }
+
+    /// Returns the active profile to automatic DNS (D-09, plan 07-04):
+    /// no servers to validate, so the reset worker plans straight
+    /// against the active profile (`None`), confirms with the core
+    /// reset question verbatim (D-10), then applies through the same
+    /// `apply_dns_plan` leg the set path uses (same privilege gate,
+    /// no new escalation path). Busy-guard plus spinner plus refresh
+    /// mirror `dns_apply` exactly.
+    pub fn dns_reset(mut self: core::pin::Pin<&mut Self>) {
+        use cxx_qt::CxxQtType;
+        if self.as_mut().rust_mut().dns_busy {
+            return;
+        }
+        self.as_mut().rust_mut().dns_busy = true;
+        self.as_mut().set_dns_busy(true);
+        let qt_thread = {
+            use cxx_qt::Threading;
+            self.qt_thread()
+        };
+        let runtime = super::super::RUNTIME
+            .get()
+            .expect("gui runtime is set before Qt starts");
+        runtime.spawn_blocking(move || {
+            dns_reset_worker(&PROD_NET_DNS_OPS, modal::session());
             let _ = qt_thread.queue(|mut obj: core::pin::Pin<&mut Self>| {
                 use cxx_qt::CxxQtType;
                 obj.as_mut().rust_mut().dns_busy = false;
@@ -336,6 +367,8 @@ pub(crate) struct NetDnsOps {
         Option<&str>,
         &[String],
     ) -> Result<archel_core::network::dns::DnsPlan, archel_core::ArchelError>,
+    pub plan_reset:
+        fn(Option<&str>) -> Result<archel_core::network::dns::DnsPlan, archel_core::ArchelError>,
     pub prompt: fn(&archel_core::network::dns::DnsPlan) -> String,
     pub apply: fn(
         &archel_core::network::dns::DnsPlan,
@@ -345,10 +378,12 @@ pub(crate) struct NetDnsOps {
 /// The production wiring: validate, plan and apply are the
 /// CLI-proven `net dns set` pieces (`run_dns_set` calls the same
 /// three in the same order); the plan targets the active profile
-/// (`None`), exactly as the CLI does without `--profile`.
+/// (`None`), exactly as the CLI does without `--profile`. The reset
+/// entry is the CLI-proven `net dns reset` leg (`run_dns_reset`).
 pub(crate) const PROD_NET_DNS_OPS: NetDnsOps = NetDnsOps {
     validate: archel_core::network::dns::validate_dns_servers,
     plan: archel_core::network::dns::plan_dns_set,
+    plan_reset: archel_core::network::dns::plan_dns_reset,
     prompt: archel_core::network::dns::confirm_dns_prompt,
     apply: archel_core::network::dns::apply_dns_plan,
 };
@@ -372,6 +407,31 @@ pub(crate) fn dns_worker(
         }
     };
     let plan = match (ops.plan)(None, &validated) {
+        Ok(plan) => plan,
+        Err(err) => {
+            sess.open_error(&err.message());
+            return;
+        }
+    };
+    let rx = sess.request_confirm(&(ops.prompt)(&plan));
+    if !rx.recv().unwrap_or(false) {
+        return;
+    }
+    if let Err(err) = (ops.apply)(&plan) {
+        sess.open_error(&err.message());
+    }
+}
+
+/// DNS reset worker body (runs on the blocking pool, plan 07-04):
+/// mirrors `dns_worker` with validation skipped (a reset takes no
+/// servers). Plans DHCP restore against the active profile (`None`),
+/// confirms with the core reset question verbatim, and only a yes
+/// reaches the apply leg - which branches on `plan.reset` to clear
+/// `ipv4.dns` and restore DHCP. A decline writes nothing and shows
+/// nothing; every failure surfaces as core's readable `message()`
+/// in the error modal (D-17).
+pub(crate) fn dns_reset_worker(ops: &NetDnsOps, sess: &ModalSession) {
+    let plan = match (ops.plan_reset)(None) {
         Ok(plan) => plan,
         Err(err) => {
             sess.open_error(&err.message());
@@ -634,6 +694,7 @@ mod tests {
         let ops = NetDnsOps {
             validate: validate_rejects,
             plan: plan_must_not_run,
+            plan_reset: archel_core::network::dns::plan_dns_reset,
             prompt: archel_core::network::dns::confirm_dns_prompt,
             apply: apply_must_not_run,
         };
@@ -670,6 +731,7 @@ mod tests {
         let ops = NetDnsOps {
             validate: validate_echo,
             plan: plan_fixture_fn,
+            plan_reset: archel_core::network::dns::plan_dns_reset,
             prompt: archel_core::network::dns::confirm_dns_prompt,
             apply: apply_must_not_run,
         };
@@ -709,6 +771,7 @@ mod tests {
         let ops = NetDnsOps {
             validate: validate_echo,
             plan: plan_fixture_fn,
+            plan_reset: archel_core::network::dns::plan_dns_reset,
             prompt: archel_core::network::dns::confirm_dns_prompt,
             apply: apply_records,
         };
@@ -728,6 +791,108 @@ mod tests {
             vec!["1.1.1.1".to_string()],
             "the planned servers reach the apply leg"
         );
+    }
+
+    fn reset_plan_fixture() -> DnsPlan {
+        DnsPlan {
+            profile_name: "home".to_string(),
+            profile_uuid: "uuid-1".to_string(),
+            old_servers: vec!["1.1.1.1".to_string()],
+            reset: true,
+            new_servers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn dns_reset_accept_applies_the_dhcp_restore() {
+        static APPLIED_RESET: Mutex<bool> = Mutex::new(false);
+        fn plan_reset_fixture(
+            _profile: Option<&str>,
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            Ok(reset_plan_fixture())
+        }
+        fn apply_records_reset(plan: &DnsPlan) -> Result<DnsReport, archel_core::ArchelError> {
+            assert!(plan.reset, "the reset plan must carry the reset flag");
+            *APPLIED_RESET.lock().expect("applied lock") = true;
+            Ok(report_fixture())
+        }
+        fn plan_must_not_run(
+            _profile: Option<&str>,
+            _servers: &[String],
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            panic!("reset takes no servers: the set leg must not run")
+        }
+        fn validate_must_not_run(
+            _servers: &[String],
+        ) -> Result<Vec<String>, archel_core::ArchelError> {
+            panic!("reset takes no servers: validation must not run")
+        }
+        let ops = NetDnsOps {
+            validate: validate_must_not_run,
+            plan: plan_must_not_run,
+            plan_reset: plan_reset_fixture,
+            prompt: archel_core::network::dns::confirm_dns_prompt,
+            apply: apply_records_reset,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| dns_reset_worker(&ops, &sess));
+            wait_until("dns reset confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            assert_eq!(
+                sess.snapshot_question(),
+                archel_core::network::dns::confirm_dns_prompt(&reset_plan_fixture()),
+                "the question comes from the reset plan verbatim"
+            );
+            sess.resolve_confirm(true);
+            wait_until("dns reset apply runs", || {
+                *APPLIED_RESET.lock().expect("applied lock")
+            });
+        });
+        assert_eq!(sess.snapshot_kind(), ModalKind::None);
+    }
+
+    #[test]
+    fn dns_reset_decline_writes_nothing() {
+        static APPLY_CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn plan_reset_fixture(
+            _profile: Option<&str>,
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            Ok(reset_plan_fixture())
+        }
+        fn apply_must_not_run(_plan: &DnsPlan) -> Result<DnsReport, archel_core::ArchelError> {
+            APPLY_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(report_fixture())
+        }
+        fn plan_must_not_run(
+            _profile: Option<&str>,
+            _servers: &[String],
+        ) -> Result<DnsPlan, archel_core::ArchelError> {
+            panic!("reset takes no servers: the set leg must not run")
+        }
+        fn validate_must_not_run(
+            _servers: &[String],
+        ) -> Result<Vec<String>, archel_core::ArchelError> {
+            panic!("reset takes no servers: validation must not run")
+        }
+        let ops = NetDnsOps {
+            validate: validate_must_not_run,
+            plan: plan_must_not_run,
+            plan_reset: plan_reset_fixture,
+            prompt: archel_core::network::dns::confirm_dns_prompt,
+            apply: apply_must_not_run,
+        };
+        let sess = ModalSession::default();
+        std::thread::scope(|s| {
+            s.spawn(|| dns_reset_worker(&ops, &sess));
+            wait_until("dns reset confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(false);
+        });
+        assert_eq!(APPLY_CALLS.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(sess.snapshot_kind(), ModalKind::None);
     }
 
     #[test]
