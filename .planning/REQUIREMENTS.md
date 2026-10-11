@@ -59,28 +59,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UAT-01 | TBD | Pending |
-| UAT-02 | TBD | Pending |
-| UAT-03 | TBD | Pending |
-| UAT-04 | TBD | Pending |
-| UAT-05 | TBD | Pending |
-| UAT-06 | TBD | Pending |
-| UAT-07 | TBD | Pending |
-| GUI-01 | TBD | Pending |
-| GUI-02 | TBD | Pending |
-| GUI-03 | TBD | Pending |
-| GUI-04 | TBD | Pending |
-| GUI-05 | TBD | Pending |
-| GUI-06 | TBD | Pending |
-| HYG-01 | TBD | Pending |
-| HYG-02 | TBD | Pending |
-| HYG-03 | TBD | Pending |
-| HYG-04 | TBD | Pending |
+| UAT-01 | Phase 9 | Pending |
+| UAT-02 | Phase 9 | Pending |
+| UAT-03 | Phase 9 | Pending |
+| UAT-04 | Phase 9 | Pending |
+| UAT-05 | Phase 9 | Pending |
+| UAT-06 | Phase 9 | Pending |
+| UAT-07 | Phase 9 | Pending |
+| GUI-01 | Phase 7 | Pending |
+| GUI-02 | Phase 7 | Pending |
+| GUI-03 | Phase 7 | Pending |
+| GUI-04 | Phase 7 | Pending |
+| GUI-05 | Phase 7 | Pending |
+| GUI-06 | Phase 7 | Pending |
+| HYG-01 | Phase 8 | Pending |
+| HYG-02 | Phase 8 | Pending |
+| HYG-03 | Phase 8 | Pending |
+| HYG-04 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-11*
