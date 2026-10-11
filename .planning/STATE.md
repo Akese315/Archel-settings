@@ -5,17 +5,17 @@ milestone_name: Debt + Polish
 current_phase: 7
 current_phase_name: gui-polish-fixes
 status: executing
-stopped_at: Completed 7-02-PLAN.md
-last_updated: "2026-10-11T18:38:18.924Z"
+stopped_at: Completed 7-03-PLAN.md
+last_updated: "2026-10-11T18:43:56.951Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 7 execution started
-state_head: 788c4c332b9a318f6307f7757232ed1508fccb92
+state_head: e0a96c594d39345a012fdb30fd9e763751d669a6
 progress:
   total_phases: 3
   completed_phases: 6
   total_plans: 4
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-10-11, post-v1.0 evolution review)
 ## Current Position
 
 Phase: 7 (gui-polish-fixes) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 7 execution started
 
-Progress: [█████░░░░░] 50% (v1.1: 0/3 phases)
+Progress: [████████░░] 75% (v1.1: 0/3 phases)
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [█████░░░░░] 50% (v1.1: 0/3 phases)
 |------|----------|-------|-------|
 | Phase 7 P01 | 2m | 2 tasks | 1 files |
 | Phase 7 P02 | 3m | 2 tasks | 3 files |
+| Phase 7-gui-polish-fixes P03 | 5m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 7]: Timer also re-syncs as fallback behind the property-change signals
 - [Phase 7]: Empty toLocalFile result keeps prior picker text (never clears the field)
 - [Phase 7]: Persist-then-eval lean for keybind-add (no compensating unbind); core add_bind_line dedupes repeat adds
+- [Phase 7-gui-polish-fixes]: Fixed two-modal rendering with cap of 2 stacked confirms; overflow declines the newest via the standard false path
+- [Phase 7-gui-polish-fixes]: New QML bindings use camelCase per D-13; pre-existing snake_case base-modal bindings left for the 07-04 casing pass
 
 ### Pending Todos
 
@@ -108,8 +111,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-11T18:38:18.906Z
-Stopped at: Completed 7-02-PLAN.md
+Last session: 2026-10-11T18:43:56.932Z
+Stopped at: Completed 7-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
