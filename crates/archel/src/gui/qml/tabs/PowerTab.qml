@@ -41,7 +41,7 @@ Item {
             PageHeader {
                 Layout.fillWidth: true
                 pageTitle: "Alimentation"
-                pageSubtitle: "Profils d'énergie et batterie"
+                pageSubtitle: "Profils d'énergie et pilote"
             }
 
             PollBanner {
