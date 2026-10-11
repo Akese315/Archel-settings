@@ -28,7 +28,7 @@ Dialog {
         onActivated: root.dismissed()
     }
 
-    // Red-accent title via a custom header (UI-SPEC color discipline:
+    // Accent-colored title via a custom header (UI-SPEC color discipline:
     // palette role, not a literal hex). `brightText` lives on the
     // Controls `palette` every Popup carries, and that palette is
     // theme-bound: Main.qml sets the window palette from ThemeModel

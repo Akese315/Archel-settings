@@ -84,6 +84,7 @@ Dialog {
                 font.pointSize: 13
                 color: root.palette.text
                 selectionColor: root.palette.highlight
+                selectedTextColor: root.palette.highlightedText
                 // Auto-scroll to the newest line (UI-SPEC streaming-log
                 // overflow row); the buffer is capped core-side, this is
                 // just the viewport follow.
@@ -223,6 +224,7 @@ Dialog {
                     font.pointSize: 12
                     color: root.palette.text
                     selectionColor: root.palette.highlight
+                    selectedTextColor: root.palette.highlightedText
                     width: trustBlock.width > 0 ? trustBlock.width : 400
                 }
             }
