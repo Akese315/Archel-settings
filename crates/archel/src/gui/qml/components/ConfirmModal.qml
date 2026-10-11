@@ -3,9 +3,10 @@
 // state and never closes itself (NoAutoClose keeps the Main.qml
 // `visible: shell.modal_kind === "confirm"` binding alive - a Dialog that
 // closed imperatively would permanently break that binding). Main.qml
-// wires accepted()/declined() to shell.confirmAccepted()/confirmDeclined().
+// wires confirmed()/declined() to shell.confirmAccepted()/confirmDeclined().
 // Fermer is a first-class decline (releases a waiting worker with false),
-// never an error. Frozen api: {question, accepted, declined}.
+// never an error. `confirmed` (not `accepted`): Dialog already provides
+// accepted(). Frozen api: {question, confirmed, declined}.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -14,7 +15,7 @@ Dialog {
     id: root
 
     property string question: ""
-    signal accepted()
+    signal confirmed()
     signal declined()
 
     modal: true
@@ -53,11 +54,12 @@ Dialog {
                 text: "Confirmer"
                 Layout.minimumWidth: 96
                 highlighted: true
-                onClicked: root.accepted()
+                // Initial keyboard focus (UI-SPEC keyboard contract):
+                // Dialog has no defaultButton property, the focused
+                // button carries Enter/Space activation.
+                focus: true
+                onClicked: root.confirmed()
             }
         }
     }
-
-    // Enter triggers the primary action (UI-SPEC keyboard contract).
-    defaultButton: confirmButton
 }

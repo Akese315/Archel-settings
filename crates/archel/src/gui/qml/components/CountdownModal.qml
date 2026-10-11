@@ -80,11 +80,12 @@ Dialog {
                 text: "Conserver"
                 Layout.minimumWidth: 96
                 highlighted: true
+                // Initial keyboard focus (UI-SPEC keyboard contract):
+                // Dialog has no defaultButton property, the focused
+                // button carries Enter/Space activation.
+                focus: true
                 onClicked: root.keepRequested()
             }
         }
     }
-
-    // Enter triggers the primary action (UI-SPEC keyboard contract).
-    defaultButton: keepButton
 }

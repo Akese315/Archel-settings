@@ -3,7 +3,8 @@
 // never raw stderr - the GUI never composes error prose (thin-view
 // contract). Pure view over the ShellModel modal session (plan 06-06):
 // no self-closing (NoAutoClose keeps the Main.qml visible binding alive).
-// Frozen api: {errorText, closed}.
+// `dismissed` (not `closed`): Popup already provides closed().
+// Frozen api: {errorText, dismissed}.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -12,13 +13,13 @@ Dialog {
     id: root
 
     property string errorText: ""
-    signal closed()
+    signal dismissed()
 
     modal: true
     width: 420
     padding: 16
     closePolicy: Popup.NoAutoClose
-    onEscPressed: root.closed()
+    onEscPressed: root.dismissed()
 
     SystemPalette {
         id: pal
@@ -57,10 +58,12 @@ Dialog {
                 text: "Fermer"
                 Layout.minimumWidth: 96
                 highlighted: true
-                onClicked: root.closed()
+                // Initial keyboard focus (UI-SPEC keyboard contract):
+                // Dialog has no defaultButton property, the focused
+                // button carries Enter/Space activation.
+                focus: true
+                onClicked: root.dismissed()
             }
         }
     }
-
-    defaultButton: fermerButton
 }

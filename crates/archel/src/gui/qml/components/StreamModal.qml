@@ -5,13 +5,16 @@
 // footer is Annuler while running and Fermer once done. D-15: while
 // !done the only enabled control is Annuler and Esc is blocked - an
 // interruption is an explicit decision, never a disappearance. The end
-// state is data, not an error (D-14): result carries the ASCII key
-// ("completed"/"cancelled"/"failed") and the French sentence lives here.
+// state is data, not an error (D-14): operationResult carries the ASCII
+// key ("completed"/"cancelled"/"failed") and the French sentence lives
+// here. `operationResult` (not `result`) and `dismissed` (not `closed`):
+// Dialog/Popup already provide final result + closed().
 // The trust block (D-19 summary card + PKGBUILD expander + trust
 // checkbox + Valider) is added by Task 3 of the same plan on these same
-// frozen properties. Frozen api: {lines, done, result, trustNeeded,
-// trustSummary, pkgbuild, pkgbuildSeen, trustConfirmed, cancelRequested,
-// closed, aurValidated, pkgbuildSeenRequested, trustToggled}.
+// frozen properties. Frozen api: {lines, done, operationResult,
+// trustNeeded, trustSummary, pkgbuild, pkgbuildSeen, trustConfirmed,
+// cancelRequested, dismissed, aurValidated, pkgbuildSeenRequested,
+// trustToggled}.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -21,7 +24,7 @@ Dialog {
 
     property string lines: ""
     property bool done: false
-    property string result: ""
+    property string operationResult: ""
     // D-19 trust-gate surface (rendered by Task 3; carried now so the
     // api block stays frozen for 06-07/08).
     property bool trustNeeded: false
@@ -31,7 +34,7 @@ Dialog {
     property bool trustConfirmed: false
 
     signal cancelRequested()
-    signal closed()
+    signal dismissed()
     signal aurValidated()
     signal pkgbuildSeenRequested()
     signal trustToggled(bool checked)
@@ -45,7 +48,7 @@ Dialog {
     // as Fermer.
     onEscPressed: {
         if (root.done) {
-            root.closed();
+            root.dismissed();
         }
     }
 
@@ -98,8 +101,8 @@ Dialog {
         Label {
             Layout.fillWidth: true
             visible: root.done
-            text: root.result === "completed" ? "Opération terminée."
-                  : root.result === "cancelled" ? "Opération annulée (interrompue par l’utilisateur)."
+            text: root.operationResult === "completed" ? "Opération terminée."
+                  : root.operationResult === "cancelled" ? "Opération annulée (interrompue par l’utilisateur)."
                   : "Opération échouée."
         }
 
@@ -253,6 +256,10 @@ Dialog {
                 id: footerButton
                 Layout.minimumWidth: 96
                 highlighted: true
+                // Initial keyboard focus (UI-SPEC keyboard contract):
+                // Dialog has no defaultButton property, the focused
+                // button carries Enter/Space activation.
+                focus: true
                 text: root.done ? "Fermer" : "Annuler"
                 // D-15 dismissal path: Annuler stays available during
                 // the AUR review too (Esc is blocked, NoAutoClose) -
@@ -262,10 +269,8 @@ Dialog {
                 // the only enabled button while running). Annuler only
                 // requests the stop; the modal stays until the worker
                 // reports the end state.
-                onClicked: root.done ? root.closed() : root.cancelRequested()
+                onClicked: root.done ? root.dismissed() : root.cancelRequested()
             }
         }
     }
-
-    defaultButton: footerButton
 }

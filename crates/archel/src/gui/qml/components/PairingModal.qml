@@ -11,7 +11,8 @@
 // (core format_passkey output, large monospace); Confirmer releases
 // the waiter with true (the ONLY accept path - never auto-accept),
 // Refuser with false (the worker then removes any half-bond and
-// reports nothing). Frozen api: {deviceName, passkey, accepted,
+// reports nothing). `confirmed` (not `accepted`): Dialog already
+// provides accepted(). Frozen api: {deviceName, passkey, confirmed,
 // declined}.
 import QtQuick
 import QtQuick.Controls
@@ -23,7 +24,7 @@ Dialog {
     property string deviceName: ""
     property string address: ""
     property string passkey: ""
-    signal accepted()
+    signal confirmed()
     signal declined()
 
     modal: true
@@ -72,11 +73,12 @@ Dialog {
                 Layout.minimumWidth: 96
                 highlighted: true
                 enabled: root.passkey !== ""
-                onClicked: root.accepted()
+                // Initial keyboard focus (UI-SPEC keyboard contract):
+                // Dialog has no defaultButton property, the focused
+                // button carries Enter/Space activation.
+                focus: true
+                onClicked: root.confirmed()
             }
         }
     }
-
-    // Enter triggers the primary action (UI-SPEC keyboard contract).
-    defaultButton: confirmButton
 }

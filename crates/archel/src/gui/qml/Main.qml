@@ -324,7 +324,7 @@ ApplicationWindow {
     ConfirmModal {
         question: shell.modal_question
         visible: shell.modal_kind === "confirm"
-        onAccepted: shell.confirmAccepted()
+        onConfirmed: shell.confirmAccepted()
         onDeclined: shell.confirmDeclined()
         z: 100
     }
@@ -337,7 +337,7 @@ ApplicationWindow {
     ConfirmModal {
         question: shell.modalQuestionTop
         visible: shell.modalKind === "confirm" && shell.modalConfirmCount > 1
-        onAccepted: shell.confirmTopAccepted()
+        onConfirmed: shell.confirmTopAccepted()
         onDeclined: shell.confirmTopDeclined()
         z: 105
     }
@@ -345,14 +345,14 @@ ApplicationWindow {
     ErrorModal {
         errorText: shell.modal_error
         visible: shell.modal_kind === "error"
-        onClosed: shell.closeModal()
+        onDismissed: shell.closeModal()
         z: 101
     }
 
     StreamModal {
         lines: shell.modal_lines
         done: shell.modal_done
-        result: shell.modal_result
+        operationResult: shell.modal_result
         trustNeeded: shell.modal_trust_needed
         trustSummary: shell.modal_trust_summary
         pkgbuild: shell.modal_pkgbuild
@@ -362,7 +362,7 @@ ApplicationWindow {
         // During an AUR trust review the stream already ended: Annuler must
         // dismiss the review (close), not signal a worker cancellation (D-19).
         onCancelRequested: shell.cancelStream()
-        onClosed: shell.closeModal()
+        onDismissed: shell.closeModal()
         onPkgbuildSeenRequested: shell.notePkgbuildSeen()
         onTrustToggled: shell.confirmTrust(checked)
         // D-19: Valider is the only path to the build; the
@@ -398,7 +398,7 @@ ApplicationWindow {
         address: shell.pairing_address
         passkey: shell.pairing_passkey
         visible: shell.pairing_active
-        onAccepted: shell.pairingAccepted()
+        onConfirmed: shell.pairingAccepted()
         onDeclined: shell.pairingDeclined()
         z: 104
     }
