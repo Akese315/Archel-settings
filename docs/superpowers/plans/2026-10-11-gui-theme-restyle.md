@@ -803,16 +803,16 @@ Remplacer la totalité du `Flickable` du rail (de `Flickable {` à son `}` ferma
                 width: 200
                 spacing: 4
 
-                RailTab { icon: "images/home.svg";      label: "Accueil";       checked: true; onClicked: stack.currentIndex = 0 }
-                RailTab { icon: "images/network.svg";   label: "Réseau";         onClicked: stack.currentIndex = 1 }
-                RailTab { icon: "images/power.svg";     label: "Alimentation";   onClicked: stack.currentIndex = 2 }
-                RailTab { icon: "images/bluetooth.svg";  label: "Bluetooth";     onClicked: stack.currentIndex = 3 }
-                RailTab { icon: "images/appearance.svg"; label: "Apparence";     onClicked: stack.currentIndex = 4 }
-                RailTab { icon: "images/sound.svg";      label: "Son";            onClicked: stack.currentIndex = 5 }
-                RailTab { icon: "images/apps.svg";       label: "Applications";   onClicked: stack.currentIndex = 6 }
-                RailTab { icon: "images/display.svg";    label: "Affichage";      onClicked: stack.currentIndex = 7 }
-                RailTab { icon: "images/input.svg";      label: "Périphériques";  onClicked: stack.currentIndex = 8 }
-                RailTab { icon: "images/system.svg";     label: "Système";        onClicked: stack.currentIndex = 9 }
+                RailTab { iconSource: "images/home.svg";      label: "Accueil";       checked: true; onClicked: stack.currentIndex = 0 }
+                RailTab { iconSource: "images/network.svg";   label: "Réseau";         onClicked: stack.currentIndex = 1 }
+                RailTab { iconSource: "images/power.svg";     label: "Alimentation";   onClicked: stack.currentIndex = 2 }
+                RailTab { iconSource: "images/bluetooth.svg";  label: "Bluetooth";     onClicked: stack.currentIndex = 3 }
+                RailTab { iconSource: "images/appearance.svg"; label: "Apparence";     onClicked: stack.currentIndex = 4 }
+                RailTab { iconSource: "images/sound.svg";      label: "Son";            onClicked: stack.currentIndex = 5 }
+                RailTab { iconSource: "images/apps.svg";       label: "Applications";   onClicked: stack.currentIndex = 6 }
+                RailTab { iconSource: "images/display.svg";    label: "Affichage";      onClicked: stack.currentIndex = 7 }
+                RailTab { iconSource: "images/input.svg";      label: "Périphériques";  onClicked: stack.currentIndex = 8 }
+                RailTab { iconSource: "images/system.svg";     label: "Système";        onClicked: stack.currentIndex = 9 }
             }
         }
 ```
@@ -826,8 +826,9 @@ Et ajouter l'inline component en tête de fichier (juste après `import org.arch
 // button's own inherited palette — same reason, no id references.
 component RailTab: TabButton {
     id: tab
-    property string icon: ""
+    property string iconSource: ""
     property string label: ""
+    text: tab.label
     width: parent.width
     height: 36
     checkable: true
@@ -845,7 +846,7 @@ component RailTab: TabButton {
             Layout.preferredHeight: 16
             sourceSize.width: 16
             sourceSize.height: 16
-            source: tab.icon
+            source: tab.iconSource
         }
         Label {
             text: tab.label

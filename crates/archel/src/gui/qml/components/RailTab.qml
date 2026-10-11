@@ -11,8 +11,14 @@ import QtQuick.Controls
 
 TabButton {
     id: tab
-    property string icon: ""
+    // Named iconSource, not icon: AbstractButton's `icon` is a FINAL
+    // C++ grouped property and the engine refuses to load a QML
+    // override of it (verified live on Qt 6.11.2).
+    property string iconSource: ""
     property string label: ""
+    // Not rendered (the custom contentItem draws the label) but it is
+    // the button's accessible name for assistive tech.
+    text: tab.label
     width: parent.width
     height: 36
     checkable: true
@@ -30,7 +36,7 @@ TabButton {
             Layout.preferredHeight: 16
             sourceSize.width: 16
             sourceSize.height: 16
-            source: tab.icon
+            source: tab.iconSource
         }
         Label {
             text: tab.label
