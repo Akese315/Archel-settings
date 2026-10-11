@@ -137,10 +137,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Réseau"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Réseau"
+                pageSubtitle: "Wi-Fi, VPN et interfaces"
             }
 
             PollBanner {
@@ -148,7 +148,7 @@ Item {
                 onDismissRequested: net.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Connexion"
                 Layout.fillWidth: true
 
@@ -194,7 +194,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Wi-Fi"
                 Layout.fillWidth: true
 
@@ -294,7 +294,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Serveurs DNS"
                 Layout.fillWidth: true
 
@@ -416,7 +416,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "VPN"
                 Layout.fillWidth: true
 

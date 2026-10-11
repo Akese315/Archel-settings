@@ -42,10 +42,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Bluetooth"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Bluetooth"
+                pageSubtitle: "Appareils et appairage"
             }
 
             PollBanner {
@@ -53,7 +53,7 @@ Item {
                 onDismissRequested: bt.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Adaptateur"
                 Layout.fillWidth: true
 
@@ -77,7 +77,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Appareils"
                 Layout.fillWidth: true
 

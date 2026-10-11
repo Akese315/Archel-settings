@@ -50,10 +50,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Son"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Son"
+                pageSubtitle: "Sorties et entrées audio"
             }
 
             PollBanner {
@@ -61,7 +61,7 @@ Item {
                 onDismissRequested: audio.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Lecture"
                 Layout.fillWidth: true
 
@@ -103,7 +103,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Enregistrement"
                 Layout.fillWidth: true
 

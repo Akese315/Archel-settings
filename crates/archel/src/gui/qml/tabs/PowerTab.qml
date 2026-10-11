@@ -38,10 +38,10 @@ Item {
             width: view.availableWidth
             spacing: 24
 
-            Label {
-                text: "Alimentation"
-                font.bold: true
-                font.pixelSize: Math.round(Qt.application.font.pixelSize * 1.25)
+            PageHeader {
+                Layout.fillWidth: true
+                pageTitle: "Alimentation"
+                pageSubtitle: "Profils d'énergie et batterie"
             }
 
             PollBanner {
@@ -49,7 +49,7 @@ Item {
                 onDismissRequested: power.dismissBanner()
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Profil"
                 Layout.fillWidth: true
 
@@ -82,7 +82,7 @@ Item {
                 }
             }
 
-            GroupBox {
+            SectionCard {
                 title: "Pilote"
                 Layout.fillWidth: true
 
