@@ -647,10 +647,10 @@ pub(crate) fn add_keybind_worker(
             return;
         }
     };
-    if let Err(err) = (ops.eval_bind_line)(&line) {
-        sess.open_error(&err.message());
-        return;
-    }
+    // Persist-then-eval (WR-04): the snippet merge lands first so a
+    // persist failure surfaces through the error modal before any
+    // live-compositor mutation happens - a failed write never leaves
+    // a live-but-unsaved bind behind.
     let body = match (ops.read_body)(base) {
         Ok(body) => body,
         Err(err) => {
@@ -666,6 +666,10 @@ pub(crate) fn add_keybind_worker(
         }
     };
     if let Err(err) = (ops.write_body)(base, &merged) {
+        sess.open_error(&err.message());
+        return;
+    }
+    if let Err(err) = (ops.eval_bind_line)(&line) {
         sess.open_error(&err.message());
     }
 }
@@ -1196,6 +1200,45 @@ mod tests {
             WRITES.load(AtomicOrdering::SeqCst),
             0,
             "the stale pre-confirm snapshot is never written"
+        );
+    }
+
+    #[test]
+    fn add_persist_failure_never_touches_the_live_compositor() {
+        static EVAL_CALLS: AtomicUsize = AtomicUsize::new(0);
+        let ops = InputOps {
+            eval_bind_line: |_| {
+                EVAL_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
+                Ok(())
+            },
+            write_body: |_, _| {
+                Err(archel_core::ArchelError::Internal(
+                    "cannot write snippet".to_string(),
+                ))
+            },
+            ..succeeding_input_ops()
+        };
+        let sess = ModalSession::default();
+        let base = test_base("add-persist-failure");
+        std::thread::scope(|s| {
+            s.spawn(|| add_keybind_worker(&base, "SUPER + T", "exec kitty", &ops, &sess));
+            wait_until("add confirm opens", || {
+                sess.snapshot_kind() == ModalKind::Confirm
+            });
+            sess.resolve_confirm(true);
+            wait_until("persist error opens", || {
+                sess.snapshot_kind() == ModalKind::Error
+            });
+        });
+        assert_eq!(
+            EVAL_CALLS.load(AtomicOrdering::SeqCst),
+            0,
+            "a failed persist must leave no live-evaluated bind"
+        );
+        assert_eq!(
+            sess.snapshot_kind(),
+            ModalKind::Error,
+            "the persist failure takes the error-modal path"
         );
     }
 }
