@@ -94,7 +94,7 @@ Dialog {
             }
         }
 
-        ProgressBar {
+        ArchelProgress {
             Layout.fillWidth: true
             visible: !root.done
             indeterminate: true
@@ -198,7 +198,7 @@ Dialog {
                 }
             }
 
-            Button {
+            ArchelButton {
                 id: pkgbuildExpander
                 checkable: true
                 text: checked ? "Masquer le PKGBUILD" : "Voir le PKGBUILD"
@@ -229,7 +229,7 @@ Dialog {
                 }
             }
 
-            CheckBox {
+            ArchelCheck {
                 id: trustCheck
                 text: "Je confirme la source"
                 checked: root.trustConfirmed
@@ -238,7 +238,7 @@ Dialog {
 
             RowLayout {
                 Layout.alignment: Qt.AlignRight
-                Button {
+                ArchelButton {
                     id: validateButton
                     Layout.minimumWidth: 96
                     highlighted: true
@@ -257,7 +257,7 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: 8
 
-            Button {
+            ArchelButton {
                 id: footerButton
                 Layout.minimumWidth: 96
                 highlighted: true

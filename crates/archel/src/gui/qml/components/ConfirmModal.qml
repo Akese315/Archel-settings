@@ -51,12 +51,12 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: 8
 
-            Button {
+            ArchelButton {
                 text: "Fermer"
                 Layout.minimumWidth: 96
                 onClicked: root.declined()
             }
-            Button {
+            ArchelButton {
                 id: confirmButton
                 text: "Confirmer"
                 Layout.minimumWidth: 96

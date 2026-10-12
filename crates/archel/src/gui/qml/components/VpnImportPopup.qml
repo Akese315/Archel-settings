@@ -57,7 +57,7 @@ Popup {
             Layout.fillWidth: true
             spacing: 8
 
-            Button {
+            ArchelButton {
                 text: "Parcourir…"
                 enabled: !root.busy
                 onClicked: filePicker.open()
@@ -73,7 +73,7 @@ Popup {
             Layout.fillWidth: true
         }
 
-        TextField {
+        ArchelField {
             id: pathField
             Layout.fillWidth: true
             enabled: !root.busy
@@ -84,13 +84,13 @@ Popup {
             Layout.alignment: Qt.AlignRight
             spacing: 8
 
-            Button {
+            ArchelButton {
                 text: "Fermer"
                 Layout.minimumWidth: 96
                 enabled: !root.busy
                 onClicked: root.dismissed()
             }
-            Button {
+            ArchelButton {
                 text: "Importer"
                 Layout.minimumWidth: 96
                 highlighted: true

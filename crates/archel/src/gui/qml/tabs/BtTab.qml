@@ -69,7 +69,7 @@ Item {
                         visible: bt.operationBusy && bt.busyAddress === "adapter"
                         running: bt.operationBusy && bt.busyAddress === "adapter"
                     }
-                    Switch {
+                    ArchelSwitch {
                         checked: bt.adapterOn
                         enabled: !bt.operationBusy
                         onClicked: bt.applyAdapterOn(checked)
@@ -129,25 +129,25 @@ Item {
                                     spacing: 8
                                     visible: !(bt.operationBusy && bt.busyAddress === modelData.address)
 
-                                    Button {
+                                    ArchelButton {
                                         text: "Appairer"
                                         visible: !modelData.paired
                                         enabled: !bt.operationBusy
                                         onClicked: bt.pair(modelData.address)
                                     }
-                                    Button {
+                                    ArchelButton {
                                         text: "Connecter"
                                         visible: modelData.paired && !modelData.connected
                                         enabled: !bt.operationBusy
                                         onClicked: bt.connect(modelData.address)
                                     }
-                                    Button {
+                                    ArchelButton {
                                         text: "Déconnecter"
                                         visible: modelData.connected
                                         enabled: !bt.operationBusy
                                         onClicked: bt.disconnect(modelData.address)
                                     }
-                                    Button {
+                                    ArchelButton {
                                         text: "Supprimer"
                                         visible: modelData.paired
                                         enabled: !bt.operationBusy
@@ -180,7 +180,7 @@ Item {
                     RowLayout {
                         spacing: 8
 
-                        Button {
+                        ArchelButton {
                             text: "Rechercher"
                             enabled: !bt.scanning
                             onClicked: bt.scanNow()

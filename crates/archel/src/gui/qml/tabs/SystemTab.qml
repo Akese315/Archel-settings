@@ -82,7 +82,7 @@ Item {
                         fieldLabel: "Microcode"
                         fieldValue: system.cpuDriverText
                     }
-                    Button {
+                    ArchelButton {
                         id: coresToggle
                         text: "Cœurs"
                         checkable: true

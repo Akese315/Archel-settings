@@ -66,7 +66,7 @@ Dialog {
             horizontalAlignment: Text.AlignHCenter
         }
 
-        ProgressBar {
+        ArchelProgress {
             Layout.fillWidth: true
             from: 0
             to: totalSeconds
@@ -77,12 +77,12 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: 8
 
-            Button {
+            ArchelButton {
                 text: "Annuler"
                 Layout.minimumWidth: 96
                 onClicked: root.revertRequested()
             }
-            Button {
+            ArchelButton {
                 id: keepButton
                 text: "Conserver"
                 Layout.minimumWidth: 96

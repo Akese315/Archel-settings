@@ -69,7 +69,7 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: 8
 
-            Button {
+            ArchelButton {
                 id: fermerButton
                 text: "Fermer"
                 Layout.minimumWidth: 96

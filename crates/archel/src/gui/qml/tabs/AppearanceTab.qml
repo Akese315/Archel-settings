@@ -88,7 +88,7 @@ Item {
                             text: "Mode sombre"
                             Layout.fillWidth: true
                         }
-                        Switch {
+                        ArchelSwitch {
                             checked: root.theme.darkMode
                             onToggled: root.theme.setDark(checked)
                         }
@@ -178,7 +178,7 @@ Item {
                             text: "Flou"
                             Layout.fillWidth: true
                         }
-                        Switch {
+                        ArchelSwitch {
                             id: blurSwitch
                             checked: appearance.blurText === "on"
                             enabled: !appearance.operationBusy
@@ -195,7 +195,7 @@ Item {
                         text: "Opacité active : " + Math.round(activeSlider.value * 100) + " %"
                         Layout.fillWidth: true
                     }
-                    Slider {
+                    ArchelSlider {
                         id: activeSlider
                         Layout.fillWidth: true
                         from: 0
@@ -213,7 +213,7 @@ Item {
                         text: "Opacité inactive : " + Math.round(inactiveSlider.value * 100) + " %"
                         Layout.fillWidth: true
                     }
-                    Slider {
+                    ArchelSlider {
                         id: inactiveSlider
                         Layout.fillWidth: true
                         from: 0
@@ -235,7 +235,7 @@ Item {
                         fieldLabel: "Active / inactive"
                         fieldValue: appearance.opacityText
                     }
-                    Button {
+                    ArchelButton {
                         text: "Appliquer"
                         enabled: !appearance.operationBusy
                         onClicked: appearance.setOpacity(activeSlider.value.toFixed(2), inactiveSlider.value.toFixed(2))
@@ -260,14 +260,14 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        TextField {
+                        ArchelField {
                             id: wallpaperField
                             Layout.fillWidth: true
                             placeholderText: "/chemin/vers/image.png"
                             text: appearance.wallpaperText === "N/A" ? "" : appearance.wallpaperText
                             enabled: !appearance.operationBusy
                         }
-                        Button {
+                        ArchelButton {
                             text: "Choisir…"
                             enabled: !appearance.operationBusy
                             onClicked: wallpaperPicker.open()
@@ -280,7 +280,7 @@ Item {
                         source: wallpaperField.text === "" ? "" : "file://" + wallpaperField.text
                         visible: wallpaperField.text !== ""
                     }
-                    Button {
+                    ArchelButton {
                         text: "Appliquer"
                         enabled: !appearance.operationBusy && wallpaperField.text !== ""
                         onClicked: appearance.setWallpaper(wallpaperField.text)
@@ -305,13 +305,13 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        TextField {
+                        ArchelField {
                             id: fontFamilyField
                             Layout.fillWidth: true
                             placeholderText: "Famille (ex. Cantarell)"
                             enabled: !appearance.operationBusy
                         }
-                        TextField {
+                        ArchelField {
                             id: fontSizeField
                             Layout.preferredWidth: 80
                             placeholderText: "Taille"
@@ -319,7 +319,7 @@ Item {
                             enabled: !appearance.operationBusy
                         }
                     }
-                    Button {
+                    ArchelButton {
                         text: "Appliquer"
                         enabled: !appearance.operationBusy && fontFamilyField.text !== ""
                         onClicked: appearance.setFont(fontFamilyField.text, fontSizeField.text)

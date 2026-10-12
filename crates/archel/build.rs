@@ -65,6 +65,14 @@ fn main() {
             "src/gui/qml/components/SectionCard.qml",
             "src/gui/qml/components/PageHeader.qml",
             "src/gui/qml/components/RailTab.qml",
+            "src/gui/qml/components/ArchelField.qml",
+            "src/gui/qml/components/ArchelRadio.qml",
+            "src/gui/qml/components/ArchelButton.qml",
+            "src/gui/qml/components/ArchelComboBox.qml",
+            "src/gui/qml/components/ArchelCheck.qml",
+            "src/gui/qml/components/ArchelSwitch.qml",
+            "src/gui/qml/components/ArchelSlider.qml",
+            "src/gui/qml/components/ArchelProgress.qml",
         ]),
     )
     .files([

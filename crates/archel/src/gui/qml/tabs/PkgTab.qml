@@ -149,7 +149,7 @@ Item {
                     anchors.fill: parent
                     spacing: 8
 
-                    TextField {
+                    ArchelField {
                         id: searchField
                         Layout.fillWidth: true
                         placeholderText: "Rechercher un paquet à installer…"
@@ -172,21 +172,21 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        TextField {
+                        ArchelField {
                             id: filterField
                             Layout.fillWidth: true
                             placeholderText: "Filtrer la liste installée…"
                             selectByMouse: true
                         }
                         Label { text: "Taille" }
-                        ComboBox {
+                        ArchelComboBox {
                             id: sizeFilterBox
                             Layout.preferredWidth: 130
                             model: ["Toutes", "≥ 100 Mo", "≥ 1 Go", "≤ 10 Mo"]
                             onActivated: function (index) { root.sizeFilter = index }
                         }
                         Label { text: "Tri" }
-                        ComboBox {
+                        ArchelComboBox {
                             id: sortBox
                             Layout.preferredWidth: 170
                             model: ["Nom (A→Z)", "Nom (Z→A)", "Taille (croissante)", "Taille (décroissante)"]
@@ -203,7 +203,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        Button {
+                        ArchelButton {
                             text: "Installer"
                             highlighted: true
                             Layout.minimumWidth: 110
@@ -213,13 +213,13 @@ Item {
                                 root.clearSelection();
                             }
                         }
-                        Button {
+                        ArchelButton {
                             text: "Mettre à jour"
                             Layout.minimumWidth: 130
                             enabled: !pkg.operationBusy
                             onClicked: pkg.upgradeStart()
                         }
-                        Button {
+                        ArchelButton {
                             text: "Supprimer"
                             Layout.minimumWidth: 110
                             enabled: !pkg.operationBusy && root.selectedNames.length > 0
@@ -233,7 +233,7 @@ Item {
                         // cancellable yay build. Repository rows stay on the
                         // Installer button (the review redirects them with
                         // core's own hint).
-                        Button {
+                        ArchelButton {
                             text: "Installer depuis AUR"
                             Layout.minimumWidth: 170
                             enabled: !pkg.operationBusy && root.selectedNames.length === 1
@@ -278,7 +278,7 @@ Item {
                             ToolTip.text: modelData.name + " " + modelData.version
                             contentItem: RowLayout {
                                 spacing: 8
-                                CheckBox {
+                                ArchelCheck {
                                     checked: root.isSelected(modelData.name)
                                     onToggled: root.setSelected(modelData.name, checked)
                                     Accessible.name: "Sélectionner " + modelData.name

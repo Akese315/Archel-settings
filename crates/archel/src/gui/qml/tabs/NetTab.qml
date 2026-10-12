@@ -254,7 +254,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        TextField {
+                        ArchelField {
                             id: wifiPassword
                             Layout.fillWidth: true
                             enabled: root.wifiPicked !== "" && !net.wifiBusy
@@ -268,13 +268,13 @@ Item {
                                 }
                             }
                         }
-                        Button {
+                        ArchelButton {
                             text: "Connecter"
                             highlighted: true
                             enabled: root.wifiPicked !== "" && !net.wifiBusy
                             onClicked: net.wifiConnect(root.wifiPicked, wifiPassword.text)
                         }
-                        Button {
+                        ArchelButton {
                             text: "Déconnecter"
                             enabled: !net.wifiBusy && root.wifiConnected
                             onClicked: net.wifiDisconnect()
@@ -312,7 +312,7 @@ Item {
                         Label {
                             text: "Mode :"
                         }
-                        RadioButton {
+                        ArchelRadio {
                             text: "Automatique"
                             checked: dnsAutomatic
                             enabled: !net.dnsBusy
@@ -327,7 +327,7 @@ Item {
                                 }
                             }
                         }
-                        RadioButton {
+                        ArchelRadio {
                             text: "Manuel"
                             checked: !dnsAutomatic
                             enabled: !net.dnsBusy
@@ -352,7 +352,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            TextField {
+                            ArchelField {
                                 Layout.fillWidth: true
                                 enabled: !net.dnsBusy
                                 text: model.server
@@ -363,7 +363,7 @@ Item {
                                     refreshDnsState()
                                 }
                             }
-                            Button {
+                            ArchelButton {
                                 text: "Retirer"
                                 enabled: !net.dnsBusy && dnsRows.count > 1
                                 onClicked: {
@@ -385,7 +385,7 @@ Item {
                     RowLayout {
                         spacing: 8
 
-                        Button {
+                        ArchelButton {
                             text: "Ajouter"
                             enabled: !net.dnsBusy
                             onClicked: {
@@ -394,7 +394,7 @@ Item {
                                 refreshDnsState()
                             }
                         }
-                        Button {
+                        ArchelButton {
                             text: "Réinitialiser"
                             enabled: !net.dnsBusy
                             onClicked: {
@@ -402,7 +402,7 @@ Item {
                                 syncDnsFromCurrent()
                             }
                         }
-                        Button {
+                        ArchelButton {
                             text: "Appliquer"
                             highlighted: true
                             enabled: dnsValid && !net.dnsBusy
@@ -478,7 +478,7 @@ Item {
                     RowLayout {
                         spacing: 8
 
-                        Button {
+                        ArchelButton {
                             text: "Importer…"
                             enabled: !net.vpnBusy
                             onClicked: root.importRequested()
@@ -499,7 +499,7 @@ Item {
                             Layout.fillWidth: true
                             wrapMode: Label.WrapAnywhere
                         }
-                        Button {
+                        ArchelButton {
                             text: "Fermer"
                             onClicked: net.dismissVpnResult()
                         }

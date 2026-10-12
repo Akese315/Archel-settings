@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Archel Settings
+Comment=System settings suite for Archel (Arch Linux + Hyprland)
+Exec=archel settings
+Icon=system-config
+Terminal=false
+Categories=Settings;System;Qt;

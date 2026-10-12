@@ -73,7 +73,7 @@ Item {
                         spacing: 8
                         Layout.fillWidth: true
 
-                        ComboBox {
+                        ArchelComboBox {
                             id: sinkPicker
                             Layout.fillWidth: true
                             enabled: !audio.operationBusy
@@ -115,7 +115,7 @@ Item {
                         spacing: 8
                         Layout.fillWidth: true
 
-                        ComboBox {
+                        ArchelComboBox {
                             id: sourcePicker
                             Layout.fillWidth: true
                             enabled: !audio.operationBusy

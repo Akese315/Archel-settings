@@ -154,7 +154,7 @@ Item {
                 Layout.alignment: Qt.AlignRight
                 spacing: 8
 
-                Button {
+                ArchelButton {
                     text: "Abandonner"
                     Layout.minimumWidth: 96
                     onClicked: {
@@ -162,7 +162,7 @@ Item {
                         draftDialog.close();
                     }
                 }
-                Button {
+                ArchelButton {
                     text: "Appliquer"
                     Layout.minimumWidth: 96
                     highlighted: true
@@ -219,7 +219,7 @@ Item {
                             text: "Sensibilité"
                             Layout.preferredWidth: 140
                         }
-                        Slider {
+                        ArchelSlider {
                             id: sensitivitySlider
                             Layout.fillWidth: true
                             from: -1
@@ -235,7 +235,7 @@ Item {
                         fieldLabel: "Valeur"
                         fieldValue: input.sensitivityText
                     }
-                    Button {
+                    ArchelButton {
                         text: "Appliquer"
                         enabled: sensDraft !== sensBase && sensValid && !input.operationBusy
                         onClicked: input.setSensitivity(sensValueOf(sensDraft).toFixed(2))
@@ -249,7 +249,7 @@ Item {
                             text: "Défilement naturel"
                             Layout.fillWidth: true
                         }
-                        Switch {
+                        ArchelSwitch {
                             checked: input.naturalText === "on"
                             enabled: false
                         }
@@ -263,7 +263,7 @@ Item {
                             text: "Accélération"
                             Layout.preferredWidth: 140
                         }
-                        TextField {
+                        ArchelField {
                             id: accelerateField
                             Layout.fillWidth: true
                             placeholderText: "Facteur (ex. 1.50)"
@@ -277,7 +277,7 @@ Item {
                         fieldLabel: "Facteur de défilement"
                         fieldValue: input.scrollText
                     }
-                    Button {
+                    ArchelButton {
                         text: "Appliquer"
                         enabled: accelDraft !== accelBase && accelValid && !input.operationBusy
                         onClicked: input.setAccelerate(accelDraft)
@@ -319,7 +319,7 @@ Item {
                                     elide: Text.ElideMiddle
                                     Layout.maximumWidth: parent.width * 0.4
                                 }
-                                Button {
+                                ArchelButton {
                                     text: "Supprimer"
                                     visible: modelData.managed === true
                                     enabled: !input.operationBusy
@@ -358,13 +358,13 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        TextField {
+                        ArchelField {
                             id: comboField
                             Layout.fillWidth: true
                             placeholderText: "Combinaison (ex. SUPER + T)"
                             enabled: !input.operationBusy
                         }
-                        TextField {
+                        ArchelField {
                             id: actionField
                             Layout.fillWidth: true
                             placeholderText: "Action (ex. exec kitty)"
@@ -378,7 +378,7 @@ Item {
                         wrapMode: Text.Wrap
                         color: "#c01c28"
                     }
-                    Button {
+                    ArchelButton {
                         text: "Ajouter"
                         enabled: !input.operationBusy && comboField.text !== "" && actionField.text !== ""
                         onClicked: input.addKeybind(comboField.text, actionField.text)

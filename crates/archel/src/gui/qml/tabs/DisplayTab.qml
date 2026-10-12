@@ -97,7 +97,7 @@ Item {
                                 text: "Mode"
                                 Layout.preferredWidth: 120
                             }
-                            ComboBox {
+                            ArchelComboBox {
                                 id: modeBox
                                 Layout.fillWidth: true
                                 model: modelData.available_modes
@@ -113,7 +113,7 @@ Item {
                                 text: "Échelle"
                                 Layout.preferredWidth: 120
                             }
-                            TextField {
+                            ArchelField {
                                 id: scaleField
                                 Layout.fillWidth: true
                                 placeholderText: modelData.scale === undefined ? "1.0" : String(modelData.scale)
@@ -125,7 +125,7 @@ Item {
                             fieldLabel: "Position"
                             fieldValue: modelData.position
                         }
-                        Button {
+                        ArchelButton {
                             text: "Appliquer"
                             enabled: !displayModel.operationBusy
                             onClicked: {

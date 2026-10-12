@@ -62,7 +62,7 @@ Item {
 
                         Repeater {
                             model: power.profilesJson === "" ? [] : JSON.parse(power.profilesJson)
-                            delegate: RadioButton {
+                            delegate: ArchelRadio {
                                 text: modelData.id
                                 checked: modelData.active
                                 enabled: !power.operationBusy

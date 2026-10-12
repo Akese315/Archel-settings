@@ -25,7 +25,7 @@ Frame {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
         }
-        Button {
+        ArchelButton {
             text: "Fermer"
             onClicked: root.dismissRequested()
         }

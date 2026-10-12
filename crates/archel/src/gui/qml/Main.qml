@@ -91,16 +91,16 @@ ApplicationWindow {
                 width: 200
                 spacing: 4
 
-                RailTab { iconSource: "images/home.svg";      label: "Accueil";       checked: true; onClicked: stack.currentIndex = 0 }
-                RailTab { iconSource: "images/network.svg";   label: "Réseau";         onClicked: stack.currentIndex = 1 }
-                RailTab { iconSource: "images/power.svg";     label: "Alimentation";   onClicked: stack.currentIndex = 2 }
-                RailTab { iconSource: "images/bluetooth.svg";  label: "Bluetooth";     onClicked: stack.currentIndex = 3 }
-                RailTab { iconSource: "images/appearance.svg"; label: "Apparence";     onClicked: stack.currentIndex = 4 }
-                RailTab { iconSource: "images/sound.svg";      label: "Son";            onClicked: stack.currentIndex = 5 }
-                RailTab { iconSource: "images/apps.svg";       label: "Applications";   onClicked: stack.currentIndex = 6 }
-                RailTab { iconSource: "images/display.svg";    label: "Affichage";      onClicked: stack.currentIndex = 7 }
-                RailTab { iconSource: "images/input.svg";      label: "Périphériques";  onClicked: stack.currentIndex = 8 }
-                RailTab { iconSource: "images/system.svg";     label: "Système";        onClicked: stack.currentIndex = 9 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/home.svg";      label: "Accueil";       checked: true; onClicked: stack.currentIndex = 0 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/network.svg";   label: "Réseau";         onClicked: stack.currentIndex = 1 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/power.svg";     label: "Alimentation";   onClicked: stack.currentIndex = 2 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/bluetooth.svg";  label: "Bluetooth";     onClicked: stack.currentIndex = 3 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/appearance.svg"; label: "Apparence";     onClicked: stack.currentIndex = 4 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/sound.svg";      label: "Son";            onClicked: stack.currentIndex = 5 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/apps.svg";       label: "Applications";   onClicked: stack.currentIndex = 6 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/display.svg";    label: "Affichage";      onClicked: stack.currentIndex = 7 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/input.svg";      label: "Périphériques";  onClicked: stack.currentIndex = 8 }
+                RailTab { iconSource: "qrc:/qt/qml/org/archel/settings/src/gui/qml/images/system.svg";     label: "Système";        onClicked: stack.currentIndex = 9 }
             }
         }
 

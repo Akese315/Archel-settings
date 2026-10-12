@@ -110,11 +110,38 @@ pub(crate) fn vpn_json_for(
     serde_json::to_string(conns).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// Wi-Fi rows as QML-ready JSON: `[{ssid,signal,security,in_use}]`,
-/// the serializable `WifiNetwork` fields verbatim (never re-derived
-/// here), strongest first as nmcli returns them.
+/// Wi-Fi rows as QML-ready JSON: `[{ssid,signal,security,in_use}]`.
+///
+/// One row per SSID (repeaters/mesh broadcast the same SSID from
+/// several BSSIDs, and 2.4/5 GHz bands of the same network show up
+/// twice): the strongest BSSID wins, except an in-use BSSID which
+/// always wins over a stronger idle one — the connected AP is the
+/// one the UI must keep showing as connected. Hidden networks
+/// (empty SSID) are dropped: nameless rows cannot be picked by SSID
+/// anyway. First-seen order is preserved (nmcli returns them
+/// strongest first).
 pub(crate) fn wifi_json_for(networks: &[archel_core::network::wifi::WifiNetwork]) -> String {
-    serde_json::to_string(networks).unwrap_or_else(|_| "[]".to_string())
+    let mut rows: Vec<&archel_core::network::wifi::WifiNetwork> = Vec::new();
+    for net in networks {
+        if net.ssid.is_empty() {
+            continue;
+        }
+        match rows.iter().position(|r| r.ssid == net.ssid) {
+            None => rows.push(net),
+            Some(i) => {
+                let current = rows[i];
+                let take = if net.in_use != current.in_use {
+                    net.in_use
+                } else {
+                    net.signal.unwrap_or(0) > current.signal.unwrap_or(0)
+                };
+                if take {
+                    rows[i] = net;
+                }
+            }
+        }
+    }
+    serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
 }
 
 impl NetModelRust {
@@ -764,6 +791,62 @@ mod tests {
         let degraded =
             model.apply_outcome(Ok(ready_status()), Ok(Vec::new()), wifi_err);
         assert_eq!(degraded.wifi_json, "[]", "wifi failure reads the honest empty list");
+    }
+
+    #[test]
+    fn wifi_rows_keep_one_row_per_ssid_strongest_bssid_wins() {
+        let networks = vec![
+            wifi("home-wifi", Some(82), true),
+            wifi("home-wifi", Some(60), false),
+            wifi("home-wifi", Some(41), false),
+            wifi("guest", Some(40), false),
+            wifi("guest", Some(75), false),
+        ];
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&wifi_json_for(&networks)).expect("JSON");
+        assert_eq!(rows.len(), 2, "repeaters collapse to one row per SSID");
+        assert_eq!(rows[0]["ssid"], "home-wifi");
+        assert_eq!(rows[0]["signal"], 82, "connected BSSID stays");
+        assert_eq!(rows[1]["signal"], 75, "strongest of the duplicates wins");
+        // First-seen order: nmcli signal order survives the collapse.
+        assert_eq!(rows[0]["ssid"], "home-wifi");
+        assert_eq!(rows[1]["ssid"], "guest");
+    }
+
+    #[test]
+    fn wifi_rows_prefer_the_connected_bssid_over_a_stronger_idle_one() {
+        let networks = vec![
+            wifi("home-wifi", Some(90), false),
+            wifi("home-wifi", Some(35), true),
+        ];
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&wifi_json_for(&networks)).expect("JSON");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["signal"], 35, "in-use BSSID beats the stronger idle one");
+        assert_eq!(rows[0]["in_use"], true);
+    }
+
+    #[test]
+    fn wifi_rows_drop_hidden_networks_without_deduping_them() {
+        let networks = vec![
+            wifi("", Some(80), false),
+            wifi("", Some(30), false),
+            wifi("guest", Some(40), false),
+        ];
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&wifi_json_for(&networks)).expect("JSON");
+        assert_eq!(rows.len(), 1, "nameless rows are dropped, not merged");
+        assert_eq!(rows[0]["ssid"], "guest");
+    }
+
+    /// Test row builder: WifiNetwork with everything set from args.
+    fn wifi(ssid: &str, signal: Option<u32>, in_use: bool) -> archel_core::network::wifi::WifiNetwork {
+        archel_core::network::wifi::WifiNetwork {
+            ssid: ssid.to_string(),
+            signal,
+            security: "WPA2".to_string(),
+            in_use,
+        }
     }
 
     #[test]
